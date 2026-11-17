@@ -24,11 +24,13 @@ the first release with plugins after it (D-034).
 Then the phase order of release 1 (D-035, now in `ROADMAP.md`), the slice crates (D-036),
 Fluent for i18n (D-037), and balanced performance budgets (D-038).
 
+Then the system gcc installed with consent (D-039), generated code committed in
+`generated/` (D-040), the slice's dependency set (D-041), and our own node-graph canvas
+(D-042).
+
 ## Exact next step
-1. Settle the open questions Phase 2 (vertical slice) needs: the toolchain details
-   (compiler/linker on Fedora, `zstd-stream` vs `zlib-stream`), the project layout and
-   schema (D-019), the slice's dependency set, and the node-graph canvas.
-2. Then start Phase 2, step 1: the workspace skeleton + CI.
+1. Owner: start Phase 2, or plan the later phases in more detail first.
+2. Phase 2, step 1: the workspace skeleton (D-036) + CI.
 3. The other open questions (plugin details, VS Code themes, other hosts, GitHub
    features, community files) wait until the phase that needs them.
 

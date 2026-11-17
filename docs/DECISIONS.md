@@ -346,6 +346,53 @@ alternatives that were considered, and why.
 - **Alternatives:** strict (250 ms, 120 FPS, 100 MB, 20 ms, 3 s); relaxed (1 s, 30 FPS,
   400 MB, 500 ms, 30 s).
 
+### D-039 — C compiler: the system gcc, installed with consent
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** A C compiler is required to build bots in every setup. djs-rs uses `ring`
+  for TLS, which compiles C, and rustc on Linux links through `cc`. If gcc is missing, the
+  app installs it through the package manager behind the system's administrator prompt:
+  `dnf install gcc` on Fedora, `build-essential` on Debian/Ubuntu, `base-devel` on Arch,
+  `gcc` on openSUSE. The owner's machine has gcc 16.2.1 and cmake 4.3.0.
+- **Alternatives:** a private zig with cargo-zigbuild (no admin rights, ~80 MB, pre-1.0);
+  gcc if present, otherwise zig.
+
+### D-040 — Generated code is committed in `generated/`
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** A bot project's generated Rust code lives in `generated/` (D-015) and is
+  committed. The bot's repository builds with plain cargo, without RustBot Creator, so
+  there is no lock-in and GitHub Actions can build and deploy it. Code generation is
+  deterministic, so diffs show only real changes. Layout v0:
+  `project.toml` (settings, `schema = 1`, djs-rs version, license), `graphs/commands/*.json`,
+  `graphs/events/*.json`, `src/` (the user's modules), `generated/` (`Cargo.toml`,
+  `src/main.rs`, never edited by hand), and `.gitignore` (`target/`, `.env`).
+- **Alternatives:** source only, with the generated code in a gitignored `.rustbot/` and a
+  standalone project only through export.
+
+### D-041 — Dependency set of the vertical slice
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Approved as a set:
+  - already in gpui-kit's tree: `serde`, `serde_json`, `anyhow` (app-level errors),
+    `smol` (async in the app), `tracing`;
+  - new: `toml` 1.2 (D-019), `thiserror` 2 (typed errors in library crates),
+    `fluent-bundle` 0.16 + `unic-langid` 0.9 (D-037), `keyring` 4.2 (D-020; on Linux its
+    default store is the pure-Rust zbus Secret Service), `directories` 6 (XDG paths,
+    D-017), `ureq` 3 + `sha2` 0.11 (downloading `rustup-init` and verifying its checksum),
+    `tracing-subscriber`;
+  - dev-only: `insta` (snapshots of generated code), `tempfile`.
+  The encrypted-file fallback for secrets (D-020) and its crypto come in a later phase,
+  since Fedora KDE has KWallet. Any dependency outside this set still needs approval.
+- **Alternatives:** approve each dependency separately.
+
+### D-042 — Our own node-graph canvas on gpui-kit's gpui
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The easy mode's graph editor is written in this project, on the gpui
+  version gpui-kit pins (`gpui-pre` 0.3.12 at gpui-kit 0.10.0). This gives full control
+  over UX and the D-038 budget (500 nodes at 60 FPS). The existing crates cannot share a
+  window with gpui-kit: `ferrum-flow` 0.3.1 is on `gpui` 0.2, and `gpui-node-graph` 0.1.0 is
+  on `gpui-unofficial`.
+- **Alternatives:** port `ferrum-flow` (Apache-2.0) as a fork; ask its author to support
+  gpui-kit's gpui and wait.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -357,25 +404,27 @@ alternatives that were considered, and why.
   editor files and `.env` secrets. There is no Cargo workspace, toolchain file or CI yet,
   because their shape depends on open questions below.
 
+### C-002 — Generated bots keep djs-rs's default features
+- **Date:** 2026-11-17
+- **Choice:** Generated bots use djs-rs's default `zstd-stream` gateway compression rather
+  than the pure-Rust `zlib-stream`. A C compiler is required anyway (D-039), so the
+  pure-Rust option saves nothing, and zstd is djs-rs's own default.
+
 ---
 
 ## Open questions (to ask the owner when relevant)
 
 The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answers it.
 
-- **Project format details** (D-019): exact layout, schema versioning and migrations.
+- **Project format details** (D-019, D-040): the JSON schema of graphs, and migrations
+  between schema versions.
 - **Plugins** (D-016): what they may extend, the capability list, plugin API versioning and
   stability, distribution (a registry?), and signing.
 - **Themes:** importing VS Code themes.
-- **Toolchain details** (D-017): which compiler and linker per distribution, `zstd-stream`
-  (needs a C compiler) versus pure-Rust `zlib-stream` in generated bots, CMake for `voice`,
-  updates, and build caching to make the first build faster.
+- **Toolchain details** (D-017, D-039): CMake for `voice`, toolchain updates, and build
+  caching to make the first build faster.
 - **Other hosts** besides Cloudflare (D-013).
 - **GitHub integration** (D-021): the scope of features (create a repository, push, pull,
   releases, Actions) and the OAuth scopes they need.
-- **Dependency set of the vertical slice** beyond gpui-kit and Fluent: serialization,
-  keyring, paths, async runtime, and so on. Every dependency needs approval (D-006).
-- **Node-graph canvas:** gpui-kit has no node editor. Build our own on gpui, or adopt an
-  existing crate if one exists.
 - **Community files:** CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, and when
   to add them.
