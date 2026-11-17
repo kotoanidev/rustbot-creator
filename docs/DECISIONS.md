@@ -188,8 +188,10 @@ alternatives that were considered, and why.
 - **Date:** 2026-11-17 · **Decided by:** Owner
 - **Decision:** The user clicks "Connect" and types a short code on github.com. The app holds
   only a public client ID, with no client secret. On 2026-11-17 the owner registered a
-  **GitHub OAuth App** and handed its management to Claude. Its client ID is to be recorded
-  here once read from the app's settings, and "Enable Device Flow" must be on.
+  **GitHub OAuth App** and handed its management to Claude. Its client ID is
+  `Ov23liQbIFt9vqboIA0x`. That value is public, but the client secret must never enter the
+  repository. "Enable Device Flow" must be on in the app's settings, and `POST
+  /login/device/code` with this client ID is the check.
 - **Alternatives:** a pasted Personal Access Token; OAuth with a PAT as an advanced option.
 
 ### D-022 — Self-hosting: in-app process + background service

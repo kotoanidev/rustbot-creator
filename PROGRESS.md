@@ -33,9 +33,10 @@ the first release with plugins after it (D-034).
 
 ## Blocked on the owner
 - Every open question in `docs/DECISIONS.md` (D-006: the owner decides).
-- The GitHub OAuth App (D-021) exists and Claude manages it. Its client ID is still needed.
-  GitHub has no API for OAuth App settings, so Claude needs either the Claude in Chrome
-  extension connected or the client ID from the owner.
+- The GitHub OAuth App (D-021, client ID `Ov23liQbIFt9vqboIA0x`) has **Device Flow
+  disabled**: GitHub answered `device_flow_disabled` on 2026-11-17. The owner must tick
+  "Enable Device Flow" in its settings, because GitHub has no API for that and the Claude
+  in Chrome extension was not connected. Then re-run the check from D-021.
 
 ## Blocked on djs-rs
 Nothing yet. [djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3) (HTTP interactions +
