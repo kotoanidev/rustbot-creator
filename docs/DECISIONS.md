@@ -129,6 +129,43 @@ alternatives that were considered, and why.
   `/ban → has permission? → yes: ban user → reply` / `no: reply`.
 - **Alternatives:** node graph only; Scratch-like blocks; forms + a list of steps.
 
+### D-015 — One project, two views
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** A bot is one project. Its graph and forms are the source of truth. The Rust
+  code generated from them lives in a separate directory and is never edited by hand. In
+  the advanced mode the user writes their own Rust modules, which the graph calls through a
+  "custom code" node. The user can switch between the modes in both directions without
+  losing work.
+- **Alternatives:** one-way "eject" to a plain Rust project; full two-way graph↔code sync
+  (arbitrary Rust cannot be shown faithfully as a graph); separate project types.
+
+### D-016 — Plugins run as WASM in wasmtime
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Community plugins (logic, panels, new nodes, integrations) are WebAssembly
+  modules run in wasmtime, as Zed's extensions are. They are sandboxed and get each
+  capability as a separate grant. They can be written in Rust or any language that
+  compiles to WASM, and the engine is pure Rust. Plugins do not draw UI themselves; they
+  describe it through the app's API. Themes are data files (JSON, gpui-kit's format). That
+  was stated in the question and not objected to, and VS Code theme import is still open.
+- **Alternatives:** JS through gpui-kit's `gpui-shell` (QuickJS, written in C);
+  native `.so`/`.dll` (no sandbox, no stable Rust ABI); declarative-only first.
+
+### D-017 — The app manages a private toolchain
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The app installs its own rustup and Rust toolchain into its data directory,
+  at the version the generated code needs. It never touches the user's `~/.cargo` or
+  `~/.rustup`. System packages, such as a C compiler or linker, are installed only with the
+  user's consent, through the system's administrator prompt. This costs about 1 GB of disk.
+- **Alternatives:** reuse the user's rustup and install the missing parts; ask on first
+  run; build inside Podman/Docker containers.
+
+### D-018 — djs-rs asked for HTTP interactions + wasm32 now
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The need for the Workers phase (D-013) was filed right away as
+  [kotoanidev/djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3), so djs-rs has time
+  before that phase.
+- **Alternatives:** file it when the Workers phase is planned.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -148,18 +185,16 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
 
 - **Workspace layout and crate names.**
 - **Toolchain:** edition, MSRV policy, `rust-toolchain.toml`.
-- **How the two modes relate** (D-012, D-014): one project with two views, a one-way
-  "eject", or full two-way sync between the graph and the code.
 - **The advanced creator and the editor:** gpui-kit's editor (D-011) plus rust-analyzer as
   the LSP server, and how it is installed.
 - **Project format:** how a bot project is stored on disk and versioned.
-- **Plugins:** mechanism (WASM, dynamic libraries, scripting), sandboxing and permissions,
-  plugin API stability, distribution (a registry?).
-- **Themes:** format, and compatibility with VS Code themes.
-- **Self-installing dependencies:** rustup/toolchain management, a C compiler (djs-rs's
-  default `zstd-stream` needs one), CMake (the `voice` feature), and where they are installed.
-- **Other hosts** besides Cloudflare (D-013), and when to ask djs-rs for `wasm32` + an
-  HTTP interactions server for the Workers phase.
+- **Plugins** (D-016): what they may extend, the capability list, plugin API versioning and
+  stability, distribution (a registry?), and signing.
+- **Themes:** importing VS Code themes.
+- **Toolchain details** (D-017): which compiler and linker per distribution, `zstd-stream`
+  (needs a C compiler) versus pure-Rust `zlib-stream` in generated bots, CMake for `voice`,
+  updates, and build caching to make the first build faster.
+- **Other hosts** besides Cloudflare (D-013).
 - **Self-hosting on the user's PC:** running in the background, autostart, logs, restarts.
 - **GitHub integration:** authentication (OAuth device flow?), token storage (OS keyring),
   scope of features.
