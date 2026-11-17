@@ -17,13 +17,19 @@ GitHub OAuth device flow (D-021), and an in-app process plus a background servic
 self-hosting (D-022), MIT-0 generated code (D-023), EN + PL UI with i18n (D-024), RPM on
 Copr first (D-025), a gate plus performance budgets as the quality bar (D-026), the latest
 stable Rust with no MSRV (D-027), a multi-crate workspace (D-028), the `rustbot-*` crate
-prefix (D-029), and rust-analyzer as a rustup component (D-030).
+prefix (D-029), rust-analyzer as a rustup component (D-030), a vertical slice first (D-031),
+the easy mode widened first (D-032), the scope of the first release (D-033), and themes in
+the first release with plugins after it (D-034).
 
 ## Exact next step
-Continue with the owner: build order and the first vertical slice, which mode comes
-first, the scope of the first release, and when plugins and themes land. Then go through
-the remaining "Open questions" in `docs/DECISIONS.md`. Record each answer as `D-NNN`, then
-write the phased plan into `ROADMAP.md`.
+1. Propose to the owner the order of phases inside the first release (D-033), for
+   approval. Then write it into `ROADMAP.md`.
+2. Settle the open questions the vertical slice needs: the exact crate list, the project
+   layout and schema (D-019), the toolchain details (compiler/linker on Fedora,
+   `zstd-stream` vs `zlib-stream`), the i18n library, and the performance budget values
+   (D-026).
+3. The remaining open questions (plugin details, VS Code themes, other hosts, OAuth App vs
+   GitHub App, community files) wait until the phase that needs them.
 
 ## Blocked on the owner
 Every open question in `docs/DECISIONS.md` (D-006: the owner decides).

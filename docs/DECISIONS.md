@@ -261,6 +261,40 @@ alternatives that were considered, and why.
   Rust version.
 - **Alternatives:** download it from rust-analyzer's GitHub releases; no LSP at first.
 
+### D-031 — Vertical slice first
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The first implementation phase is the smallest end-to-end path through every
+  layer: the app window with the dock, a new project, a `/ping` command in the graph, code
+  generation, a build with the private toolchain, and running the bot with its logs in the
+  app. It validates the architecture before the scope widens.
+- **Alternatives:** layer by layer; a UI prototype with mock data first.
+
+### D-032 — The easy mode is widened first
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** After the slice, the easy mode (forms + graph) is widened first, because the
+  advanced mode stands on the same graph (D-015) and the easy mode is the app's
+  differentiator.
+- **Alternatives:** the advanced mode first; both in parallel.
+
+### D-033 — Scope of the first public release (Fedora)
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The first public release contains everything below. The order of phases
+  within it is still open.
+  - both modes and running the bot inside the app;
+  - export as source code and as a ready build;
+  - hosting on the user's PC in the background (`systemd --user`, D-022);
+  - GitHub integration (device flow sign-in, creating a repository, pushing the project);
+  - deploying to Cloudflare Containers (D-013);
+  - JSON themes, with built-in dark and light themes (D-034).
+
+### D-034 — Themes in the first release, WASM plugins after it
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** JSON themes, with built-in dark and light, ship in the first release. WASM
+  plugins (D-016) come in the release after it. From day one the built-in nodes and panels
+  are registered the same way plugins will register theirs, so adding the plugin system
+  does not require a rewrite.
+- **Alternatives:** both in the first release; both after it.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
