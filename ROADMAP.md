@@ -28,7 +28,8 @@ Goal: a `/ping` command made in the graph runs as a real bot, end to end through
 layer, before the scope widens.
 - [x] Cargo workspace with the six slice crates (D-036), lints, rustfmt/clippy config, CI on
       Linux (fmt, clippy, tests); first CI run green on Fedora 44 and Ubuntu
-- [ ] Project format v0: `project.toml` + one graph JSON (D-019)
+- [x] Project format v0: `project.toml` + graph JSON + layout JSON (D-019, D-051), in
+      `rustbot-core` with tests
 - [ ] Node registry in `rustbot-core`, built the way plugins will use it (D-034), with the
       slice's nodes: slash-command trigger and reply
 - [ ] Code generation of the `/ping` project on djs-rs (D-012, D-015)

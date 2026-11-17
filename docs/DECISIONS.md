@@ -457,6 +457,47 @@ alternatives that were considered, and why.
 - **Alternatives:** key secrets by the bot's package name (collisions, lost on rename) or
   by the folder path (lost on move).
 
+### D-051 — Project format v0
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Approved as shown:
+
+  ```toml
+  # project.toml
+  schema = 1
+  id = "3f2b6c1e-8a4d-4f7e-9b1a-2c5d7e8f9a0b"
+  [bot]
+  name = "Ping Bot"
+  package = "ping-bot"
+  description = "Replies to /ping."
+  license = ""            # SPDX expression, empty = none (D-023)
+  [djs-rs]
+  version = "0.1.0-alpha.1"
+  features = []
+  [gateway]
+  extra-intents = []      # the rest come from the graph (D-049)
+  ```
+
+  ```json
+  // graphs/commands/ping.json
+  { "schema": 1,
+    "nodes": {
+      "n1": { "type": "core.slash_command",
+              "props": { "name": "ping", "description": "Replies with Pong!" } },
+      "n2": { "type": "core.reply", "props": { "content": "Pong, {user.name}!" } } },
+    "edges": [ { "from": "n1.then", "to": "n2.run" } ] }
+  // graphs/commands/ping.layout.json
+  { "schema": 1, "nodes": { "n1": [0, 0], "n2": [280, 0] } }
+  ```
+
+  - Nodes are a map from id to node, with sorted keys for deterministic diffs. The app
+    assigns ids (`n1`, `n2`, …), and they never change.
+  - Node types are namespaced: `core.` for built-ins, a plugin's id for plugin nodes
+    (D-034).
+  - There is one list of edges, `from`/`to` as `node.pin`. The node registry knows whether
+    a pin is flow or data.
+  - Templates use `{path}`, and `{{` and `}}` give literal braces, as in Rust's `format!`.
+- **Alternatives:** readable, editable node ids (`command`, `reply`).
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -473,6 +514,17 @@ alternatives that were considered, and why.
 - **Choice:** Generated bots use djs-rs's default `zstd-stream` gateway compression rather
   than the pure-Rust `zlib-stream`. A C compiler is required anyway (D-039), so the
   pure-Rust option saves nothing, and zstd is djs-rs's own default.
+
+### C-003 — How project format v0 is read and written
+- **Date:** 2026-11-17
+- **Choice:** Every file is written to a temporary file and then renamed, so a crash
+  never leaves half a file. Unknown fields are rejected, so a typo in a hand-edited
+  `project.toml` is an error rather than silently ignored. Any `schema` other than 1 is
+  rejected until migrations exist (open question). `package` is derived from the name:
+  ASCII letters and digits are kept, everything else becomes `-`, there is no
+  transliteration, and the user can edit it. `Project::create` refuses a folder that
+  already has `project.toml`, and writes `.gitignore` only if none exists. Maps are
+  `BTreeMap`, because gpui's dependency tree turns on serde_json's `preserve_order`.
 
 ---
 
