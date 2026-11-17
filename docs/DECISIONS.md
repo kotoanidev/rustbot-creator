@@ -424,6 +424,39 @@ alternatives that were considered, and why.
 - **Alternatives:** milder (clippy `all` only, no docs requirement); stricter (+ clippy
   `nursery`, `missing_docs` everywhere).
 
+### D-047 — Data in the graph: text templates + data pins
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Text fields accept simple templates, as popular bot panels do
+  (`Banned {target.name}`). Computations and complex logic use data pins wired between
+  nodes. Both compile to typed Rust and are checked before the build. Execution order is a
+  separate kind of wire (flow).
+- **Alternatives:** data pins only (Blueprints-like); templates/variables only, with wires
+  for order only.
+
+### D-048 — Node positions live in a separate layout file
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Logic is in `graphs/<kind>/<name>.json`, and canvas positions are in
+  `graphs/<kind>/<name>.layout.json`. Moving a node does not touch the logic file, so diffs
+  and reviews show only real changes.
+- **Alternatives:** positions inline in the graph file.
+
+### D-049 — Gateway intents are computed from the graph
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Code generation derives the intents from the nodes used, so a beginner
+  never has to know about them. `project.toml` stores only extra intents added by hand
+  (advanced mode). The app warns about privileged intents (e.g. `MESSAGE_CONTENT`) that
+  must be enabled in the Discord Developer Portal.
+- **Alternatives:** intents chosen by hand in `project.toml`.
+
+### D-050 — A random UUID identifies a project (extends D-041 with `uuid`)
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** `project.toml` has an `id`, a random UUID v4 generated once when the
+  project is created. Secrets in the keyring are keyed by it (D-020), so it survives moving
+  or renaming the folder. The `uuid` crate (1.29.3) is already in gpui's dependency tree,
+  so it adds nothing to the build. It is added to the approved set of D-041.
+- **Alternatives:** key secrets by the bot's package name (collisions, lost on rename) or
+  by the folder path (lost on move).
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
