@@ -302,6 +302,50 @@ alternatives that were considered, and why.
   does not require a rewrite.
 - **Alternatives:** both in the first release; both after it.
 
+### D-035 — Phase order of the first release: the modes first, then the ways to ship
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** 2 vertical slice (workspace skeleton + CI first) → 3 easy mode → 4 advanced
+  mode → 5 JSON themes + first run → 6 export → 7 hosting on the PC → 8 GitHub →
+  9 Cloudflare Containers → 10 RPM on Copr + release 1. Each way to ship builds on the
+  previous one: the export's build is what hosting and Cloudflare deploy. The details are
+  in `ROADMAP.md`.
+- **Alternatives:** the whole no-code path first, advanced mode last; interleaved, with
+  local shipping early and the external services after the advanced mode.
+
+### D-036 — Crates are created when their phase starts
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The vertical slice creates six crates: `rustbot-core` (project model,
+  graph, node registry), `rustbot-codegen` (graph → Rust/djs-rs code), `rustbot-toolchain`
+  (private rustup, system packages, `cargo build`), `rustbot-runner` (running the bot, logs),
+  `rustbot-secrets` (keyring + encrypted file) and `rustbot-creator` (the gpui app).
+  `rustbot-github`, `rustbot-cloudflare`, `rustbot-plugin-host` and `rustbot-plugin-sdk` are
+  created in their own phases. No empty crates are kept in advance.
+- **Alternatives:** the whole skeleton at once; fewer, larger crates in the slice.
+
+### D-037 — i18n: Fluent for the app's text, rust-i18n inside gpui-kit
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The app's own text uses [Fluent](https://projectfluent.org/) (pure Rust),
+  which handles Polish plural forms ("1 plik, 2 pliki, 5 plików") and is a format
+  translators know. gpui-kit's components keep their own rust-i18n (YAML) strings, and the
+  app supplies a Polish YAML for them.
+- **Alternatives:** rust-i18n everywhere (one system, but no plural rules).
+
+### D-038 — Performance budgets: balanced
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Measured on the owner's laptop (i7-1355U, 16 GB RAM, Iris Xe, KDE on
+  Wayland), with bots in debug builds and dependencies already compiled:
+
+  | Path | Budget |
+  |---|---|
+  | Startup to an interactive window | ≤ 500 ms |
+  | Frame time (p99), graph of 500 nodes | ≤ 16.6 ms (60 FPS) |
+  | Memory, one project open | ≤ 200 MB |
+  | Code generation, 500 nodes | ≤ 100 ms |
+  | Rebuild after a small change | ≤ 10 s |
+
+- **Alternatives:** strict (250 ms, 120 FPS, 100 MB, 20 ms, 3 s); relaxed (1 s, 30 FPS,
+  400 MB, 500 ms, 30 s).
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -319,7 +363,6 @@ alternatives that were considered, and why.
 
 The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answers it.
 
-- **Exact crate list** (D-028, D-029), confirmed when the skeleton is built.
 - **Project format details** (D-019): exact layout, schema versioning and migrations.
 - **Plugins** (D-016): what they may extend, the capability list, plugin API versioning and
   stability, distribution (a registry?), and signing.
@@ -330,8 +373,9 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
 - **Other hosts** besides Cloudflare (D-013).
 - **GitHub integration** (D-021): the scope of features (create a repository, push, pull,
   releases, Actions) and the OAuth scopes they need.
-- **i18n library** (D-024).
-- **Performance budget values** (D-026): concrete limits for startup, frame time, memory,
-  code generation and builds.
+- **Dependency set of the vertical slice** beyond gpui-kit and Fluent: serialization,
+  keyring, paths, async runtime, and so on. Every dependency needs approval (D-006).
+- **Node-graph canvas:** gpui-kit has no node editor. Build our own on gpui, or adopt an
+  existing crate if one exists.
 - **Community files:** CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, and when
   to add them.

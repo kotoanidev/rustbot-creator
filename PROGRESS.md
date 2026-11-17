@@ -21,15 +21,16 @@ prefix (D-029), rust-analyzer as a rustup component (D-030), a vertical slice fi
 the easy mode widened first (D-032), the scope of the first release (D-033), and themes in
 the first release with plugins after it (D-034).
 
+Then the phase order of release 1 (D-035, now in `ROADMAP.md`), the slice crates (D-036),
+Fluent for i18n (D-037), and balanced performance budgets (D-038).
+
 ## Exact next step
-1. Propose to the owner the order of phases inside the first release (D-033), for
-   approval. Then write it into `ROADMAP.md`.
-2. Settle the open questions the vertical slice needs: the exact crate list, the project
-   layout and schema (D-019), the toolchain details (compiler/linker on Fedora,
-   `zstd-stream` vs `zlib-stream`), the i18n library, and the performance budget values
-   (D-026).
-3. The remaining open questions (plugin details, VS Code themes, other hosts, OAuth App vs
-   GitHub App, community files) wait until the phase that needs them.
+1. Settle the open questions Phase 2 (vertical slice) needs: the toolchain details
+   (compiler/linker on Fedora, `zstd-stream` vs `zlib-stream`), the project layout and
+   schema (D-019), the slice's dependency set, and the node-graph canvas.
+2. Then start Phase 2, step 1: the workspace skeleton + CI.
+3. The other open questions (plugin details, VS Code themes, other hosts, GitHub
+   features, community files) wait until the phase that needs them.
 
 ## Blocked on the owner
 - Every open question in `docs/DECISIONS.md` (D-006: the owner decides).
