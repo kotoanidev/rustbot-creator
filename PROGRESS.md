@@ -13,15 +13,18 @@ rustbot-creator` opens an empty "RustBot Creator" window (gpui-kit 0.10.0). The 
 run was green: rustfmt 15 s, Ubuntu 280 s, Fedora 44 297 s.
 Step 2 (project format v0, D-047–D-051, C-003) is ✅ done. `rustbot-core` has `Manifest`,
 `Graph`, `Layout`, `GraphFile` and `Project::{create, open, save_manifest, save_graph}`,
-with 9 tests: the round trip, byte-exact deterministic files, refusing to overwrite, the
-schema check, unknown fields, and graph names that would escape the folder.
+with 12 tests: the round trip, byte-exact deterministic files, refusing to overwrite, the
+schema check, unknown fields, graph names that would escape the folder, and symlinks
+(refused on read and write, and a planted temporary file is never followed, from the
+security review fix `f92e0e2`).
 
 ## Exact next step
-Phase 2, step 3: the node registry in `rustbot-core` (D-034), with the slice's nodes
-`core.slash_command` (pin `then`) and `core.reply` (pin `run`, prop `content` with
-templates, D-047), plus graph validation against it: unknown node types, missing pins,
-and flow wired to data. The registry's shape is a public interface that plugins will use
-later, so propose it to the owner before coding (D-006).
+Phase 2, step 3: the node registry in `rustbot-core`, as decided in D-052–D-054. It has
+the slice's nodes `core.slash_command` (out pin `then`; props `name`, `description`;
+provides `user`, `channel`, `server`) and `core.reply` (in pin `run`, out pin `then`;
+prop `content` with templates). Validation reports unknown node types, unknown pins,
+flow wired to data, missing required props, and unknown template variables. D-055 (test
+server vs global) belongs to the runner and codegen steps.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

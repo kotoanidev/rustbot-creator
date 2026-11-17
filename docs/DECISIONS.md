@@ -498,6 +498,39 @@ alternatives that were considered, and why.
   - Templates use `{path}`, and `{{` and `}}` give literal braces, as in Rust's `format!`.
 - **Alternatives:** readable, editable node ids (`command`, `reply`).
 
+### D-052 — Node registry: node types are Rust structs (data only)
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** A node type is plain data: an id (`core.reply`), a category (Trigger,
+  Action, Logic, Data), pins (flow/data, in/out), props (form fields, with whether text
+  takes templates), the variables a trigger provides, and the intents it needs (D-049).
+  Built-ins are defined in Rust and registered through the same `Registry::register` that
+  WASM plugins will use with the same structs serialized (D-034). The registry validates
+  graphs for the "Problems" panel. Labels are Fluent keys derived from the id
+  (`node-core-reply`, `node-core-reply-content`, D-037). The Rust code for each node type
+  comes from `rustbot-codegen`, not from the registry.
+- **Alternatives:** declarative TOML files per node type.
+
+### D-053 — Template variables have short names
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** For example `{user.name}`, `{user.mention}`, `{channel.name}`,
+  `{server.name}`, `{option.<name>}`. They are short and beginner-friendly, like popular
+  bot panels.
+- **Alternatives:** djs-rs/discord.js paths (`{interaction.user.username}`).
+
+### D-054 — `{user.name}` is the name people see in the chat
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** `{user.name}` is the server nickname if there is one, otherwise the global
+  display name, otherwise the username. The exact values are separate:
+  `{user.username}`, `{user.display_name}`, `{member.nickname}`.
+- **Alternatives:** the username.
+
+### D-055 — Slash commands: a test server while working, global when shipped
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** When the bot runs from the app, its commands are registered on a test
+  server the user picks, so they appear at once. Export, hosting and deploys register
+  them globally. This is how djs-rs's own example works.
+- **Alternatives:** always global; a per-project setting.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
