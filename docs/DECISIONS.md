@@ -42,9 +42,11 @@ alternatives that were considered, and why.
 
 ### D-005 — Language
 - **Date:** 2026-11-17 · **Decided by:** Owner
-- **Decision:** Claude talks to the owner in Polish. Everything in the repository is in
-  English: code, identifiers, docs and commit messages. The languages of the app's UI are
-  still open.
+- **Decision:** Claude talks to the owner in Polish. The repository is **100% English**:
+  code, identifiers, comments, docs, commit messages, issue and PR texts, and the
+  repository description. The **only exception** is the Polish UI translation files (e.g.
+  `locales/pl/`, D-024). This was confirmed by the owner on 2026-11-17. Text Claude files
+  in other repositories, such as djs-rs issues, is in English too.
 
 ### D-006 — The owner makes every significant decision
 - **Date:** 2026-11-17 · **Decided by:** Owner
@@ -208,7 +210,8 @@ alternatives that were considered, and why.
 - **Date:** 2026-11-17 · **Decided by:** Owner
 - **Decision:** All UI text goes through an i18n system from day one. English and Polish
   ship with the first version, and the system is ready for community translations,
-  including as plugins or language packs. Which i18n library is still open.
+  including as plugins or language packs. Which i18n library is still open. The Polish
+  translation files are the only non-English content allowed in the repository (D-005).
 - **Alternatives:** English only with i18n ready; English only, i18n later.
 
 ### D-025 — Linux distribution: native packages, RPM on Copr first

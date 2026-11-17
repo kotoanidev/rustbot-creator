@@ -62,8 +62,10 @@ next, and what is blocked on the owner or on djs-rs. A fresh session must be abl
 continue from it alone.
 
 ### 5. Language (D-005)
-Talk to the owner in **Polish**, with correct diacritics. Everything in the repository is in
-**English**.
+Talk to the owner in **Polish**, with correct diacritics. The repository is **100% English**:
+code, comments, docs, commit messages, issues, PRs, and anything you file in other
+repositories (e.g. djs-rs). The **only exception** is the Polish UI translation files
+(D-024).
 
 ## Platform priority (D-009)
 
