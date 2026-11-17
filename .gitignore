@@ -1,0 +1,14 @@
+# Build output
+/target/
+**/target/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Secrets (bot tokens for local testing)
+.env
+.env.*
+!.env.example
