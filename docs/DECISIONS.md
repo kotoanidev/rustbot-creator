@@ -196,6 +196,40 @@ alternatives that were considered, and why.
   Windows) with autostart and restarts. Logs and status are always visible in the app.
 - **Alternatives:** only while the app runs; always a system-wide service.
 
+### D-023 — Generated code is MIT-0; the user picks their bot's license
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Templates and generated code are licensed MIT-0, which needs no attribution,
+  so the whole bot belongs to its user. When creating a project, the user may choose a
+  license for their bot. By default there is none.
+- **Alternatives:** `MIT OR Apache-2.0` (every bot would have to keep the notice); no
+  license, with a statement in the README.
+
+### D-024 — UI in English and Polish from the start, with i18n
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** All UI text goes through an i18n system from day one. English and Polish
+  ship with the first version, and the system is ready for community translations,
+  including as plugins or language packs. Which i18n library is still open.
+- **Alternatives:** English only with i18n ready; English only, i18n later.
+
+### D-025 — Linux distribution: native packages, RPM on Copr first
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The first package is an RPM in Copr for Fedora, then .deb, AUR, openSUSE
+  and a tarball. Updates come through the package manager. Flatpak is not used first,
+  because its sandbox conflicts with D-017 (installing system packages) and D-022
+  (`systemd --user` services).
+- **Alternatives:** AppImage + tarball with a built-in updater; Flatpak (Flathub); RPM +
+  AppImage together.
+
+### D-026 — Quality bar: gate + performance budgets
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Every code change passes `fmt`, `clippy -D warnings` and the tests, including
+  gpui-kit's headless UI tests, with CI on Linux (Windows joins with D-009). Key paths have
+  measured budgets: startup time, frame time, memory, and the speed of code generation and
+  of builds. A stage is not done until its numbers are measured. The budget values are
+  still open.
+- **Alternatives:** the full djs-rs level (benchmarks and stress tests for every stage);
+  a minimal gate without performance measurements.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -227,10 +261,8 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
 - **Other hosts** besides Cloudflare (D-013).
 - **GitHub integration** (D-021): an OAuth App or a GitHub App, and the scope of features
   (create a repository, push, pull, releases, Actions).
-- **Linux packaging and updates:** Flatpak, RPM, AppImage, .deb, Copr, auto-update.
-- **App UI languages / i18n.**
-- **License of generated bot code and templates.**
-- **Quality bar:** CI, tests, benchmarks (djs-rs requires them for every stage, D-041
-  there), lints.
+- **i18n library** (D-024).
+- **Performance budget values** (D-026): concrete limits for startup, frame time, memory,
+  code generation and builds.
 - **Community files:** CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, and when
   to add them.

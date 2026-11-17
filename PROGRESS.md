@@ -14,12 +14,15 @@ WASM plugins in wasmtime (D-016), a private toolchain managed by the app (D-017)
 djs-rs#3 filed for HTTP interactions + wasm32 (D-018), a folder of TOML + JSON as the
 project format (D-019), OS keyring with an encrypted-file fallback for secrets (D-020),
 GitHub OAuth device flow (D-021), and an in-app process plus a background service for
-self-hosting (D-022).
+self-hosting (D-022), MIT-0 generated code (D-023), EN + PL UI with i18n (D-024), RPM on
+Copr first (D-025), and a gate plus performance budgets as the quality bar (D-026).
 
 ## Exact next step
-Continue through the remaining "Open questions" in `docs/DECISIONS.md`, next: the license
-of generated code, UI languages, Linux packaging, and the quality bar. Ask, record each
-answer as `D-NNN`, then write the phased plan into `ROADMAP.md`.
+Continue through the remaining "Open questions" in `docs/DECISIONS.md`, next: the
+toolchain/MSRV of the app, workspace layout, crate names (checked on crates.io 2026-11-17:
+`rustbot` and `rbc` are taken; `rustbot-creator`, `rustbot-core`, `rustbot-plugin`,
+`rustbot-sdk`, `rbc-core` and `rbc-plugin` are free), and rust-analyzer for the editor. Ask,
+record each answer as `D-NNN`, then write the phased plan into `ROADMAP.md`.
 
 ## Blocked on the owner
 Every open question in `docs/DECISIONS.md` (D-006: the owner decides).
