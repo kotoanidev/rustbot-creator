@@ -13,7 +13,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Public GitHub repository
 
 ## Phase 1 — Detailed planning
-- [ ] Answer every open question in `docs/DECISIONS.md` with the owner
+- [~] Answer every open question in `docs/DECISIONS.md` with the owner
 - [ ] Write the phased implementation plan into this file
 
 ## Later phases

@@ -89,6 +89,46 @@ alternatives that were considered, and why.
   - **Output:** a bot can be downloaded as source code or as a ready deploy, hosted from the
     app on the user's own PC, or deployed to Cloudflare or other popular compatible hosts.
 
+### D-011 — UI framework: gpui + gpui-kit
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The UI is built on [gpui](https://crates.io/crates/gpui), the GPU-accelerated
+  framework behind the Zed editor, through [gpui-kit](https://github.com/longbridge/gpui-kit).
+  gpui-kit is Apache-2.0 and was at v0.10.0 on 2026-11-16. It pins the matching gpui
+  release and provides a code editor (Tree-sitter, LSP diagnostics, completion and hover), a
+  serializable dock layout with draggable tabs, JSON themes, 75+ components, AccessKit
+  accessibility and headless UI tests.
+- **Risk accepted:** both are pre-1.0 and their APIs change often.
+- **Alternatives:** iced 0.14 (no ready dock or code editor), egui 0.37 (harder to make look
+  professional, weaker editor), Slint 1.19 (GPLv3 / royalty-free / commercial license).
+
+### D-012 — Bots are generated Rust code
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Both creator modes produce a real Rust project on djs-rs, compiled by cargo.
+  There is one source of truth, no interpreter, full native performance, and "source code"
+  is the natural output. The PC therefore needs a Rust toolchain and a linker or C compiler,
+  which the app installs (D-010). The first build takes minutes, and later rebuilds take
+  seconds.
+- **Alternatives:** a prebuilt engine interpreting a bot description; a hybrid with an
+  interpreter for preview and code generation for export.
+
+### D-013 — Cloudflare: Containers first, Workers later
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Full gateway bots are deployed to Cloudflare as Linux containers
+  (Cloudflare Containers, kept alive), which needs no changes in djs-rs. Workers, which
+  can run only HTTP-interactions bots, come in a later phase. They depend on djs-rs
+  supporting `wasm32` and an HTTP interactions server, neither of which exists in
+  `0.1.0-alpha.1`.
+- **To verify when the phase is planned:** Containers pricing and plan (likely Workers
+  Paid), keep-alive configuration, and outbound WebSocket behaviour.
+- **Alternatives:** Workers only; both from the start; Cloudflare after other hosts.
+
+### D-014 — Easy creator: forms + node graph
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** In the easy creator, simple settings (command name, description,
+  permissions, …) are edited in forms, and logic is a node graph wired by dragging, e.g.
+  `/ban → has permission? → yes: ban user → reply` / `no: reply`.
+- **Alternatives:** node graph only; Scratch-like blocks; forms + a list of steps.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -106,23 +146,20 @@ alternatives that were considered, and why.
 
 The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answers it.
 
-- **UI toolkit:** which pure-Rust GUI framework can deliver a VS Code-like, themeable,
-  fast interface.
 - **Workspace layout and crate names.**
 - **Toolchain:** edition, MSRV policy, `rust-toolchain.toml`.
-- **The easy creator's model:** visual blocks, a node graph, forms, or a mix. Does it
-  generate Rust code, or run a bot description through an interpreter?
-- **The advanced creator and the editor:** which editor component, syntax highlighting, and
-  rust-analyzer/LSP integration.
+- **How the two modes relate** (D-012, D-014): one project with two views, a one-way
+  "eject", or full two-way sync between the graph and the code.
+- **The advanced creator and the editor:** gpui-kit's editor (D-011) plus rust-analyzer as
+  the LSP server, and how it is installed.
 - **Project format:** how a bot project is stored on disk and versioned.
 - **Plugins:** mechanism (WASM, dynamic libraries, scripting), sandboxing and permissions,
   plugin API stability, distribution (a registry?).
 - **Themes:** format, and compatibility with VS Code themes.
 - **Self-installing dependencies:** rustup/toolchain management, a C compiler (djs-rs's
   default `zstd-stream` needs one), CMake (the `voice` feature), and where they are installed.
-- **Cloudflare and other hosts:** how djs-rs bots run there. Workers are WASM with no
-  long-lived gateway connection, so HTTP-interactions-only bots may be the option. Which
-  hosts to support.
+- **Other hosts** besides Cloudflare (D-013), and when to ask djs-rs for `wasm32` + an
+  HTTP interactions server for the Workers phase.
 - **Self-hosting on the user's PC:** running in the background, autostart, logs, restarts.
 - **GitHub integration:** authentication (OAuth device flow?), token storage (OS keyring),
   scope of features.
