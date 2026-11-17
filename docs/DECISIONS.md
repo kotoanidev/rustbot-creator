@@ -393,6 +393,37 @@ alternatives that were considered, and why.
 - **Alternatives:** port `ferrum-flow` (Apache-2.0) as a fork; ask its author to support
   gpui-kit's gpui and wait.
 
+### D-043 — Start Phase 2; plan each later phase when it starts
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Implementation starts with Phase 2 (the vertical slice). Each later phase
+  (the node catalog, the GitHub scope, other hosts, …) is planned in detail at its start,
+  using what the working slice has shown.
+- **Alternatives:** plan phases 3–10 in detail before writing code.
+
+### D-044 — Window layout: classic VS Code
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** An activity bar on the left, a side panel (the project tree), tabbed
+  editors in the centre (graphs, files), a bottom panel (logs, problems) and a status bar
+  (bot state, Rust version, branch, language). It is all built on gpui-kit's dock, so users
+  can rearrange it.
+- **Alternatives:** the same with a permanent right-hand properties panel for the selected
+  node.
+
+### D-045 — CI: Fedora 44 and Ubuntu from the start
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** GitHub Actions runs the gate as a matrix: a `fedora:44` container (the
+  priority platform, D-009) and `ubuntu-latest`. The repository is public, so the minutes
+  are free.
+- **Alternatives:** the `fedora:44` container only; `ubuntu-latest` only.
+
+### D-046 — Lints as in djs-rs
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** `unsafe_code = "deny"`. Clippy `all` + `pedantic` warn, and CI runs with
+  `-D warnings`. `missing_docs` applies in library crates but not in the app, and
+  `missing_debug_implementations`, `unreachable_pub` and `rust_2018_idioms` are on.
+- **Alternatives:** milder (clippy `all` only, no docs requirement); stricter (+ clippy
+  `nursery`, `missing_docs` everywhere).
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
