@@ -1,5 +1,5 @@
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -58,6 +58,10 @@ pub enum Error {
     /// A graph name that cannot be a file name.
     #[error("{0:?} is not a valid graph name")]
     InvalidGraphName(String),
+    /// A file or folder of the project is a symbolic link. Projects can come from untrusted
+    /// repositories, and a link could point reads or writes outside the project.
+    #[error("{}: symbolic links are not allowed in a project", .0.display())]
+    Symlink(PathBuf),
 }
 
 /// A graph file with its layout, as loaded from `graphs/<kind>/<name>.json`.
@@ -124,8 +128,10 @@ impl Project {
         check_schema(&manifest_path, manifest.schema)?;
 
         let mut graphs = Vec::new();
+        reject_symlink(&root.join("graphs"))?;
         for kind in GraphKind::ALL {
             let dir = root.join("graphs").join(kind.dir());
+            reject_symlink(&dir)?;
             let entries = match fs::read_dir(&dir) {
                 Ok(entries) => entries,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
@@ -190,7 +196,10 @@ impl Project {
         if !valid {
             return Err(Error::InvalidGraphName(name.clone()));
         }
-        let dir = self.root.join("graphs").join(file.kind.dir());
+        let graphs = self.root.join("graphs");
+        let dir = graphs.join(file.kind.dir());
+        reject_symlink(&graphs)?;
+        reject_symlink(&dir)?;
         fs::create_dir_all(&dir).map_err(|source| io_error(&dir, source))?;
         write_atomic(&dir.join(format!("{name}.json")), &to_json(&file.graph))?;
         write_atomic(
@@ -231,14 +240,43 @@ fn to_json(value: &impl Serialize) -> String {
 }
 
 fn read(path: &Path) -> Result<String, Error> {
+    reject_symlink(path)?;
     fs::read_to_string(path).map_err(|source| io_error(path, source))
 }
 
+fn reject_symlink(path: &Path) -> Result<(), Error> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => Err(Error::Symlink(path.to_owned())),
+        _ => Ok(()),
+    }
+}
+
 /// Writes through a temporary file and a rename, so a crash never leaves a half-written file.
+///
+/// The temporary file is created with `create_new`, which never follows an existing path,
+/// even a symlink planted under that name. If one is there, only the link is removed. The
+/// rename replaces `path` itself, never what a link at `path` points to.
 fn write_atomic(path: &Path, contents: &str) -> Result<(), Error> {
     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let tmp = path.with_file_name(format!(".{file_name}.tmp"));
-    fs::write(&tmp, contents).map_err(|source| io_error(&tmp, source))?;
+    let tmp = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
+    let create = || {
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+    };
+    let mut file = match create() {
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            fs::remove_file(&tmp).map_err(|source| io_error(&tmp, source))?;
+            create()
+        }
+        other => other,
+    }
+    .map_err(|source| io_error(&tmp, source))?;
+    file.write_all(contents.as_bytes())
+        .and_then(|()| file.sync_all())
+        .map_err(|source| io_error(&tmp, source))?;
+    drop(file);
     fs::rename(&tmp, path).map_err(|source| io_error(path, source))
 }
 

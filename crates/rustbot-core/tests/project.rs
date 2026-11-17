@@ -149,3 +149,62 @@ fn graph_names_cannot_escape_the_folder() {
         assert!(matches!(err, Error::InvalidGraphName(_)), "{name:?}: {err}");
     }
 }
+
+/// A cloned repository can contain symlinks; none of them may redirect a write or a read.
+#[cfg(unix)]
+mod symlinks {
+    use std::fs;
+    use std::os::unix::fs::symlink;
+
+    use super::ping;
+    use rustbot_core::{Error, Manifest, Project};
+
+    #[test]
+    fn a_planted_temporary_file_cannot_redirect_a_write() {
+        let outside = tempfile::tempdir().unwrap();
+        let victim = outside.path().join("victim");
+        fs::write(&victim, "keep me").unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let project = Project::create(dir.path(), Manifest::new("Bot")).unwrap();
+        let planted = dir
+            .path()
+            .join(format!(".project.toml.{}.tmp", std::process::id()));
+        symlink(&victim, &planted).unwrap();
+
+        project.save_manifest().unwrap();
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep me");
+        assert!(!planted.exists());
+        Project::open(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn a_symlinked_graphs_folder_is_refused() {
+        let outside = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let project = Project::create(dir.path(), Manifest::new("Bot")).unwrap();
+        symlink(outside.path(), dir.path().join("graphs")).unwrap();
+
+        let err = project.save_graph(&ping()).unwrap_err();
+        assert!(matches!(err, Error::Symlink(_)), "{err}");
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+        let err = Project::open(dir.path()).unwrap_err();
+        assert!(matches!(err, Error::Symlink(_)), "{err}");
+    }
+
+    #[test]
+    fn a_symlinked_graph_file_is_not_read() {
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("secret.json");
+        fs::write(&secret, r#"{ "schema": 1 }"#).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        Project::create(dir.path(), Manifest::new("Bot")).unwrap();
+        let commands = dir.path().join("graphs/commands");
+        fs::create_dir_all(&commands).unwrap();
+        symlink(&secret, commands.join("leak.json")).unwrap();
+
+        let err = Project::open(dir.path()).unwrap_err();
+        assert!(matches!(err, Error::Symlink(_)), "{err}");
+    }
+}
