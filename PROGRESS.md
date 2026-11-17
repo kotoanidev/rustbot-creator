@@ -32,8 +32,12 @@ the first release with plugins after it (D-034).
    GitHub App, community files) wait until the phase that needs them.
 
 ## Blocked on the owner
-Every open question in `docs/DECISIONS.md` (D-006: the owner decides).
+- Every open question in `docs/DECISIONS.md` (D-006: the owner decides).
+- The GitHub OAuth App (D-021) exists and Claude manages it. Its client ID is still needed.
+  GitHub has no API for OAuth App settings, so Claude needs either the Claude in Chrome
+  extension connected or the client ID from the owner.
 
 ## Blocked on djs-rs
 Nothing yet. [djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3) (HTTP interactions +
-wasm32) will block the later Cloudflare Workers phase until it lands.
+wasm32) is being fixed (owner, 2026-11-17). It blocks only the later Cloudflare Workers
+phase.

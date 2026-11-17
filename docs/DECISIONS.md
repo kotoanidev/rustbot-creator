@@ -187,8 +187,9 @@ alternatives that were considered, and why.
 ### D-021 — GitHub sign-in: OAuth device flow
 - **Date:** 2026-11-17 · **Decided by:** Owner
 - **Decision:** The user clicks "Connect" and types a short code on github.com. The app holds
-  only a public client ID, with no client secret. **Owner action needed** before the GitHub
-  phase: register a GitHub OAuth App or GitHub App. Which kind is still open.
+  only a public client ID, with no client secret. On 2026-11-17 the owner registered a
+  **GitHub OAuth App** and handed its management to Claude. Its client ID is to be recorded
+  here once read from the app's settings, and "Enable Device Flow" must be on.
 - **Alternatives:** a pasted Personal Access Token; OAuth with a PAT as an advanced option.
 
 ### D-022 — Self-hosting: in-app process + background service
@@ -324,8 +325,8 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
   (needs a C compiler) versus pure-Rust `zlib-stream` in generated bots, CMake for `voice`,
   updates, and build caching to make the first build faster.
 - **Other hosts** besides Cloudflare (D-013).
-- **GitHub integration** (D-021): an OAuth App or a GitHub App, and the scope of features
-  (create a repository, push, pull, releases, Actions).
+- **GitHub integration** (D-021): the scope of features (create a repository, push, pull,
+  releases, Actions) and the OAuth scopes they need.
 - **i18n library** (D-024).
 - **Performance budget values** (D-026): concrete limits for startup, frame time, memory,
   code generation and builds.
