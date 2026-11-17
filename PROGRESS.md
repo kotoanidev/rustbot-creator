@@ -4,38 +4,23 @@
 > from this file alone. Read `CLAUDE.md` and `docs/DECISIONS.md` first.
 
 ## Current phase
-**Phase 0 — Initialization: ✅ done 2026-11-17.** The repository holds the decision log,
-licenses, README, CLAUDE.md, roadmap and this file. There is no code yet.
-
-**Phase 1 — Detailed planning: in progress.** Decided so far: gpui + gpui-kit for the UI
-(D-011), bots as generated Rust code (D-012), Cloudflare Containers first and Workers later
-(D-013), forms + node graph in the easy creator (D-014), one project with two views (D-015),
-WASM plugins in wasmtime (D-016), a private toolchain managed by the app (D-017), and
-djs-rs#3 filed for HTTP interactions + wasm32 (D-018), a folder of TOML + JSON as the
-project format (D-019), OS keyring with an encrypted-file fallback for secrets (D-020),
-GitHub OAuth device flow (D-021), and an in-app process plus a background service for
-self-hosting (D-022), MIT-0 generated code (D-023), EN + PL UI with i18n (D-024), RPM on
-Copr first (D-025), a gate plus performance budgets as the quality bar (D-026), the latest
-stable Rust with no MSRV (D-027), a multi-crate workspace (D-028), the `rustbot-*` crate
-prefix (D-029), rust-analyzer as a rustup component (D-030), a vertical slice first (D-031),
-the easy mode widened first (D-032), the scope of the first release (D-033), and themes in
-the first release with plugins after it (D-034).
-
-Then the phase order of release 1 (D-035, now in `ROADMAP.md`), the slice crates (D-036),
-Fluent for i18n (D-037), and balanced performance budgets (D-038).
-
-Then the system gcc installed with consent (D-039), generated code committed in
-`generated/` (D-040), the slice's dependency set (D-041), and our own node-graph canvas
-(D-042).
+**Phase 0 — Initialization: ✅ done 2026-11-17.**
+**Phase 1 — Detailed planning: ✅ done 2026-11-17** for everything Phase 2 needs (D-011 to
+D-046). Later phases are planned in detail when each one starts (D-043).
+**Phase 2 — Vertical slice: in progress.** Step 1 (workspace skeleton + CI) is done
+locally. The six crates of D-036 and the lints of D-046 are in place, the gate passes on
+Fedora 44, and `cargo run -p rustbot-creator` opens an empty "RustBot Creator" window
+(gpui-kit 0.10.0). The first CI run on GitHub is pending.
 
 ## Exact next step
-1. Owner: start Phase 2, or plan the later phases in more detail first.
-2. Phase 2, step 1: the workspace skeleton (D-036) + CI.
-3. The other open questions (plugin details, VS Code themes, other hosts, GitHub
-   features, community files) wait until the phase that needs them.
+1. Check that the first CI run is green, especially the Ubuntu package list in
+   `scripts/install-build-deps.sh`, which has not been tested yet. Fix it if needed, then
+   tick step 1 in `ROADMAP.md`.
+2. Phase 2, step 2: project format v0 in `rustbot-core` (`project.toml` + one graph JSON,
+   D-019/D-040), with tests.
 
 ## Blocked on the owner
-- Every open question in `docs/DECISIONS.md` (D-006: the owner decides).
+Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.
 
 ## Blocked on djs-rs
 Nothing yet. [djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3) (HTTP interactions +

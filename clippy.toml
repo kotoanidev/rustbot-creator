@@ -1,0 +1,2 @@
+# The app's name is prose, not an identifier, in docs.
+doc-valid-idents = ["RustBot", ".."]

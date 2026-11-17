@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+# Shared package metadata. Every crate inherits these with `<field>.workspace = true`.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/kotoanidev/rustbot-creator"
+# Nothing is published yet; the plugin SDK will be the first (D-029).
+publish = false
+
+# Shared dependency versions. Crates reference these with `dep.workspace = true`.
+# Every dependency needs the owner's approval (D-006); the slice's set is D-041.
+[workspace.dependencies]
+# The UI framework (D-011).
+gpui-kit = "0.10.0"
+
+# D-046.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"

@@ -16,18 +16,18 @@ measured (D-026, D-038).
 - [x] Public GitHub repository
 
 ## Phase 1 — Detailed planning
-- [~] Answer the open questions in `docs/DECISIONS.md` that the next phase needs
+- [x] Answer the open questions in `docs/DECISIONS.md` that the next phase needs
 - [x] Phase order of the first release (D-035)
 
 ---
 
 # Release 1 — Fedora (D-033)
 
-## Phase 2 — Vertical slice (D-031)
+## Phase 2 — Vertical slice (D-031) — in progress
 Goal: a `/ping` command made in the graph runs as a real bot, end to end through every
 layer, before the scope widens.
-- [ ] Cargo workspace with the six slice crates (D-036), lints, rustfmt/clippy config, CI on
-      Linux (fmt, clippy, tests)
+- [~] Cargo workspace with the six slice crates (D-036), lints, rustfmt/clippy config, CI on
+      Linux (fmt, clippy, tests). Done locally; waiting for the first CI run.
 - [ ] Project format v0: `project.toml` + one graph JSON (D-019)
 - [ ] Node registry in `rustbot-core`, built the way plugins will use it (D-034), with the
       slice's nodes: slash-command trigger and reply

@@ -1,0 +1,4 @@
+# Development toolchain: the latest stable Rust, no MSRV (D-027).
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

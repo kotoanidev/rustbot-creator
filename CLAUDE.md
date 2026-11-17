@@ -14,8 +14,57 @@ ship a bot. The full brief is D-010 in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 - License: `MIT OR Apache-2.0`
 - Local directory: `discord-bot-rust-app` (not renamed to match the repository)
 
-**State: planning. There is no code, Cargo workspace or CI yet.** The architecture, commands
-and layout get documented here once the planning answers settle them.
+**State: Phase 2, the vertical slice (see `ROADMAP.md`).** The workspace skeleton and CI
+exist. The app opens an empty window.
+
+## Commands
+
+```bash
+pkexec scripts/install-build-deps.sh                 # once: the system libraries gpui needs (dnf/apt)
+cargo fmt --all
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo test -p rustbot-core <test_name>               # a single test
+cargo run -p rustbot-creator                         # the app
+```
+
+The local quality gate before every code commit is `fmt` → `clippy` → `test`. CI
+(`.github/workflows/ci.yml`) runs it on a `fedora:44` container and on `ubuntu-latest`
+(D-045).
+
+## Architecture (decided; mostly still to be built)
+
+The pipeline below is the vertical slice (D-031). The crates exist from D-036, and later
+phases add `rustbot-github`, `rustbot-cloudflare`, `rustbot-plugin-host` and
+`rustbot-plugin-sdk`.
+
+```
+bot project folder (D-019, D-040)
+  project.toml · graphs/{commands,events}/*.json · src/ (user's Rust) · generated/ (committed)
+        │
+rustbot-core       loads/saves the project, graph model, node registry
+        │
+rustbot-codegen    graph → Rust on djs-rs, written to generated/ (deterministic)
+        │
+rustbot-toolchain  private rustup + Rust in the app's XDG data dir (D-017); system gcc
+        │          installed only with consent (D-039); runs cargo build
+rustbot-runner     runs the bot as a child process, streams logs; later a systemd --user
+        │          service (D-022)
+rustbot-creator    the gpui-kit app: VS Code-like dock (D-044), node-graph canvas (D-042)
+rustbot-secrets    bot/GitHub/Cloudflare tokens in the OS keyring (D-020)
+```
+
+Invariants that span crates:
+- The graph and forms are the source of truth. `generated/` is never edited by hand, and
+  the user's own code lives in `src/` and is called through a "custom code" node (D-015).
+- Built-in nodes and panels are registered the same way plugins will register theirs
+  (D-034).
+- All UI text goes through Fluent, in English and Polish (D-024, D-037). gpui-kit's own
+  strings use rust-i18n.
+- gpui-kit pins its own gpui (`gpui-pre`). Any gpui-based crate must use that exact
+  version, or it cannot share the window (D-042).
+- Library crates use `thiserror`, and the app uses `anyhow` (D-041). No dependency outside
+  D-041 is added without asking.
 
 ## Start-of-session checklist (mandatory)
 
