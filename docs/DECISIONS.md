@@ -531,6 +531,40 @@ alternatives that were considered, and why.
   them globally. This is how djs-rs's own example works.
 - **Alternatives:** always global; a per-project setting.
 
+### D-056 — The generated bot reads its settings from the environment, or `.env`
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** `DISCORD_TOKEN` and `DISCORD_TEST_GUILD_ID`. If the guild id is set, the
+  commands are registered on that server; if not, they are registered globally (D-055).
+  The runner passes both from the keyring and never writes them to disk. Anyone running an
+  exported bot by hand can use a `.env` file instead, which is gitignored (D-040). This is
+  how the djs-rs examples work.
+- **Alternatives:** environment variables only.
+
+### D-057 — Generated code: one module per graph
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** `generated/src/main.rs` holds the client, the intents and the command
+  registration. `generated/src/commands/<name>.rs` and `generated/src/events/<name>.rs` hold
+  one module per graph. This is readable after export, and editing one graph changes one
+  file.
+- **Alternatives:** a single `main.rs`.
+
+### D-058 — Code is generated as tokens: `quote` + `prettyplease` (extends D-041)
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** `rustbot-codegen` builds code with `quote`/`proc-macro2` (already in the
+  tree) and formats it with `prettyplease` 0.3 on `syn` 3. Project content, which may come
+  from a cloned repository, then cannot escape a string literal into code that is compiled
+  and run. The output is formatted deterministically without rustfmt. These crates are
+  added to the approved set of D-041.
+- **Alternatives:** text templates with `{:?}` escaping; text templates + rustfmt from the
+  private toolchain.
+
+### D-059 — Dependencies of the generated bot
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** `djs-rs`, `tokio` (macros, multi-threaded runtime) and `tracing-subscriber`.
+  The last prints djs-rs's logs (connection, errors, rate limits), and the runner shows
+  them in the Logs panel, as in the djs-rs examples.
+- **Alternatives:** `djs-rs` + `tokio` only.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
