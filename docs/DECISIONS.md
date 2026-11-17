@@ -230,6 +230,37 @@ alternatives that were considered, and why.
 - **Alternatives:** the full djs-rs level (benchmarks and stress tests for every stage);
   a minimal gate without performance measurements.
 
+### D-027 — The app builds with the latest stable Rust, with no MSRV
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The app uses edition 2024 and is always built with the latest stable Rust.
+  It promises no MSRV, because users install packages rather than compile it, and gpui
+  raises its requirements quickly. This applies to the app only. Bots are built by the
+  private toolchain (D-017).
+- **Alternatives:** a fixed MSRV bumped deliberately; an exact pinned version.
+
+### D-028 — A multi-crate Cargo workspace from the start
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Separate crates from day one: the core (project model, no UI), the code
+  generator, the toolchain manager, the runner/hosting, the plugin host, the plugin SDK,
+  the integrations, and the UI app. Logic is testable without a window, and rebuilds are
+  faster. The exact crate list is confirmed with the owner when the skeleton is built.
+- **Alternatives:** one crate, split later; UI + core + SDK.
+
+### D-029 — Crate prefix `rustbot-`
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Crates are named `rustbot-*` (e.g. `rustbot-core`, `rustbot-codegen`,
+  `rustbot-plugin-sdk`). `rustbot` itself is taken on crates.io, so the binary and the
+  package are `rustbot-creator`. On 2026-11-17 `rustbot-creator`, `rustbot-core`,
+  `rustbot-plugin` and `rustbot-sdk` were free. At least the plugin SDK will be published.
+- **Alternatives:** `rbc-*`; `rustbot-creator-*`.
+
+### D-030 — rust-analyzer comes as a rustup component
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The editor's LSP server is rust-analyzer, installed into the private
+  toolchain (D-017) with `rustup component add rust-analyzer`, so it always matches the
+  Rust version.
+- **Alternatives:** download it from rust-analyzer's GitHub releases; no LSP at first.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -247,10 +278,7 @@ alternatives that were considered, and why.
 
 The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answers it.
 
-- **Workspace layout and crate names.**
-- **Toolchain:** edition, MSRV policy, `rust-toolchain.toml`.
-- **The advanced creator and the editor:** gpui-kit's editor (D-011) plus rust-analyzer as
-  the LSP server, and how it is installed.
+- **Exact crate list** (D-028, D-029), confirmed when the skeleton is built.
 - **Project format details** (D-019): exact layout, schema versioning and migrations.
 - **Plugins** (D-016): what they may extend, the capability list, plugin API versioning and
   stability, distribution (a registry?), and signing.
