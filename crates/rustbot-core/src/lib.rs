@@ -13,13 +13,17 @@
 //!
 //! Everything is written deterministically, so git diffs show only real changes.
 
+mod core_nodes;
 mod graph;
 mod manifest;
 mod project;
+pub mod registry;
+pub mod template;
 
 pub use graph::{Edge, Graph, GraphKind, Layout, Node, NodeId, PinRef, PinRefError};
 pub use manifest::{BotSettings, DjsRs, Gateway, Manifest};
 pub use project::{Error, GraphFile, Project};
+pub use registry::Registry;
 
 /// The project format version this build reads and writes (D-051).
 pub const SCHEMA: u32 = 1;

@@ -30,8 +30,9 @@ layer, before the scope widens.
       Linux (fmt, clippy, tests); first CI run green on Fedora 44 and Ubuntu
 - [x] Project format v0: `project.toml` + graph JSON + layout JSON (D-019, D-051), in
       `rustbot-core` with tests
-- [ ] Node registry in `rustbot-core`, built the way plugins will use it (D-034), with the
-      slice's nodes: slash-command trigger and reply
+- [x] Node registry in `rustbot-core`, built the way plugins will use it (D-034, D-052),
+      with the slice's nodes `core.slash_command` and `core.reply`, graph validation and
+      templates (D-047, D-053, D-054)
 - [ ] Code generation of the `/ping` project on djs-rs (D-012, D-015)
 - [ ] Private toolchain: install rustup + Rust into the app's data directory and build the
       bot (D-017)

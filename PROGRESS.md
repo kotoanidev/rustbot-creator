@@ -18,13 +18,20 @@ schema check, unknown fields, graph names that would escape the folder, and syml
 (refused on read and write, and a planted temporary file is never followed, from the
 security review fix `f92e0e2`).
 
+Step 3 (node registry, D-052–D-054) is ✅ done. `rustbot_core::registry` has `NodeType`,
+`Pin`, `Prop`, `Variable` and `DataType`, all serde data for the future WASM plugins, plus
+`Registry::{with_core, register, get, iter, validate}` and `Problem`/`ProblemKind` for the
+"Problems" panel. `rustbot_core::template` parses `{path}` and `{{`/`}}`. The core nodes
+are `core.slash_command` (out `then`; props `name` and `description`; provides `user`,
+`channel` and `server`) and `core.reply` (in `run`, out `then`; prop `content` with
+templates). 24 tests pass in `rustbot-core`.
+
 ## Exact next step
-Phase 2, step 3: the node registry in `rustbot-core`, as decided in D-052–D-054. It has
-the slice's nodes `core.slash_command` (out pin `then`; props `name`, `description`;
-provides `user`, `channel`, `server`) and `core.reply` (in pin `run`, out pin `then`;
-prop `content` with templates). Validation reports unknown node types, unknown pins,
-flow wired to data, missing required props, and unknown template variables. D-055 (test
-server vs global) belongs to the runner and codegen steps.
+Phase 2, step 4: code generation in `rustbot-codegen`, from a validated project to
+`generated/` (`Cargo.toml` + `src/main.rs` on djs-rs). Before coding, ask the owner about
+the shape of the generated code: how the token and the test server reach the bot (D-020,
+D-055), and whether there is one file or one module per graph. Plan for snapshot tests
+with `insta` (D-041), and measure the 500-node budget (D-038).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.
