@@ -26,8 +26,8 @@ measured (D-026, D-038).
 ## Phase 2 — Vertical slice (D-031) — in progress
 Goal: a `/ping` command made in the graph runs as a real bot, end to end through every
 layer, before the scope widens.
-- [~] Cargo workspace with the six slice crates (D-036), lints, rustfmt/clippy config, CI on
-      Linux (fmt, clippy, tests). Done locally; waiting for the first CI run.
+- [x] Cargo workspace with the six slice crates (D-036), lints, rustfmt/clippy config, CI on
+      Linux (fmt, clippy, tests); first CI run green on Fedora 44 and Ubuntu
 - [ ] Project format v0: `project.toml` + one graph JSON (D-019)
 - [ ] Node registry in `rustbot-core`, built the way plugins will use it (D-034), with the
       slice's nodes: slash-command trigger and reply
