@@ -11,13 +11,15 @@ licenses, README, CLAUDE.md, roadmap and this file. There is no code yet.
 (D-011), bots as generated Rust code (D-012), Cloudflare Containers first and Workers later
 (D-013), forms + node graph in the easy creator (D-014), one project with two views (D-015),
 WASM plugins in wasmtime (D-016), a private toolchain managed by the app (D-017), and
-djs-rs#3 filed for HTTP interactions + wasm32 (D-018).
+djs-rs#3 filed for HTTP interactions + wasm32 (D-018), a folder of TOML + JSON as the
+project format (D-019), OS keyring with an encrypted-file fallback for secrets (D-020),
+GitHub OAuth device flow (D-021), and an in-app process plus a background service for
+self-hosting (D-022).
 
 ## Exact next step
-Continue through the remaining "Open questions" in `docs/DECISIONS.md`, next: the project
-format on disk, secrets and token storage, GitHub integration, and self-hosting on the
-user's PC. Ask, record each answer as `D-NNN`, then write the phased plan into
-`ROADMAP.md`.
+Continue through the remaining "Open questions" in `docs/DECISIONS.md`, next: the license
+of generated code, UI languages, Linux packaging, and the quality bar. Ask, record each
+answer as `D-NNN`, then write the phased plan into `ROADMAP.md`.
 
 ## Blocked on the owner
 Every open question in `docs/DECISIONS.md` (D-006: the owner decides).

@@ -166,6 +166,36 @@ alternatives that were considered, and why.
   before that phase.
 - **Alternatives:** file it when the Workers phase is planned.
 
+### D-019 — Project format: a folder of TOML + JSON files
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** A bot project is a folder of text files, readable in git diffs and
+  mergeable. Settings are in `project.toml`. Graphs are JSON, one file per command or
+  event. The user's own Rust modules are in `src/`. Generated code (D-015) is in a separate
+  directory. The exact layout and schema versioning are still open.
+- **Alternatives:** a folder of RON; a folder of JSON only; a single SQLite file.
+
+### D-020 — Secrets: OS keyring, encrypted file as fallback
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** Bot tokens and GitHub and Cloudflare tokens are stored in the OS keyring
+  (Secret Service via KDE Wallet or GNOME Keyring, Windows Credential Manager, macOS
+  Keychain). Where no keyring exists, they go to an encrypted file unlocked by a master
+  password. Secrets never enter project files or git.
+- **Alternatives:** keyring only; encrypted file only.
+
+### D-021 — GitHub sign-in: OAuth device flow
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** The user clicks "Connect" and types a short code on github.com. The app holds
+  only a public client ID, with no client secret. **Owner action needed** before the GitHub
+  phase: register a GitHub OAuth App or GitHub App. Which kind is still open.
+- **Alternatives:** a pasted Personal Access Token; OAuth with a PAT as an advanced option.
+
+### D-022 — Self-hosting: in-app process + background service
+- **Date:** 2026-11-17 · **Decided by:** Owner
+- **Decision:** While the user works, a bot runs as a child process of the app. "Host on
+  this PC" installs it as a per-user service (`systemd --user` on Linux, Task Scheduler on
+  Windows) with autostart and restarts. Logs and status are always visible in the app.
+- **Alternatives:** only while the app runs; always a system-wide service.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -187,7 +217,7 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
 - **Toolchain:** edition, MSRV policy, `rust-toolchain.toml`.
 - **The advanced creator and the editor:** gpui-kit's editor (D-011) plus rust-analyzer as
   the LSP server, and how it is installed.
-- **Project format:** how a bot project is stored on disk and versioned.
+- **Project format details** (D-019): exact layout, schema versioning and migrations.
 - **Plugins** (D-016): what they may extend, the capability list, plugin API versioning and
   stability, distribution (a registry?), and signing.
 - **Themes:** importing VS Code themes.
@@ -195,10 +225,8 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
   (needs a C compiler) versus pure-Rust `zlib-stream` in generated bots, CMake for `voice`,
   updates, and build caching to make the first build faster.
 - **Other hosts** besides Cloudflare (D-013).
-- **Self-hosting on the user's PC:** running in the background, autostart, logs, restarts.
-- **GitHub integration:** authentication (OAuth device flow?), token storage (OS keyring),
-  scope of features.
-- **Secrets:** bot tokens, and where and how they are stored.
+- **GitHub integration** (D-021): an OAuth App or a GitHub App, and the scope of features
+  (create a repository, push, pull, releases, Actions).
 - **Linux packaging and updates:** Flatpak, RPM, AppImage, .deb, Copr, auto-update.
 - **App UI languages / i18n.**
 - **License of generated bot code and templates.**
