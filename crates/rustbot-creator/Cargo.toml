@@ -12,6 +12,9 @@ anyhow.workspace = true
 fluent-bundle.workspace = true
 gpui-kit.workspace = true
 rustbot-core = { path = "../rustbot-core" }
+rustbot-runner = { path = "../rustbot-runner" }
+rustbot-secrets = { path = "../rustbot-secrets" }
+rustbot-toolchain = { path = "../rustbot-toolchain" }
 serde_json.workspace = true
 unic-langid.workspace = true
 

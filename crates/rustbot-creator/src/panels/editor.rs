@@ -495,7 +495,7 @@ impl Editor {
 }
 
 /// A node type's name in the app's language; a plugin's node without one shows its id.
-fn node_name(id: &str) -> String {
+pub(crate) fn node_name(id: &str) -> String {
     t_or(&format!("node-{}", id.replace('.', "-")), id)
 }
 

@@ -70,13 +70,23 @@ Step 8 (app shell, D-066–D-068, C-008, C-009) is in progress.
   right-click took the focus back from the list's search, so the list now opens on
   release.
 
+- 8c ✅ Properties (C-011): the selected node's fields, with translated labels and the
+  template variables, edited with undo. With nothing selected, the bot settings: the
+  masked token saved to the keyring and the test server. A headless test checks that
+  typing edits the node and that undo restores the field. The form was seen on screen.
+
 ## Exact next step
-8c: the Properties form for the selected node, with one input per field labelled from
-Fluent (`prop-…`), written through `AppState::edit`. When nothing is selected, it shows
-the bot settings: the token (masked, saved with `rustbot_secrets`) and the test server
-(`rustbot_runner::set_test_server`). Then 8d, Run/Stop: the trust prompt (D-064), consent
-for gcc and the toolchain, codegen → build → run, logs in the panel, and the bot's state
-in the status bar, with Run/Stop next to it (D-071).
+8d, Run/Stop in the status bar (D-071), in a new `src/run.rs`:
+1. Save now, validate (problems → stop, show the Problems panel), check trust (D-064):
+   projects created in the app are trusted, and others ask once, with the trust stored
+   per canonical path in the data folder.
+2. If gcc is missing, ask, then run `install_c_compiler_command()`. If the toolchain is
+   missing, ask (about 300 MB), then `Toolchain::install`.
+3. `rustbot_codegen::generate` + `write`, then `Toolchain::build` on a background thread,
+   with lines streamed into Logs.
+4. Read the token (if there is none, point to the bot settings), read the test server,
+   then `Bot::start`, with its lines streamed into Logs. The status bar shows
+   building/running/stopped, and Stop calls `Bot::stop`.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

@@ -57,7 +57,7 @@ impl Workspace {
     fn show(&mut self, project: Project, window: &mut Window, cx: &mut Context<'_, Self>) {
         let state = cx.new(|cx| AppState::new(project, cx));
         let tree = cx.new(|cx| ProjectTree::new(state.clone(), cx));
-        let properties = cx.new(|cx| Properties::new(state.clone(), cx));
+        let properties = cx.new(|cx| Properties::new(state.clone(), window, cx));
         let editor = cx.new(|cx| Editor::new(state.clone(), cx));
         let logs = cx.new(|cx| Logs::new(state.clone(), cx));
         let problems = cx.new(|cx| Problems::new(state.clone(), cx));

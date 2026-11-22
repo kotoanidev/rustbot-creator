@@ -53,3 +53,18 @@ pin-run = run
 prop-core-slash_command-name = Command name
 prop-core-slash_command-description = Description
 prop-core-reply-content = Message
+
+## The properties panel and the bot's settings.
+props-variables = Variables: { $list }
+bot-settings = Bot settings
+bot-token = Bot token
+bot-token-placeholder = Paste the token from the Discord Developer Portal
+bot-token-checking = Checking the system keyring…
+bot-token-saved = A token is saved in the system keyring.
+bot-token-missing = No token is saved yet.
+save = Save
+bot-test-server = Test server ID
+bot-test-server-hint = While you work, commands are registered on this server, where they appear at once.
+bot-test-server-saved = Saved.
+error-keyring = The system keyring cannot be used: { $error }
+error-server-id = “{ $id }” is not a server ID: it has only digits.

@@ -23,6 +23,8 @@ pub(crate) struct AppState {
     pub(crate) selected_node: Option<NodeId>,
     /// What the bot and its build printed, oldest first.
     pub(crate) logs: Vec<String>,
+    /// The private toolchain, or `None` when the home folder is unknown.
+    pub(crate) toolchain: Option<rustbot_toolchain::Toolchain>,
     /// Earlier versions of graphs, newest last: `(index in project.graphs, file)`.
     undo: Vec<(usize, GraphFile)>,
     redo: Vec<(usize, GraphFile)>,
@@ -47,6 +49,7 @@ impl AppState {
             open_graph,
             selected_node: None,
             logs: Vec::new(),
+            toolchain: rustbot_toolchain::Toolchain::locate().ok(),
             undo: Vec::new(),
             redo: Vec::new(),
             unsaved: BTreeSet::new(),

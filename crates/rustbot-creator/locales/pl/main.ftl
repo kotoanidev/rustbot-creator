@@ -53,3 +53,18 @@ pin-run = uruchom
 prop-core-slash_command-name = Nazwa komendy
 prop-core-slash_command-description = Opis
 prop-core-reply-content = Wiadomość
+
+## Panel właściwości i ustawienia bota.
+props-variables = Zmienne: { $list }
+bot-settings = Ustawienia bota
+bot-token = Token bota
+bot-token-placeholder = Wklej token z Discord Developer Portal
+bot-token-checking = Sprawdzam systemowy pęk kluczy…
+bot-token-saved = Token jest zapisany w systemowym pęku kluczy.
+bot-token-missing = Nie zapisano jeszcze tokenu.
+save = Zapisz
+bot-test-server = ID serwera testowego
+bot-test-server-hint = Podczas pracy komendy rejestrują się na tym serwerze i pojawiają się od razu.
+bot-test-server-saved = Zapisano.
+error-keyring = Nie można użyć systemowego pęku kluczy: { $error }
+error-server-id = „{ $id }” to nie jest ID serwera: składa się z samych cyfr.

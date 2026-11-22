@@ -775,6 +775,20 @@ alternatives that were considered, and why.
   30.0.2. `cargo update -p wgpu --precise 30.0.1` satisfies both. `gpui-fast` is in the
   lockfile but is never built (`cargo tree -e normal,dev` does not list it). Undo this
   when gpui-kit's two backends agree on wgpu again.
+
+### C-011 — The properties form and the bot settings
+- **Date:** 2026-11-22
+- **Choice:** Each field of the selected node is a one-line input labelled from Fluent
+  (`prop-<node>-<field>`). Template fields list the variables the graph's trigger
+  provides, such as `{user.name}`. Typing writes through `AppState::edit`, and the first
+  change after a field gains focus starts one undo step, so Ctrl+Z takes back a whole
+  edit, not a letter. After an undo the inputs show the restored text. With no node
+  selected, the panel shows the bot settings. The token input is masked, is saved to the
+  keyring by Enter or "Save" on a background thread, and is cleared at once, so the token
+  does not stay in the window. The panel only reports whether a token is stored and never
+  shows it. The test server is saved on Enter or when the field loses focus, and a
+  non-numeric id is reported under it. `shortcut:` multi-line text (a long reply) waits
+  for gpui-kit's textarea, which has another state type.
 ---
 
 ## Open questions (to ask the owner when relevant)
