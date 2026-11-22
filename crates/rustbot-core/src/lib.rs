@@ -29,7 +29,7 @@ pub use registry::Registry;
 pub const SCHEMA: u32 = 1;
 
 /// The djs-rs version new projects depend on.
-pub const DJS_RS_VERSION: &str = "0.1.0-alpha.1";
+pub const DJS_RS_VERSION: &str = "0.1.0-alpha.2";
 
 /// The Rust version bots are built with, pinned per app release (D-062).
 pub const RUST_VERSION: &str = "1.100.0";

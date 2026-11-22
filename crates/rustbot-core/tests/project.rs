@@ -90,7 +90,7 @@ fn manifest_file() {
     let text = fs::read_to_string(dir.path().join("project.toml")).unwrap();
     let expected = format!(
         "schema = 1\nid = \"{}\"\n\n[bot]\nname = \"Ping Bot\"\npackage = \"ping-bot\"\n\
-         description = \"\"\nlicense = \"\"\n\n[djs-rs]\nversion = \"0.1.0-alpha.1\"\n\
+         description = \"\"\nlicense = \"\"\n\n[djs-rs]\nversion = \"0.1.0-alpha.2\"\n\
          features = []\n\n[gateway]\nextra-intents = []\n",
         project.manifest.id
     );

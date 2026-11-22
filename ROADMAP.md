@@ -34,7 +34,7 @@ layer, before the scope widens.
       with the slice's nodes `core.slash_command` and `core.reply`, graph validation and
       templates (D-047, D-053, D-054)
 - [x] Code generation of the `/ping` project on djs-rs (D-012, D-015, D-056–D-059); the
-      generated bot builds against djs-rs 0.1.0-alpha.1 (CI job), 501 nodes in 7.6 ms
+      generated bot builds against djs-rs 0.1.0-alpha.2 (CI job, D-069), 501 nodes in 7.6 ms
 - [x] Private toolchain: install rustup + Rust into the app's data directory and build the
       bot (D-017, D-039, D-061–D-063); install 29 s, first build 42 s, rebuild 1.1 s
 - [x] Bot token in the OS keyring (D-020, D-050), tested against KDE Wallet
@@ -84,6 +84,6 @@ layer, before the scope widens.
 - WASM plugins (D-016, D-034)
 - Other Linux distributions and packages: .deb, AUR, openSUSE, tarball (D-009, D-025)
 - Windows (D-009)
-- Cloudflare Workers, waiting on [djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3)
-  (D-013)
+- Cloudflare Workers (D-013), on djs-rs 0.1.0-alpha.2's `http-interactions` and wasm32
+  support ([djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3), fixed)
 - macOS is a prospect only (D-009)

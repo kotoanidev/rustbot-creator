@@ -636,6 +636,17 @@ alternatives that were considered, and why.
 - **Alternatives:** explicit Ctrl+S with dirty markers; autosave that can be switched off
   in the settings (Phase 5).
 
+### D-069 — New projects use djs-rs 0.1.0-alpha.2
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** New projects pin `=0.1.0-alpha.2` (`rustbot_core::DJS_RS_VERSION`). This
+  release fixed [djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3) (HTTP
+  interactions, wasm32). Existing projects keep the version in their `project.toml` until
+  the user changes it; an "update djs-rs" action comes later. The generated `/ping` bot
+  builds on alpha.2 unchanged, and its breaking change (the gateway behind the `gateway`
+  feature) does not touch bots with default features (C-002).
+- **Alternatives:** also bump existing projects when they are opened; stay on alpha.1
+  until the Workers phase.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

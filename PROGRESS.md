@@ -30,7 +30,7 @@ Step 4 (code generation, D-056–D-059, C-004) is ✅ done. `rustbot_codegen::{g
 write}` turn a validated project into `generated/` (`Cargo.toml`, `src/main.rs`,
 `src/settings.rs`, `src/commands/{mod,<name>}.rs`), using tokens and prettyplease, with
 snapshot tests (`insta`), injection tests, and the `generated_bot_compiles` test. That test
-builds the bot against djs-rs 0.1.0-alpha.1 with `clippy -D warnings` and runs as its own CI
+builds the bot against djs-rs 0.1.0-alpha.2 (D-069) with `clippy -D warnings` and runs as its own CI
 job. 501 nodes generate in 7.6 ms (`docs/PERFORMANCE.md`). `rustbot-core` gained
 `Project::{write_file, remove_file, files_under}`, which are symlink-safe.
 
@@ -76,6 +76,6 @@ toolchain, codegen → build → run, logs in the panel, state in the status bar
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.
 
 ## Blocked on djs-rs
-Nothing yet. [djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3) (HTTP interactions +
-wasm32) is being fixed (owner, 2026-11-17). It blocks only the later Cloudflare Workers
-phase.
+Nothing. [djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3) (HTTP interactions +
+wasm32) was fixed in djs-rs 0.1.0-alpha.2 (2026-11-22), which new projects use (D-069), so
+the Cloudflare Workers phase is no longer blocked.
