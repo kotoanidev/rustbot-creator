@@ -597,6 +597,15 @@ alternatives that were considered, and why.
   overwrite each other.
 - **Alternatives:** a separate `generated/target` per bot.
 
+### D-064 — Project trust: ask before the first build of a project from elsewhere
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** This works like VS Code's Workspace Trust. Projects created in the app are
+  trusted. A project from elsewhere (cloned, downloaded) opens for viewing and editing,
+  and its first "Build/Run" shows what it contains (the user's own code, dependencies)
+  and asks for one confirmation, which is remembered for that project.
+- **Alternatives:** no prompt (as plain cargo); a prompt before every build of a project
+  from elsewhere.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -639,6 +648,20 @@ alternatives that were considered, and why.
   (`generated_bot_compiles`, its own CI job) builds the generated bot against djs-rs from
   crates.io.
 
+### C-005 — How the private toolchain installs and builds
+- **Date:** 2026-11-22
+- **Choice:** rustup-init comes from `static.rust-lang.org` and is checked against its
+  `.sha256` before it runs. It installs with `--no-modify-path --profile minimal`, with
+  `RUSTUP_HOME` and `CARGO_HOME` in the data folder. Every rustup or cargo command sets
+  `RUSTUP_TOOLCHAIN`, which outranks any `rust-toolchain` file on the way. Builds are debug
+  builds (D-038). The binary is copied, then renamed, to
+  `~/.local/share/rustbot-creator/bots/<project id>/<package>`, in the data folder rather
+  than the cache because the background service (D-022) runs it from there. A build is
+  refused when the project root has `.cargo/` or `rust-toolchain*`. Only Linux on the
+  host's architecture is supported until the Windows phase. gcc is found on `PATH` as `cc`
+  or `gcc`. The install command is `pkexec` + dnf/apt-get/pacman/zypper, which the app
+  runs only after the user agrees.
+
 ---
 
 ## Open questions (to ask the owner when relevant)
@@ -652,8 +675,6 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
 - **Themes:** importing VS Code themes.
 - **Toolchain details** (D-017, D-039): CMake for `voice`, toolchain updates, and build
   caching to make the first build faster.
-- **Project trust:** a project from elsewhere (cloned, downloaded) is code that builds
-  and runs. Should the app ask before its first build, like VS Code's Workspace Trust?
 - **Other hosts** besides Cloudflare (D-013).
 - **GitHub integration** (D-021): the scope of features (create a repository, push, pull,
   releases, Actions) and the OAuth scopes they need.

@@ -29,6 +29,10 @@ proc-macro2 = "1.0.107"
 quote = "1.0.47"
 syn = { version = "3.0.10", features = ["full"] }
 prettyplease = "0.3.0"
+# The private toolchain (D-017): XDG paths, and downloading rustup-init with its checksum.
+directories = "6.0.0"
+ureq = "3.5.2"
+sha2 = "0.11.1"
 # Tests only.
 tempfile = "3.27.0"
 insta = "1.49.0"

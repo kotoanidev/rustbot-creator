@@ -38,15 +38,19 @@ Security review fix `fix(codegen)`: `write` owns all of `generated/` (it removes
 `build.rs` and `.cargo/`), the bot's `Cargo.toml` sets `build = false` and turns off
 `auto*`, and `generated/rust-toolchain.toml` pins Rust (D-062).
 
+Step 5 (private toolchain, D-061–D-064, C-005) is ✅ done. `rustbot_toolchain::Toolchain`
+has `locate`, `install`, `is_installed`, `build` and `target_dir`, plus `c_compiler()` and
+`install_c_compiler_command()`. The real end-to-end test (`--ignored install`) installs
+in 29 s, builds `/ping` in 42 s, and rebuilds in 1.1 s (`docs/PERFORMANCE.md`). Project
+trust (D-064) is decided and belongs to the app shell step.
+
 ## Exact next step
-Phase 2, step 5: the private toolchain in `rustbot-toolchain` (D-017, D-039, D-061–D-063).
-It installs rustup-init (verified against its `.sha256`) with `RUSTUP_HOME`/`CARGO_HOME` in
-`~/.local/share/rustbot-creator`, installs Rust `RUST_VERSION` with the minimal profile,
-checks for gcc (installed with consent), and runs `cargo build` in `generated/` with
-`CARGO_TARGET_DIR=~/.cache/rustbot-creator/target`, then copies the binary into the bot's
-own folder. **Security (from the review):** refuse to build when the project root has
-`.cargo/` or `rust-toolchain*`, because cargo and rustup read them from parent folders.
-Also raise the open question "Project trust" with the owner.
+Phase 2, step 6: the bot token in the OS keyring, in `rustbot-secrets` (D-020, D-050:
+keyed by the project id; `keyring` 4.2 from D-041). Then step 7, the runner in
+`rustbot-runner`: start and stop the built bot with `DISCORD_TOKEN` and
+`DISCORD_TEST_GUILD_ID` in its environment (D-056), streaming its logs. Ask the owner
+first: the keyring service and entry names, and where the test server id is stored
+(`project.toml` or per user).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

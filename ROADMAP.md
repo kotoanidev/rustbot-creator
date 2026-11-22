@@ -35,8 +35,8 @@ layer, before the scope widens.
       templates (D-047, D-053, D-054)
 - [x] Code generation of the `/ping` project on djs-rs (D-012, D-015, D-056–D-059); the
       generated bot builds against djs-rs 0.1.0-alpha.1 (CI job), 501 nodes in 7.6 ms
-- [ ] Private toolchain: install rustup + Rust into the app's data directory and build the
-      bot (D-017)
+- [x] Private toolchain: install rustup + Rust into the app's data directory and build the
+      bot (D-017, D-039, D-061–D-063); install 29 s, first build 42 s, rebuild 1.1 s
 - [ ] Bot token in the OS keyring (D-020)
 - [ ] Runner: start and stop the bot, with live logs in the app (D-022, in-app part)
 - [ ] App shell: window, dock, project tree, minimal graph canvas, form panel, log panel,
