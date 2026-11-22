@@ -575,6 +575,28 @@ alternatives that were considered, and why.
   optional and started by the user. Templates, node types, themes, translations and docs
   ship with the app.
 
+### D-061 — App id `io.github.kotoanidev.RustBotCreator`
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** The reverse-DNS id for the desktop file and D-Bus. Data and cache live in
+  `~/.local/share/rustbot-creator` and `~/.cache/rustbot-creator`.
+- **Alternatives:** an id from the owner's own domain.
+
+### D-062 — The bots' Rust version is pinned per app release
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** Each app release installs one tested Rust version into the private
+  toolchain, now `1.100.0` (`rustbot_core::RUST_VERSION`), and only the next release bumps
+  it. `generated/rust-toolchain.toml` pins it too, so a hand build of an export uses the
+  same version.
+- **Alternatives:** always the latest stable; djs-rs's MSRV (1.89).
+
+### D-063 — Bots share one build cache
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** One `CARGO_TARGET_DIR` at `~/.cache/rustbot-creator/target`, so djs-rs and
+  the other dependencies compile once for every bot. Right after a build, the binary is
+  copied into that bot's own folder, so two bots with the same package name never
+  overwrite each other.
+- **Alternatives:** a separate `generated/target` per bot.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -630,6 +652,8 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
 - **Themes:** importing VS Code themes.
 - **Toolchain details** (D-017, D-039): CMake for `voice`, toolchain updates, and build
   caching to make the first build faster.
+- **Project trust:** a project from elsewhere (cloned, downloaded) is code that builds
+  and runs. Should the app ask before its first build, like VS Code's Workspace Trust?
 - **Other hosts** besides Cloudflare (D-013).
 - **GitHub integration** (D-021): the scope of features (create a repository, push, pull,
   releases, Actions) and the OAuth scopes they need.

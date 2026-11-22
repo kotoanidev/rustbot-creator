@@ -34,12 +34,19 @@ builds the bot against djs-rs 0.1.0-alpha.1 with `clippy -D warnings` and runs a
 job. 501 nodes generate in 7.6 ms (`docs/PERFORMANCE.md`). `rustbot-core` gained
 `Project::{write_file, remove_file, files_under}`, which are symlink-safe.
 
+Security review fix `fix(codegen)`: `write` owns all of `generated/` (it removes planted
+`build.rs` and `.cargo/`), the bot's `Cargo.toml` sets `build = false` and turns off
+`auto*`, and `generated/rust-toolchain.toml` pins Rust (D-062).
+
 ## Exact next step
-Phase 2, step 5: the private toolchain in `rustbot-toolchain` (D-017, D-039). It installs
-rustup + Rust into the app's data directory, checks for gcc, and runs `cargo build`.
-Before coding, ask the owner: the app id used for paths and the desktop file, which Rust
-version the private toolchain installs, and whether bots share one build cache (the
-"build caching" open question).
+Phase 2, step 5: the private toolchain in `rustbot-toolchain` (D-017, D-039, D-061–D-063).
+It installs rustup-init (verified against its `.sha256`) with `RUSTUP_HOME`/`CARGO_HOME` in
+`~/.local/share/rustbot-creator`, installs Rust `RUST_VERSION` with the minimal profile,
+checks for gcc (installed with consent), and runs `cargo build` in `generated/` with
+`CARGO_TARGET_DIR=~/.cache/rustbot-creator/target`, then copies the binary into the bot's
+own folder. **Security (from the review):** refuse to build when the project root has
+`.cargo/` or `rust-toolchain*`, because cargo and rustup read them from parent folders.
+Also raise the open question "Project trust" with the owner.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.
