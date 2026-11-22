@@ -1,0 +1,93 @@
+//! Problems in the project's graphs, in the bottom panel.
+
+use gpui_kit::{
+    Context, Entity, FocusHandle, IntoElement, ParentElement as _, Render, Styled as _, Window,
+    div, px,
+};
+use rustbot_core::registry::{Problem, ProblemKind};
+use rustbot_core::template::TemplateError;
+
+use crate::i18n::{t, t_with};
+use crate::state::AppState;
+
+pub(crate) struct Problems {
+    focus: FocusHandle,
+    state: Entity<AppState>,
+}
+
+super::dock_panel!(Problems, "Problems", "panel-problems");
+
+impl Problems {
+    pub(crate) fn new(state: Entity<AppState>, cx: &mut Context<'_, Self>) -> Self {
+        cx.observe(&state, |_, _, cx| cx.notify()).detach();
+        Self {
+            focus: cx.focus_handle(),
+            state,
+        }
+    }
+}
+
+impl Render for Problems {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let state = self.state.read(cx);
+        let lines: Vec<String> = state
+            .project
+            .graphs
+            .iter()
+            .flat_map(|file| {
+                state
+                    .registry
+                    .validate(&file.graph)
+                    .into_iter()
+                    .map(move |problem| format!("{}: {}", file.name, describe(&problem)))
+            })
+            .collect();
+        if lines.is_empty() {
+            return super::placeholder(t("problems-empty"), cx).into_any_element();
+        }
+        div()
+            .size_full()
+            .p(px(8.))
+            .text_sm()
+            .children(lines.into_iter().map(|line| div().child(line)))
+            .into_any_element()
+    }
+}
+
+/// The problem in the app's language.
+pub(crate) fn describe(problem: &Problem) -> String {
+    let pin = |pin: &rustbot_core::PinRef| pin.to_string();
+    let text = match &problem.kind {
+        ProblemKind::NoTrigger => t("problem-no-trigger"),
+        ProblemKind::SeveralTriggers => t("problem-several-triggers"),
+        ProblemKind::UnknownNodeType(kind) => {
+            t_with("problem-unknown-node-type", &[("type", kind)])
+        }
+        ProblemKind::UnknownPin(p) => t_with("problem-unknown-pin", &[("pin", &pin(p))]),
+        ProblemKind::WrongDirection(p) => t_with("problem-wrong-direction", &[("pin", &pin(p))]),
+        ProblemKind::KindMismatch { from, to } => t_with(
+            "problem-kind-mismatch",
+            &[("from", &pin(from)), ("to", &pin(to))],
+        ),
+        ProblemKind::SeveralSources(p) => t_with("problem-several-sources", &[("pin", &pin(p))]),
+        ProblemKind::MissingProp(prop) => t_with("problem-missing-prop", &[("prop", prop)]),
+        ProblemKind::UnknownProp(prop) => t_with("problem-unknown-prop", &[("prop", prop)]),
+        ProblemKind::WrongPropType(prop) => t_with("problem-wrong-prop-type", &[("prop", prop)]),
+        ProblemKind::BadTemplate { prop, error } => {
+            let id = match error {
+                TemplateError::Unclosed(_) => "problem-template-unclosed",
+                TemplateError::Stray(_) => "problem-template-stray",
+                TemplateError::Empty(_) => "problem-template-empty",
+            };
+            t_with(id, &[("prop", prop)])
+        }
+        ProblemKind::UnknownVariable { prop, path } => t_with(
+            "problem-unknown-variable",
+            &[("prop", prop), ("path", path)],
+        ),
+    };
+    match &problem.node {
+        Some(node) => format!("{node}: {text}"),
+        None => text,
+    }
+}

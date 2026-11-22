@@ -56,12 +56,21 @@ output as `LogLine`s, and stops it with SIGINT, then a kill after a grace period
 `Toolchain::bot_dir` is the project's folder in the app's data. The runner has not been
 tried on a real built bot with a real token yet: that is the live test of step 9.
 
+Step 8 (app shell, D-066–D-068, C-008) is in progress. The window has a welcome screen
+(New/Open project through the system dialogs) and the dock: the project tree and
+Properties on the left, the editor in the centre, Logs and Problems below, and a status
+bar. All text is in Fluent, English and Polish, and the problems are translated. It was
+checked on screen on Fedora KDE.
+
 ## Exact next step
-Phase 2, step 8: the app shell in `rustbot-creator`. The window has a dock (D-044), a
-project tree, a minimal graph canvas (D-042), a form panel, a log panel, and English +
-Polish text through Fluent (D-024, D-037). It wires codegen → toolchain → runner, plus
-the token and test server fields and the project-trust prompt (D-064). Before coding, ask
-the owner about the slice's UI details that the decisions leave open.
+Step 8b: the graph canvas in `crates/rustbot-creator/src/panels/editor.rs` (D-042). It
+draws nodes at their layout positions with their pins, and draws wires. It must support
+dragging nodes, selecting a node (which drives Properties), wiring pins by dragging, and
+Delete. Adding nodes is a searchable list opened by right-click, a "+" button, or a wire
+dropped on empty canvas (D-067). Undo with Ctrl+Z, and autosave after a short pause
+(D-068). Then 8c, the Properties form plus the token and test server fields when nothing
+is selected. Then 8d, Run/Stop: the trust prompt (D-064), consent for gcc and the
+toolchain, codegen → build → run, logs in the panel, state in the status bar.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

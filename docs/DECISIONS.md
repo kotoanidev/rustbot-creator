@@ -715,9 +715,26 @@ alternatives that were considered, and why.
   program (std cannot send it and unsafe code is denied), then kills the bot after a grace
   period. Dropping a `Bot` stops it with 5 s of grace. The test server (D-065) is a
   one-line file `bots/<project id>/test-server`, checked to be a Discord id.
+
+### C-008 — The app shell of the slice
+- **Date:** 2026-11-22
+- **Choice:** The UI language follows `LC_ALL`, `LC_MESSAGES` or `LANG`: Polish for `pl*`,
+  English otherwise, with a missing Polish message falling back to English. The Fluent
+  files are `crates/rustbot-creator/locales/{en,pl}/main.ftl`, compiled into the app, and a
+  test checks that both define the same messages and that every `t("…")` exists. There is
+  no activity bar yet, because the slice has one activity. Panels cannot be closed until
+  a menu can reopen them. "New project…" names the project after the folder picked in the
+  system dialog and adds a `/ping` command (`templates/ping.json`).
+  `rustbot-creator <folder>` opens a project directly. The default gpui-kit theme is used
+  until Phase 5.
 ---
 
 ## Open questions (to ask the owner when relevant)
+
+- **Polish for gpui-kit's own strings (D-037):** gpui-component compiles its rust-i18n
+  YAML into itself, so the app cannot add a Polish one at runtime. A few component
+  strings, such as an input's context menu or "Search...", stay English. Contribute a
+  Polish translation upstream to gpui-component, or ask gpui-kit for a runtime hook?
 
 The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answers it.
 

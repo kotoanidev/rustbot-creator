@@ -1,30 +1,33 @@
-//! RustBot Creator, the desktop application.
+//! RustBot Creator, the desktop application. `rustbot-creator <folder>` opens a project.
 
-use gpui_kit::{
-    AppContext, Context, IntoElement, Render, Styled, TitlebarOptions, Window, WindowOptions, div,
-};
+mod i18n;
+mod panels;
+mod state;
+mod workspace;
 
-/// The main window. Empty until the slice adds the dock (D-044).
-struct Workspace;
-
-impl Render for Workspace {
-    fn render(&mut self, _: &mut Window, _: &mut Context<'_, Self>) -> impl IntoElement {
-        div().size_full()
-    }
-}
+use gpui_kit::{AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 
 fn main() {
-    gpui_kit::application().run(|cx| {
+    let path = std::env::args_os().nth(1).map(std::path::PathBuf::from);
+    gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
+        gpui_kit::component::set_locale(i18n::language());
 
         let options = WindowOptions {
             titlebar: Some(TitlebarOptions {
                 title: Some("RustBot Creator".into()),
                 ..Default::default()
             }),
+            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                None,
+                size(px(1280.), px(800.)),
+                cx,
+            ))),
             ..Default::default()
         };
-        gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| Workspace))
-            .expect("failed to open the main window");
+        gpui_kit::open_window(options, cx, |window, cx| {
+            cx.new(|cx| workspace::Workspace::new(path, window, cx))
+        })
+        .expect("failed to open the main window");
     });
 }
