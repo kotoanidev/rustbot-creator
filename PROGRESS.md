@@ -83,19 +83,19 @@ Step 8 (app shell, D-066–D-068, C-008, C-009) is in progress.
 
 Step 8 (app shell) is ✅ done.
 
-Step 9 (budgets) is in progress; see `docs/PERFORMANCE.md`. Startup (warm ~0.2 s) and
-memory (108–130 MB) are within budget. The 500-node canvas now draws only what is on
-screen, with one path per wire colour and no shadows: 60 FPS at the median, but p99 is
-26–33 ms against 16.6 ms, because of rare CPU spikes whose cause is open. A cold first
-start takes 1.09 s.
+Step 9 (budgets) is measured, and every budget is met (`docs/PERFORMANCE.md`): warm
+startup 150–280 ms, memory 108–130 MB, frame time with 500 nodes p99 6.8–10 ms, codegen
+7.6 ms, rebuild 1.1 s. The canvas draws only what is on screen, with one path per wire
+colour, and skips drawing in the first frame. Only a cold first start after a build is
+slower (1.09 s).
 
 ## Exact next step
-1. **Live test with the owner** (the owner does it, because only they may enter the
-   token): open or create a project, click empty canvas, paste the bot token and the test
-   server id under Properties, press Run, accept the questions (trust, Rust install), use
-   `/ping` on the test server and expect "Pong, <name>!", then Stop.
-2. Find the frame spikes on the 500-node graph (p99). The `RUSTBOT_MEASURE=frames` mode
-   measures them. Then mark Phase 2 done in `ROADMAP.md`.
+**Live test with the owner** (the owner does it, because only they may enter the token):
+`cargo run --release -p rustbot-creator`, then "New project…". Click empty canvas, paste
+the bot token under Properties and press Save, enter the test server id and press Enter.
+Press "▶ Run" and accept the Rust install. Use `/ping` on the test server and expect
+"Pong, <name>!", then "■ Stop". If it works, mark Phase 2 done in `ROADMAP.md` and plan
+Phase 3 (the easy mode's node catalog) with the owner (D-043).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

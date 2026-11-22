@@ -32,7 +32,6 @@ pub(crate) struct Editor {
     view: Rc<Cell<Bounds<Pixels>>>,
     drag: Drag,
     picker: Option<Picker>,
-    frames: crate::measure::Frames,
 }
 
 super::dock_panel!(Editor, "Editor", "panel-editor");
@@ -75,7 +74,6 @@ impl Editor {
             view: Rc::default(),
             drag: Drag::None,
             picker: None,
-            frames: crate::measure::Frames::default(),
         }
     }
 
@@ -86,7 +84,8 @@ impl Editor {
     }
 
     /// The part of the graph on screen, with a margin, as `[left, top, right, bottom]`.
-    /// Only what touches it is drawn, so a large graph costs what is visible.
+    /// Only what touches it is drawn, so a large graph costs what is visible. `None` until
+    /// the canvas has been laid out once.
     fn visible(&self) -> Option<[f32; 4]> {
         let size = self.view.get().size;
         if size.width <= px(0.) || size.height <= px(0.) {
@@ -447,6 +446,9 @@ impl Editor {
         }
         let visible = self.visible();
         wires.retain(|(a, b, _)| {
+            let Some(visible) = visible else {
+                return false;
+            };
             let bend = ((b[0] - a[0]).abs() * 0.5).max(40.);
             let min = [a[0].min(b[0]) - bend, a[1].min(b[1])];
             let max = [a[0].max(b[0]) + bend, a[1].max(b[1])];
@@ -552,7 +554,7 @@ fn pin_color(kind: PinKind, cx: &gpui_kit::App) -> Hsla {
 
 impl Render for Editor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        self.frames.tick(window);
+        crate::measure::keep_drawing(window);
         let state = self.state.read(cx);
         let Some(file) = state.open_file() else {
             return super::placeholder(t("editor-empty"), cx).into_any_element();
@@ -560,6 +562,10 @@ impl Render for Editor {
         let wire_layer = self.render_wires(file, &state.registry, cx);
 
         let visible = self.visible();
+        if visible.is_none() {
+            // The first frame only learns the canvas's size; the next one draws.
+            window.request_animation_frame();
+        }
         let ids: Vec<NodeId> = file
             .graph
             .nodes
@@ -567,7 +573,7 @@ impl Render for Editor {
             .filter(|(id, node)| {
                 let [x, y] = canvas::position(file, id);
                 let [w, h] = canvas::size(state.registry.get(&node.kind));
-                canvas::in_view(visible, [x, y], [x + w, y + h])
+                visible.is_some_and(|visible| canvas::in_view(visible, [x, y], [x + w, y + h]))
             })
             .map(|(id, _)| id.clone())
             .collect();

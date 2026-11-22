@@ -148,6 +148,7 @@ pub(crate) fn new_project(root: &Path) -> Result<Project, rustbot_core::Error> {
 
 impl Render for Workspace {
     fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        crate::measure::frame_start();
         let theme = cx.theme();
         let Some((state, dock)) = &self.open else {
             return v_flex()
@@ -212,6 +213,7 @@ impl Render for Workspace {
                             .child(t("status-language")),
                     ),
             )
+            .child(crate::measure::frame_end())
             .into_any_element()
     }
 }
