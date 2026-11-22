@@ -44,13 +44,18 @@ has `locate`, `install`, `is_installed`, `build` and `target_dir`, plus `c_compi
 in 29 s, builds `/ping` in 42 s, and rebuilds in 1.1 s (`docs/PERFORMANCE.md`). Project
 trust (D-064) is decided and belongs to the app shell step.
 
+Step 6 (bot token in the keyring, C-006) is ✅ done. `rustbot_secrets::{bot_token,
+set_bot_token, delete_bot_token}` are keyed by the project id, and the round trip passes
+against KDE Wallet. Fix `4c7b764`: cargo runs in the cache folder with `--manifest-path`,
+so `.cargo/config.toml` in or above a project is never read (security review).
+
 ## Exact next step
-Phase 2, step 6: the bot token in the OS keyring, in `rustbot-secrets` (D-020, D-050:
-keyed by the project id; `keyring` 4.2 from D-041). Then step 7, the runner in
-`rustbot-runner`: start and stop the built bot with `DISCORD_TOKEN` and
-`DISCORD_TEST_GUILD_ID` in its environment (D-056), streaming its logs. Ask the owner
-first: the keyring service and entry names, and where the test server id is stored
-(`project.toml` or per user).
+Phase 2, step 7: the runner in `rustbot-runner` (D-022, in-app part). It starts the built
+bot (`Toolchain::build` returns its path) with `DISCORD_TOKEN` from `rustbot-secrets` and
+`DISCORD_TEST_GUILD_ID` (D-056), passed only through the child's environment, never a
+file. It streams stdout and stderr as log lines, and stops the bot (SIGTERM, then kill
+after a timeout). The test server id is stored per user in the data folder, keyed by the
+project id (D-065).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

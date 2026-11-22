@@ -29,6 +29,8 @@ cargo run -p rustbot-creator                         # the app
 cargo test -p rustbot-codegen -- --ignored compiles  # the generated bot builds against real djs-rs (network)
 cargo test -p rustbot-codegen --release -- --ignored budget --nocapture   # D-038 measurement
 INSTA_UPDATE=always cargo test -p rustbot-codegen    # accept changed snapshots of generated code; review the diff
+cargo test -p rustbot-toolchain -- --ignored install --nocapture   # real rustup + Rust install and bot build (~300 MB)
+cargo test -p rustbot-secrets -- --ignored           # round trip through the real system keyring
 ```
 
 Measurements go to `docs/PERFORMANCE.md`.

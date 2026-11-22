@@ -37,7 +37,7 @@ layer, before the scope widens.
       generated bot builds against djs-rs 0.1.0-alpha.1 (CI job), 501 nodes in 7.6 ms
 - [x] Private toolchain: install rustup + Rust into the app's data directory and build the
       bot (D-017, D-039, D-061–D-063); install 29 s, first build 42 s, rebuild 1.1 s
-- [ ] Bot token in the OS keyring (D-020)
+- [x] Bot token in the OS keyring (D-020, D-050), tested against KDE Wallet
 - [ ] Runner: start and stop the bot, with live logs in the app (D-022, in-app part)
 - [ ] App shell: window, dock, project tree, minimal graph canvas, form panel, log panel,
       English + Polish text (D-024, D-037)

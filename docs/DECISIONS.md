@@ -671,6 +671,15 @@ alternatives that were considered, and why.
   or `gcc`. The install command is `pkexec` + dnf/apt-get/pacman/zypper, which the app
   runs only after the user agrees.
 
+
+### C-006 — Keyring entries and backend
+- **Date:** 2026-11-22
+- **Choice:** keyring 4's default `v1` feature, which on Linux uses the Secret Service
+  through zbus in pure Rust (no libdbus), so KDE Wallet or GNOME Keyring. Every entry uses
+  the service `io.github.kotoanidev.RustBotCreator` (D-061). A bot token's user is
+  `<project id>/discord-token` (D-050). Whitespace around a pasted token is trimmed. The
+  round-trip test touches the real keyring, so it is `#[ignore]`d (CI containers have no
+  Secret Service).
 ---
 
 ## Open questions (to ask the owner when relevant)
