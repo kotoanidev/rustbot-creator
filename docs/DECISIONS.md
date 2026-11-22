@@ -613,6 +613,29 @@ alternatives that were considered, and why.
   never touches git.
 - **Alternatives:** in `project.toml`, shared with collaborators.
 
+### D-066 — Node properties in a side-bar panel
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** The selected node's form is a "Properties" panel under the project tree in
+  the side bar, like VS Code's Outline under the Explorer. It is a dock panel, so it can be
+  moved or closed. The canvas stays wide, and long fields such as a reply's content have
+  room.
+- **Alternatives:** fields directly on the nodes; a form dialog opened by double-click.
+
+### D-067 — Adding nodes: a searchable list, opened three ways
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** A searchable node list opens at the cursor on a right-click on the canvas,
+  from a visible "+" button for beginners, and when a wire is dropped on empty canvas,
+  where it shows only nodes that fit that pin. It is one implementation, as in Unreal
+  Blueprints and ComfyUI.
+- **Alternatives:** a palette panel to drag from; both.
+
+### D-068 — Autosave
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** Every change is saved by itself after a short pause, and undo (Ctrl+Z)
+  works inside the app. The user still makes git commits.
+- **Alternatives:** explicit Ctrl+S with dirty markers; autosave that can be switched off
+  in the settings (Phase 5).
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
