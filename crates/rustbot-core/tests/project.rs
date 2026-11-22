@@ -193,6 +193,21 @@ mod symlinks {
     }
 
     #[test]
+    fn a_symlinked_generated_folder_is_refused() {
+        use std::path::Path;
+
+        let outside = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let project = Project::create(dir.path(), Manifest::new("Bot")).unwrap();
+        symlink(outside.path(), dir.path().join("generated")).unwrap();
+        let err = project
+            .write_file(Path::new("generated/src/main.rs"), "")
+            .unwrap_err();
+        assert!(matches!(err, Error::Symlink(_)), "{err}");
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+    }
+
+    #[test]
     fn a_symlinked_graph_file_is_not_read() {
         let outside = tempfile::tempdir().unwrap();
         let secret = outside.path().join("secret.json");
@@ -206,5 +221,41 @@ mod symlinks {
 
         let err = Project::open(dir.path()).unwrap_err();
         assert!(matches!(err, Error::Symlink(_)), "{err}");
+    }
+}
+
+#[test]
+fn other_files_stay_inside_the_project() {
+    use std::path::Path;
+
+    let dir = tempfile::tempdir().unwrap();
+    let project = Project::create(dir.path(), Manifest::new("Bot")).unwrap();
+    project
+        .write_file(Path::new("generated/src/main.rs"), "fn main() {}\n")
+        .unwrap();
+    project
+        .write_file(Path::new("generated/Cargo.toml"), "")
+        .unwrap();
+    assert_eq!(
+        project.files_under(Path::new("generated")).unwrap(),
+        vec![
+            Path::new("generated/Cargo.toml").to_owned(),
+            Path::new("generated/src/main.rs").to_owned(),
+        ]
+    );
+    project
+        .remove_file(Path::new("generated/src/main.rs"))
+        .unwrap();
+    project
+        .remove_file(Path::new("generated/src/main.rs"))
+        .unwrap();
+    assert_eq!(
+        project.files_under(Path::new("nothing")).unwrap(),
+        Vec::<std::path::PathBuf>::new()
+    );
+
+    for bad in ["../x", "/etc/passwd", "generated/../../x"] {
+        let err = project.write_file(Path::new(bad), "").unwrap_err();
+        assert!(matches!(err, Error::InvalidPath(_)), "{bad}: {err}");
     }
 }

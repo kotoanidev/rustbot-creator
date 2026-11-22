@@ -603,6 +603,20 @@ alternatives that were considered, and why.
   already has `project.toml`, and writes `.gitignore` only if none exists. Maps are
   `BTreeMap`, because gpui's dependency tree turns on serde_json's `preserve_order`.
 
+### C-004 — Details of the generated bot
+- **Date:** 2026-11-22
+- **Choice:** djs-rs is pinned with `=` (`=0.1.0-alpha.1`), because alphas may break each
+  other. `generated/Cargo.toml` has an empty `[workspace]`, so a bot inside another cargo
+  workspace still builds. Commands are registered on `ClientReady`. Ctrl+C shuts the
+  client down cleanly. Module names come from graph file names: lowercase ASCII, other
+  characters become `_`, a leading non-letter gets `command_`, and keywords get
+  `_command`; two graphs that map to one name are an error. `write` removes files in
+  `generated/src` that the project no longer generates. Variables are read from
+  `cmd.interaction()`: the router's `CommandInteraction` derefs to the command data, whose
+  `guild_id` is where the command is registered, not where it was used. A test
+  (`generated_bot_compiles`, its own CI job) builds the generated bot against djs-rs from
+  crates.io.
+
 ---
 
 ## Open questions (to ask the owner when relevant)

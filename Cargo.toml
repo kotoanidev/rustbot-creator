@@ -24,8 +24,14 @@ toml = "1.2.1"
 uuid = { version = "1.29.3", features = ["v4", "serde"] }
 # Typed errors in library crates.
 thiserror = "2.0.21"
+# Generating bots' Rust code as tokens, formatted without rustfmt (D-058).
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+syn = { version = "3.0.10", features = ["full"] }
+prettyplease = "0.3.0"
 # Tests only.
 tempfile = "3.27.0"
+insta = "1.49.0"
 
 # D-046.
 [workspace.lints.rust]

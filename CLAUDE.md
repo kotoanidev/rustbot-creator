@@ -26,7 +26,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo test -p rustbot-core <test_name>               # a single test
 cargo run -p rustbot-creator                         # the app
+cargo test -p rustbot-codegen -- --ignored compiles  # the generated bot builds against real djs-rs (network)
+cargo test -p rustbot-codegen --release -- --ignored budget --nocapture   # D-038 measurement
+INSTA_UPDATE=always cargo test -p rustbot-codegen    # accept changed snapshots of generated code; review the diff
 ```
+
+Measurements go to `docs/PERFORMANCE.md`.
 
 The local quality gate before every code commit is `fmt` → `clippy` → `test`. CI
 (`.github/workflows/ci.yml`) runs it on a `fedora:44` container and on `ubuntu-latest`

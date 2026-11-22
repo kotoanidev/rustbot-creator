@@ -46,6 +46,19 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
+  generated-bot:
+    # The generated /ping bot builds against the real djs-rs from crates.io.
+    name: generated bot compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo scripts/install-build-deps.sh
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p rustbot-codegen -- --ignored compiles
+
   ubuntu:
     name: clippy + test (Ubuntu)
     runs-on: ubuntu-latest

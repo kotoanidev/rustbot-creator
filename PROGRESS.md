@@ -26,12 +26,20 @@ are `core.slash_command` (out `then`; props `name` and `description`; provides `
 `channel` and `server`) and `core.reply` (in `run`, out `then`; prop `content` with
 templates). 24 tests pass in `rustbot-core`.
 
+Step 4 (code generation, D-056–D-059, C-004) is ✅ done. `rustbot_codegen::{generate,
+write}` turn a validated project into `generated/` (`Cargo.toml`, `src/main.rs`,
+`src/settings.rs`, `src/commands/{mod,<name>}.rs`), using tokens and prettyplease, with
+snapshot tests (`insta`), injection tests, and the `generated_bot_compiles` test. That test
+builds the bot against djs-rs 0.1.0-alpha.1 with `clippy -D warnings` and runs as its own CI
+job. 501 nodes generate in 7.6 ms (`docs/PERFORMANCE.md`). `rustbot-core` gained
+`Project::{write_file, remove_file, files_under}`, which are symlink-safe.
+
 ## Exact next step
-Phase 2, step 4: code generation in `rustbot-codegen`, from a validated project to
-`generated/` (`Cargo.toml` + `src/main.rs` on djs-rs). Before coding, ask the owner about
-the shape of the generated code: how the token and the test server reach the bot (D-020,
-D-055), and whether there is one file or one module per graph. Plan for snapshot tests
-with `insta` (D-041), and measure the 500-node budget (D-038).
+Phase 2, step 5: the private toolchain in `rustbot-toolchain` (D-017, D-039). It installs
+rustup + Rust into the app's data directory, checks for gcc, and runs `cargo build`.
+Before coding, ask the owner: the app id used for paths and the desktop file, which Rust
+version the private toolchain installs, and whether bots share one build cache (the
+"build caching" open question).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

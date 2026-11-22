@@ -33,7 +33,8 @@ layer, before the scope widens.
 - [x] Node registry in `rustbot-core`, built the way plugins will use it (D-034, D-052),
       with the slice's nodes `core.slash_command` and `core.reply`, graph validation and
       templates (D-047, D-053, D-054)
-- [ ] Code generation of the `/ping` project on djs-rs (D-012, D-015)
+- [x] Code generation of the `/ping` project on djs-rs (D-012, D-015, D-056–D-059); the
+      generated bot builds against djs-rs 0.1.0-alpha.1 (CI job), 501 nodes in 7.6 ms
 - [ ] Private toolchain: install rustup + Rust into the app's data directory and build the
       bot (D-017)
 - [ ] Bot token in the OS keyring (D-020)

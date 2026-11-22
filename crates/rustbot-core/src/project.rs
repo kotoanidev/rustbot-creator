@@ -62,6 +62,9 @@ pub enum Error {
     /// repositories, and a link could point reads or writes outside the project.
     #[error("{}: symbolic links are not allowed in a project", .0.display())]
     Symlink(PathBuf),
+    /// A path that is absolute or leaves the project folder.
+    #[error("{}: not a path inside the project", .0.display())]
+    InvalidPath(PathBuf),
 }
 
 /// A graph file with its layout, as loaded from `graphs/<kind>/<name>.json`.
@@ -206,6 +209,74 @@ impl Project {
             &dir.join(format!("{name}{LAYOUT_SUFFIX}")),
             &to_json(&file.layout),
         )
+    }
+}
+
+/// Other files of the project, such as `generated/`. Paths are relative to the project folder,
+/// and symbolic links are refused on the way, as for every other project file.
+impl Project {
+    /// Writes `contents` to `relative`, creating its folders.
+    ///
+    /// # Errors
+    /// [`Error::InvalidPath`], [`Error::Symlink`] or an I/O error.
+    pub fn write_file(&self, relative: &Path, contents: &str) -> Result<(), Error> {
+        let path = self.checked(relative)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|source| io_error(parent, source))?;
+        }
+        write_atomic(&path, contents)
+    }
+
+    /// Removes the file `relative`. A missing file is not an error.
+    ///
+    /// # Errors
+    /// [`Error::InvalidPath`], [`Error::Symlink`] or an I/O error.
+    pub fn remove_file(&self, relative: &Path) -> Result<(), Error> {
+        let path = self.checked(relative)?;
+        match fs::remove_file(&path) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(io_error(&path, e)),
+            _ => Ok(()),
+        }
+    }
+
+    /// Every file under the folder `relative`, recursively and sorted, as paths relative to
+    /// the project folder. A missing folder has none.
+    ///
+    /// # Errors
+    /// [`Error::InvalidPath`], [`Error::Symlink`] or an I/O error.
+    pub fn files_under(&self, relative: &Path) -> Result<Vec<PathBuf>, Error> {
+        let mut files = Vec::new();
+        let mut dirs = vec![self.checked(relative)?];
+        while let Some(dir) = dirs.pop() {
+            let entries = match fs::read_dir(&dir) {
+                Ok(entries) => entries,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(source) => return Err(io_error(&dir, source)),
+            };
+            for entry in entries {
+                let path = entry.map_err(|source| io_error(&dir, source))?.path();
+                reject_symlink(&path)?;
+                if path.is_dir() {
+                    dirs.push(path);
+                } else if let Ok(relative) = path.strip_prefix(&self.root) {
+                    files.push(relative.to_owned());
+                }
+            }
+        }
+        files.sort();
+        Ok(files)
+    }
+
+    fn checked(&self, relative: &Path) -> Result<PathBuf, Error> {
+        let mut path = self.root.clone();
+        for component in relative.components() {
+            let std::path::Component::Normal(part) = component else {
+                return Err(Error::InvalidPath(relative.to_owned()));
+            };
+            path.push(part);
+            reject_symlink(&path)?;
+        }
+        Ok(path)
     }
 }
 
