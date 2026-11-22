@@ -11,6 +11,7 @@ publish.workspace = true
 anyhow.workspace = true
 fluent-bundle.workspace = true
 gpui-kit.workspace = true
+rustbot-codegen = { path = "../rustbot-codegen" }
 rustbot-core = { path = "../rustbot-core" }
 rustbot-runner = { path = "../rustbot-runner" }
 rustbot-secrets = { path = "../rustbot-secrets" }

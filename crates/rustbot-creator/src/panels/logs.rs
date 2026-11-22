@@ -2,7 +2,7 @@
 
 use gpui_kit::{
     Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render,
-    StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
 use crate::i18n::t;
@@ -11,6 +11,9 @@ use crate::state::AppState;
 pub(crate) struct Logs {
     focus: FocusHandle,
     state: Entity<AppState>,
+    scroll: ScrollHandle,
+    /// How many lines the last frame showed, to follow new ones.
+    shown: usize,
 }
 
 super::dock_panel!(Logs, "Logs", "panel-logs");
@@ -21,6 +24,8 @@ impl Logs {
         Self {
             focus: cx.focus_handle(),
             state,
+            scroll: ScrollHandle::new(),
+            shown: 0,
         }
     }
 }
@@ -31,9 +36,14 @@ impl Render for Logs {
         if logs.is_empty() {
             return super::placeholder(t("logs-empty"), cx).into_any_element();
         }
+        if logs.len() != self.shown {
+            self.shown = logs.len();
+            self.scroll.scroll_to_bottom();
+        }
         // shortcut: every line is an element; switch to a virtual list once long runs lag.
         div()
             .id("logs")
+            .track_scroll(&self.scroll)
             .size_full()
             .overflow_y_scroll()
             .p(px(8.))

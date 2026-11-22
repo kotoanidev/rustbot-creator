@@ -6312,6 +6312,7 @@ dependencies = [
  "anyhow",
  "fluent-bundle",
  "gpui-kit",
+ "rustbot-codegen",
  "rustbot-core",
  "rustbot-runner",
  "rustbot-secrets",

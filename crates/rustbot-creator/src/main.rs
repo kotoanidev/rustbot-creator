@@ -3,7 +3,9 @@
 mod canvas;
 mod i18n;
 mod panels;
+mod run;
 mod state;
+mod trust;
 mod workspace;
 
 use gpui_kit::{AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};

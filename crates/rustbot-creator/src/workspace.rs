@@ -3,9 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dock::{DockArea, DockLayout, DockPlacement, DockSkin, panel_handle};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, PathPromptOptions, Render,
@@ -15,6 +15,7 @@ use rustbot_core::{GraphFile, GraphKind, Manifest, Project};
 
 use crate::i18n::{t, t_with};
 use crate::panels::{Editor, Logs, Problems, ProjectTree, Properties};
+use crate::run::Run;
 use crate::state::AppState;
 
 pub(crate) struct Workspace {
@@ -48,7 +49,13 @@ impl Workspace {
 
     fn create_project(&mut self, root: &Path, window: &mut Window, cx: &mut Context<'_, Self>) {
         match new_project(root) {
-            Ok(project) => self.show(project, window, cx),
+            Ok(project) => {
+                // Made here, so trusted (D-064).
+                if let Ok(toolchain) = rustbot_toolchain::Toolchain::locate() {
+                    let _ = crate::trust::trust(toolchain.data_dir(), &project.root);
+                }
+                self.show(project, window, cx);
+            }
             Err(e) => self.error = Some(t_with("error-create", &[("error", &e.to_string())])),
         }
         cx.notify();
@@ -56,6 +63,7 @@ impl Workspace {
 
     fn show(&mut self, project: Project, window: &mut Window, cx: &mut Context<'_, Self>) {
         let state = cx.new(|cx| AppState::new(project, cx));
+        cx.observe(&state, |_, _, cx| cx.notify()).detach();
         let tree = cx.new(|cx| ProjectTree::new(state.clone(), cx));
         let properties = cx.new(|cx| Properties::new(state.clone(), window, cx));
         let editor = cx.new(|cx| Editor::new(state.clone(), cx));
@@ -140,7 +148,7 @@ pub(crate) fn new_project(root: &Path) -> Result<Project, rustbot_core::Error> {
 impl Render for Workspace {
     fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let Some((_, dock)) = &self.open else {
+        let Some((state, dock)) = &self.open else {
             return v_flex()
                 .size_full()
                 .items_center()
@@ -195,7 +203,7 @@ impl Render for Workspace {
                     .border_t_1()
                     .border_color(theme.status_bar_border)
                     .text_xs()
-                    .child(t("status-stopped"))
+                    .child(run_controls(state, cx))
                     .child(
                         h_flex()
                             .gap(px(16.))
@@ -205,6 +213,32 @@ impl Render for Workspace {
             )
             .into_any_element()
     }
+}
+
+/// Run/Stop and the bot's state, on the left of the status bar (D-071).
+fn run_controls(state: &Entity<AppState>, cx: &mut Context<'_, Workspace>) -> impl IntoElement {
+    let (button, label) = match &state.read(cx).run {
+        Run::Stopped => {
+            let state = state.clone();
+            let button = Button::new("run")
+                .ghost()
+                .xsmall()
+                .label(format!("▶ {}", t("run")))
+                .on_click(move |_, window, cx| crate::run::start(state.clone(), window, cx));
+            (Some(button), t("status-stopped"))
+        }
+        Run::Busy(text) => (None, text.clone()),
+        Run::Running(_) => {
+            let state = state.clone();
+            let button = Button::new("stop")
+                .ghost()
+                .xsmall()
+                .label(format!("■ {}", t("stop")))
+                .on_click(move |_, _, cx| crate::run::stop(&state, cx));
+            (Some(button), t("status-running"))
+        }
+    };
+    h_flex().gap(px(8.)).children(button).child(label)
 }
 
 #[cfg(test)]
@@ -218,6 +252,34 @@ mod tests {
         assert_eq!(registry.validate(&project.graphs[0].graph), Vec::new());
         assert_eq!(rustbot_core::Project::open(&project.root).unwrap(), project);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Run first asks to trust a project the app did not make (D-064); Cancel builds
+    /// nothing.
+    #[gpui_kit::test]
+    fn run_asks_before_building_a_project_from_elsewhere(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::test::TestWindowExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("bot");
+        super::new_project(&root).unwrap();
+        cx.update(gpui_kit::init);
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| super::Workspace::new(Some(root.clone()), window, cx));
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            window.click("run", cx);
+        });
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer(&crate::i18n::t("cancel"));
+        cx.run_until_parked();
+        cx.read(|cx| {
+            let (state, _) = workspace.read(cx).open.as_ref().unwrap();
+            let state = state.read(cx);
+            assert!(matches!(state.run, crate::run::Run::Stopped));
+            assert_eq!(state.logs.last().unwrap(), &crate::i18n::t("run-cancelled"));
+        });
+        assert!(!root.join("generated").exists());
     }
 
     #[test]

@@ -13,6 +13,8 @@ use crate::i18n::t_with;
 const SAVE_DELAY: Duration = Duration::from_millis(500);
 /// How many changes can be undone.
 const UNDO_LIMIT: usize = 200;
+/// How many log lines are kept; older ones are dropped.
+const LOG_LIMIT: usize = 5000;
 
 pub(crate) struct AppState {
     pub(crate) project: Project,
@@ -25,6 +27,8 @@ pub(crate) struct AppState {
     pub(crate) logs: Vec<String>,
     /// The private toolchain, or `None` when the home folder is unknown.
     pub(crate) toolchain: Option<rustbot_toolchain::Toolchain>,
+    /// What the bot is doing (D-071).
+    pub(crate) run: crate::run::Run,
     /// Earlier versions of graphs, newest last: `(index in project.graphs, file)`.
     undo: Vec<(usize, GraphFile)>,
     redo: Vec<(usize, GraphFile)>,
@@ -50,11 +54,20 @@ impl AppState {
             selected_node: None,
             logs: Vec::new(),
             toolchain: rustbot_toolchain::Toolchain::locate().ok(),
+            run: crate::run::Run::Stopped,
             undo: Vec::new(),
             redo: Vec::new(),
             unsaved: BTreeSet::new(),
             save: None,
         }
+    }
+
+    /// Adds a line to the Logs panel.
+    pub(crate) fn log(&mut self, line: String) {
+        if self.logs.len() >= LOG_LIMIT {
+            self.logs.drain(..LOG_LIMIT / 10);
+        }
+        self.logs.push(line);
     }
 
     /// The graph in the editor.

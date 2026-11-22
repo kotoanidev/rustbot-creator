@@ -40,7 +40,7 @@ layer, before the scope widens.
 - [x] Bot token in the OS keyring (D-020, D-050), tested against KDE Wallet
 - [x] Runner: start and stop the bot, with live logs in the app (D-022, in-app part);
       the log panel itself comes with the app shell
-- [~] App shell: window, dock, project tree, minimal graph canvas, form panel, log panel,
+- [x] App shell: window, dock, project tree, minimal graph canvas, form panel, log panel,
       English + Polish text (D-024, D-037)
 - [ ] Budgets measured (D-038); live test with the owner's test bot
 

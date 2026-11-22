@@ -789,6 +789,20 @@ alternatives that were considered, and why.
   shows it. The test server is saved on Enter or when the field loses focus, and a
   non-numeric id is reported under it. `shortcut:` multi-line text (a long reply) waits
   for gpui-kit's textarea, which has another state type.
+
+### C-012 — How Run works in the app
+- **Date:** 2026-11-22
+- **Choice:** Run saves, refuses while any graph has problems, and then goes through
+  these steps. Trust (D-064) is stored as one canonical path per line in
+  `trusted-projects` in the data folder, so a copy or move asks again; a path with a line
+  break is never stored. A missing gcc or private Rust is installed only after a dialog
+  (gpui's `window.prompt`) says what happens and how much it downloads. Codegen runs on
+  the UI thread (it takes milliseconds). Installs, builds and the keyring run on
+  background threads, and their lines are moved into Logs every 50 ms. The token is read
+  from the keyring just before the start and dropped right after. With no token, the log
+  points to the bot settings. Stop moves the bot to a background thread and stops it with
+  5 s of grace. Logs keep the last 5000 lines and follow new ones. Library errors keep
+  their English text inside a translated sentence.
 ---
 
 ## Open questions (to ask the owner when relevant)

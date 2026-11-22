@@ -108,6 +108,12 @@ impl Toolchain {
         self.cargo_home().join("bin").join(program)
     }
 
+    /// The app's data folder.
+    #[must_use]
+    pub fn data_dir(&self) -> &Path {
+        &self.data
+    }
+
     /// The shared target folder of every bot (D-063).
     #[must_use]
     pub fn target_dir(&self) -> PathBuf {

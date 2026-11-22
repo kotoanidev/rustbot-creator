@@ -75,18 +75,24 @@ Step 8 (app shell, D-066–D-068, C-008, C-009) is in progress.
   masked token saved to the keyring and the test server. A headless test checks that
   typing edits the node and that undo restores the field. The form was seen on screen.
 
+- 8d ✅ Run/Stop in the status bar (D-071, C-012), in `src/run.rs` and `src/trust.rs`:
+  save → problems → trust (D-064) → gcc and Rust with consent → codegen → build →
+  token and test server → start, with every line in Logs; Stop stops the bot. A
+  headless test clicks Run on a project from elsewhere and checks that the trust
+  question comes first and that Cancel builds nothing.
+
+Step 8 (app shell) is ✅ done.
+
 ## Exact next step
-8d, Run/Stop in the status bar (D-071), in a new `src/run.rs`:
-1. Save now, validate (problems → stop, show the Problems panel), check trust (D-064):
-   projects created in the app are trusted, and others ask once, with the trust stored
-   per canonical path in the data folder.
-2. If gcc is missing, ask, then run `install_c_compiler_command()`. If the toolchain is
-   missing, ask (about 300 MB), then `Toolchain::install`.
-3. `rustbot_codegen::generate` + `write`, then `Toolchain::build` on a background thread,
-   with lines streamed into Logs.
-4. Read the token (if there is none, point to the bot settings), read the test server,
-   then `Bot::start`, with its lines streamed into Logs. The status bar shows
-   building/running/stopped, and Stop calls `Bot::stop`.
+Phase 2, step 9: the budgets (D-038) and a live test with the owner's test bot.
+- Live test (the owner does it, because only they may enter the token): open or create a
+  project, click empty canvas, paste the bot token and the test server id under
+  Properties, press Run, accept the trust question if asked and the Rust install, then
+  use `/ping` on the test server and expect "Pong, <name>!". Then Stop.
+- Measure: startup to an interactive window (≤ 500 ms), memory with one project
+  (≤ 200 MB), frame time p99 with a 500-node graph (≤ 16.6 ms), and the rebuild after a
+  small change in the app (≤ 10 s; the toolchain test measured 1.1 s). Write the results
+  to `docs/PERFORMANCE.md`.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.
