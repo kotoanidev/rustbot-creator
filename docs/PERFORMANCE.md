@@ -9,6 +9,7 @@ Xe, Fedora 44 KDE on Wayland) unless noted.
 | 2026-11-22 | Installing the private toolchain (rustup + Rust 1.100.0, minimal) | — | 29.2 s | `cargo test -p rustbot-toolchain -- --ignored install --nocapture` |
 | 2026-11-22 | First build of `/ping` (djs-rs and all crates, debug) | — | 41.8 s | same test |
 | 2026-11-22 | Rebuild after a small change | ≤ 10 s | 1.1 s | same test |
+| 2026-11-23 | The same test again: install / first build / rebuild | ≤ 10 s rebuild | 72.7 s / 33.2 s / 0.94 s | same test (install time depends on the network) |
 | 2026-11-23 | Startup to the first frame, release, warm (3 runs) | ≤ 500 ms | 192–218 ms | `RUSTBOT_MEASURE=1 target/release/rustbot-creator <project>` |
 | 2026-11-23 | Startup to the first frame, release, first run after a build (cold caches) | ≤ 500 ms | 1.09 s ✗ | same |
 | 2026-11-23 | Memory (RSS), one project: 2 nodes / 500 nodes | ≤ 200 MB | 108 MB / 130 MB | `VmRSS` in `/proc/<pid>/status` after 8 s |

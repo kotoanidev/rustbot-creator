@@ -89,8 +89,34 @@ fn install_build_and_rebuild() {
 
     let project = ping_project(&bot_dir, "Pong, {user.name}!");
     let started = Instant::now();
-    toolchain.build(&project, &mut log).unwrap();
+    let bot = toolchain.build(&project, &mut log).unwrap();
     let rebuild = started.elapsed();
     println!("rebuild after a small change: {rebuild:?}");
     assert!(rebuild.as_secs() <= 10, "{rebuild:?}");
+
+    // The built bot, run as the app runs it, takes the token from its environment and
+    // stops with an error when Discord refuses a made-up one; its output reaches the logs.
+    let (tx, lines) = std::sync::mpsc::channel();
+    let mut running =
+        rustbot_runner::Bot::start(&bot, "not.a.real.token", Some("123"), &tx).unwrap();
+    let mut output = Vec::new();
+    let status = loop {
+        output.extend(lines.try_iter().map(|line| line.text));
+        if let Some(status) = running.exit_status().unwrap() {
+            break status;
+        }
+        assert!(
+            started.elapsed().as_secs() < 120,
+            "the bot did not stop: {output:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    output.extend(lines.try_iter().map(|line| line.text));
+    println!("bot with a made-up token: {status}");
+    for line in &output {
+        println!("  > {line}");
+    }
+    assert!(!status.success());
+    assert!(output.iter().any(|line| line.contains("401")), "{output:?}");
 }

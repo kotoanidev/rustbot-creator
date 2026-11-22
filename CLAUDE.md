@@ -29,7 +29,7 @@ cargo run -p rustbot-creator                         # the app
 cargo test -p rustbot-codegen -- --ignored compiles  # the generated bot builds against real djs-rs (network)
 cargo test -p rustbot-codegen --release -- --ignored budget --nocapture   # D-038 measurement
 INSTA_UPDATE=always cargo test -p rustbot-codegen    # accept changed snapshots of generated code; review the diff
-cargo test -p rustbot-toolchain -- --ignored install --nocapture   # real rustup + Rust install and bot build (~300 MB)
+cargo test -p rustbot-toolchain -- --ignored install --nocapture   # real rustup + Rust install, bot build and run (~300 MB)
 cargo test -p rustbot-secrets -- --ignored           # round trip through the real system keyring
 RUSTBOT_MEASURE=1 target/release/rustbot-creator <project>       # prints startup to the first frame (D-038)
 RUSTBOT_MEASURE=frames target/release/rustbot-creator <project>  # prints frame times (p50/p99/max) while the editor redraws
