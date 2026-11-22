@@ -114,6 +114,13 @@ impl Toolchain {
         self.cache.join("target")
     }
 
+    /// The project's folder in the app's data: the built bot and the user's own settings
+    /// for it, such as the test server (D-065).
+    #[must_use]
+    pub fn bot_dir(&self, project: &Project) -> PathBuf {
+        self.data.join("bots").join(project.manifest.id.to_string())
+    }
+
     /// Whether Rust [`RUST_VERSION`] is installed.
     #[must_use]
     pub fn is_installed(&self) -> bool {
@@ -202,7 +209,7 @@ impl Toolchain {
 
         let package = &project.manifest.bot.package;
         let built = self.target_dir().join("debug").join(package);
-        let dir = self.data.join("bots").join(project.manifest.id.to_string());
+        let dir = self.bot_dir(project);
         fs::create_dir_all(&dir).map_err(|e| io_error(&dir, e))?;
         let bot = dir.join(package);
         // Copy, then rename: a bot that is running keeps its old file.

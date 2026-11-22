@@ -49,13 +49,19 @@ set_bot_token, delete_bot_token}` are keyed by the project id, and the round tri
 against KDE Wallet. Fix `4c7b764`: cargo runs in the cache folder with `--manifest-path`,
 so `.cargo/config.toml` in or above a project is never read (security review).
 
+Step 7 (runner, D-065, C-007) is ✅ done. `rustbot_runner::Bot::{start, exit_status,
+stop}` runs a built bot with the token and test server in its environment, streams its
+output as `LogLine`s, and stops it with SIGINT, then a kill after a grace period.
+`rustbot_runner::{test_server, set_test_server}` keep the test server per user.
+`Toolchain::bot_dir` is the project's folder in the app's data. The runner has not been
+tried on a real built bot with a real token yet: that is the live test of step 9.
+
 ## Exact next step
-Phase 2, step 7: the runner in `rustbot-runner` (D-022, in-app part). It starts the built
-bot (`Toolchain::build` returns its path) with `DISCORD_TOKEN` from `rustbot-secrets` and
-`DISCORD_TEST_GUILD_ID` (D-056), passed only through the child's environment, never a
-file. It streams stdout and stderr as log lines, and stops the bot (SIGTERM, then kill
-after a timeout). The test server id is stored per user in the data folder, keyed by the
-project id (D-065).
+Phase 2, step 8: the app shell in `rustbot-creator`. The window has a dock (D-044), a
+project tree, a minimal graph canvas (D-042), a form panel, a log panel, and English +
+Polish text through Fluent (D-024, D-037). It wires codegen → toolchain → runner, plus
+the token and test server fields and the project-trust prompt (D-064). Before coding, ask
+the owner about the slice's UI details that the decisions leave open.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

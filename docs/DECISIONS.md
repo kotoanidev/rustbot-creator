@@ -680,6 +680,18 @@ alternatives that were considered, and why.
   `<project id>/discord-token` (D-050). Whitespace around a pasted token is trimmed. The
   round-trip test touches the real keyring, so it is `#[ignore]`d (CI containers have no
   Secret Service).
+
+### C-007 — How the runner runs a bot
+- **Date:** 2026-11-22
+- **Choice:** The bot starts in its own folder (`bots/<project id>/`), so a `.env` in the
+  project is not read when the app runs it. The token and the test server go only into
+  the child's environment. Without a test server, `DISCORD_TEST_GUILD_ID` is removed, so
+  an inherited one does not apply. stdin is null. stdout and stderr are read on two
+  threads and sent line by line (lossy UTF-8) to a `Sender<LogLine>` the caller owns.
+  Stopping sends SIGINT, which the generated bot handles like Ctrl+C, through the `kill`
+  program (std cannot send it and unsafe code is denied), then kills the bot after a grace
+  period. Dropping a `Bot` stops it with 5 s of grace. The test server (D-065) is a
+  one-line file `bots/<project id>/test-server`, checked to be a Discord id.
 ---
 
 ## Open questions (to ask the owner when relevant)
