@@ -57,11 +57,6 @@ pub enum Error {
     /// The toolchain is not installed yet.
     #[error("the Rust toolchain is not installed")]
     NotInstalled,
-    /// The project has cargo or rustup settings that would run before or instead of the
-    /// build, e.g. a `.cargo/config.toml` with a `rustc-wrapper`. Cargo reads them from the
-    /// project folder too, so a project from elsewhere could hide code in them.
-    #[error("{}: build settings in a project are not allowed", .0.display())]
-    ProjectConfig(PathBuf),
     /// The project could not be written or read.
     #[error(transparent)]
     Project(#[from] rustbot_core::Error),
@@ -186,24 +181,22 @@ impl Toolchain {
     /// download crates (D-060).
     ///
     /// # Errors
-    /// [`Error::ProjectConfig`], [`Error::NotInstalled`], a failed build, or an I/O error.
+    /// [`Error::NotInstalled`], a failed build, or an I/O error.
     pub fn build(&self, project: &Project, log: &mut dyn FnMut(&str)) -> Result<PathBuf, Error> {
-        // `generated/` is cleaned by codegen; the project root is checked here.
-        for name in [".cargo", "rust-toolchain", "rust-toolchain.toml"] {
-            let path = project.root.join(name);
-            if fs::symlink_metadata(&path).is_ok() {
-                return Err(Error::ProjectConfig(path));
-            }
-        }
         if !self.is_installed() {
             return Err(Error::NotInstalled);
         }
 
-        let generated = project.root.join("generated");
+        // Cargo reads `.cargo/config.toml` from its working folder and every folder above it,
+        // so it runs in the app's cache folder: a project (or the repository around it)
+        // cannot slip in a `rustc-wrapper`, a linker or another registry that way.
+        fs::create_dir_all(&self.cache).map_err(|e| io_error(&self.cache, e))?;
+        let manifest = project.root.join("generated").join("Cargo.toml");
         let mut cargo = self.command("cargo");
         cargo
-            .args(["build", "--color", "never"])
-            .current_dir(&generated)
+            .args(["build", "--color", "never", "--manifest-path"])
+            .arg(&manifest)
+            .current_dir(&self.cache)
             .env("CARGO_TARGET_DIR", self.target_dir());
         run(cargo, log)?;
 

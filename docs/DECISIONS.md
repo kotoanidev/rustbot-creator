@@ -606,6 +606,13 @@ alternatives that were considered, and why.
 - **Alternatives:** no prompt (as plain cargo); a prompt before every build of a project
   from elsewhere.
 
+### D-065 — The test server id is the user's, outside the project
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** The test server (D-055) is stored in the app's data folder and keyed by the
+  project id, like the token. A cloned project imposes nobody's server, and changing it
+  never touches git.
+- **Alternatives:** in `project.toml`, shared with collaborators.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -656,8 +663,10 @@ alternatives that were considered, and why.
   `RUSTUP_TOOLCHAIN`, which outranks any `rust-toolchain` file on the way. Builds are debug
   builds (D-038). The binary is copied, then renamed, to
   `~/.local/share/rustbot-creator/bots/<project id>/<package>`, in the data folder rather
-  than the cache because the background service (D-022) runs it from there. A build is
-  refused when the project root has `.cargo/` or `rust-toolchain*`. Only Linux on the
+  than the cache because the background service (D-022) runs it from there. Cargo runs in
+  the cache folder with `--manifest-path`, because it reads `.cargo/config.toml` from its
+  working folder and every folder above it, so neither a project nor the repository
+  around it can change how the bot is built. Only Linux on the
   host's architecture is supported until the Windows phase. gcc is found on `PATH` as `cc`
   or `gcc`. The install command is `pkexec` + dnf/apt-get/pacman/zypper, which the app
   runs only after the user agrees.

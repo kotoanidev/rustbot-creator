@@ -53,21 +53,6 @@ fn nothing_is_installed_at_first() {
     ));
 }
 
-/// Cargo and rustup read these from the project folder, so a project from elsewhere could
-/// run code through them.
-#[test]
-fn build_settings_in_the_project_are_refused() {
-    for name in [".cargo", "rust-toolchain", "rust-toolchain.toml"] {
-        let dir = tempfile::tempdir().unwrap();
-        let project = ping_project(&dir.path().join("bot"), "Pong!");
-        std::fs::create_dir_all(project.root.join(name)).unwrap();
-        let err = empty_toolchain(dir.path())
-            .build(&project, &mut |_| {})
-            .unwrap_err();
-        assert!(matches!(err, Error::ProjectConfig(_)), "{name}: {err}");
-    }
-}
-
 /// Installs the real toolchain into a temporary folder, builds `/ping`, then measures a
 /// rebuild after a small change (D-038: at most 10 s). Downloads about 300 MB:
 /// `cargo test -p rustbot-toolchain -- --ignored install --nocapture`.
@@ -83,7 +68,18 @@ fn install_build_and_rebuild() {
     assert!(toolchain.is_installed());
     println!("install: {:?}", started.elapsed());
 
-    let bot_dir = dir.path().join("bot");
+    // The project sits in a repository whose cargo settings would break any build that
+    // read them.
+    let bot_dir = dir.path().join("repo/bot");
+    for folder in ["repo", "repo/bot", "repo/bot/generated"] {
+        let config = dir.path().join(folder).join(".cargo");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(
+            config.join("config.toml"),
+            "[build]\nrustc-wrapper = \"false\"\n",
+        )
+        .unwrap();
+    }
     let project = ping_project(&bot_dir, "Pong!");
     let started = Instant::now();
     let bot = toolchain.build(&project, &mut log).unwrap();
