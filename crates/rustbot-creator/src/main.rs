@@ -1,5 +1,6 @@
 //! RustBot Creator, the desktop application. `rustbot-creator <folder>` opens a project.
 
+mod canvas;
 mod i18n;
 mod panels;
 mod state;

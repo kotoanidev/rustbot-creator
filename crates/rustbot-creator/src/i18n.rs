@@ -55,7 +55,12 @@ pub(crate) fn language() -> &'static str {
 
 /// The message `id`.
 pub(crate) fn t(id: &str) -> String {
-    format(id, None)
+    format(id, None).unwrap_or_else(|| id.to_owned())
+}
+
+/// The message `id`, or `fallback` if no language has it, e.g. a plugin's node name.
+pub(crate) fn t_or(id: &str, fallback: &str) -> String {
+    format(id, None).unwrap_or_else(|| fallback.to_owned())
 }
 
 /// The message `id` with its variables, e.g. `t_with("error-open", &[("error", "…")])`.
@@ -64,10 +69,10 @@ pub(crate) fn t_with(id: &str, args: &[(&str, &str)]) -> String {
     for &(name, value) in args {
         fluent.set(name, value.to_owned());
     }
-    format(id, Some(&fluent))
+    format(id, Some(&fluent)).unwrap_or_else(|| id.to_owned())
 }
 
-fn format(id: &str, args: Option<&FluentArgs<'_>>) -> String {
+fn format(id: &str, args: Option<&FluentArgs<'_>>) -> Option<String> {
     let text = text();
     [&text.chosen, &text.english]
         .into_iter()
@@ -80,7 +85,6 @@ fn format(id: &str, args: Option<&FluentArgs<'_>>) -> String {
                     .into_owned(),
             )
         })
-        .unwrap_or_else(|| id.to_owned())
 }
 
 #[cfg(test)]
@@ -102,6 +106,31 @@ mod tests {
         assert_eq!(ids(super::ENGLISH), ids(super::POLISH));
     }
 
+    /// The built-in nodes, their pins and fields have names, as plugins will supply theirs.
+    #[test]
+    fn core_nodes_are_named() {
+        let english = ids(super::ENGLISH);
+        for node in rustbot_core::Registry::with_core().iter() {
+            let node_id = node.id.replace('.', "-");
+            assert!(
+                english.contains(format!("node-{node_id}").as_str()),
+                "{}",
+                node.id
+            );
+            for pin in &node.pins {
+                assert!(
+                    english.contains(format!("pin-{}", pin.name).as_str()),
+                    "{}",
+                    pin.name
+                );
+            }
+            for prop in &node.props {
+                let id = format!("prop-{node_id}-{}", prop.name);
+                assert!(english.contains(id.as_str()), "{id}");
+            }
+        }
+    }
+
     /// Every `t("…")` and `t_with("…"` in the source names an English message.
     #[test]
     fn every_message_used_exists() {
@@ -114,7 +143,7 @@ mod tests {
                 continue;
             }
             let source = std::fs::read_to_string(&path).unwrap();
-            for call in ["t(\"", "t_with(\""] {
+            for call in ["t(\"", "t_with(\"", "t_or(\""] {
                 for (at, _) in source.match_indices(call) {
                     // Not `split("` or `x.t("`: the call must start a name.
                     let before = source[..at].chars().next_back();

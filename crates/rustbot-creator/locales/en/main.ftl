@@ -38,3 +38,18 @@ problem-template-unclosed = The field “{ $prop }” has a {"{"} that is never 
 problem-template-stray = The field “{ $prop }” has a {"}"} with no {"{"}. Write {"}}"} for a brace.
 problem-template-empty = The field “{ $prop }” has an empty variable, such as {"{}"}.
 problem-unknown-variable = The field “{ $prop }” uses { $path }, which does not exist.
+
+## The graph canvas.
+canvas-add = Add a node
+picker-search = Search nodes…
+picker-empty = No node fits here.
+error-save = Could not save { $file }: { $error }
+
+## Built-in nodes, their pins and their fields.
+node-core-slash_command = Slash command
+node-core-reply = Reply
+pin-then = then
+pin-run = run
+prop-core-slash_command-name = Command name
+prop-core-slash_command-description = Description
+prop-core-reply-content = Message

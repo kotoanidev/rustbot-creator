@@ -38,3 +38,18 @@ problem-template-unclosed = W polu „{ $prop }” jest {"{"} bez zamknięcia.
 problem-template-stray = W polu „{ $prop }” jest {"}"} bez {"{"}. Dla klamry napisz {"}}"}.
 problem-template-empty = W polu „{ $prop }” jest pusta zmienna, np. {"{}"}.
 problem-unknown-variable = Pole „{ $prop }” używa { $path }, które nie istnieje.
+
+## Płótno grafu.
+canvas-add = Dodaj węzeł
+picker-search = Szukaj węzłów…
+picker-empty = Żaden węzeł tu nie pasuje.
+error-save = Nie udało się zapisać { $file }: { $error }
+
+## Wbudowane węzły, ich piny i pola.
+node-core-slash_command = Komenda z ukośnikiem
+node-core-reply = Odpowiedz
+pin-then = potem
+pin-run = uruchom
+prop-core-slash_command-name = Nazwa komendy
+prop-core-slash_command-description = Opis
+prop-core-reply-content = Wiadomość

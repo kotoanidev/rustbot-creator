@@ -1,16 +1,68 @@
-//! The centre: the open graph. The canvas comes in the next step (D-042).
+//! The centre: the open graph on a canvas (D-042). Nodes are dragged, wired pin to pin,
+//! and added from a searchable list (D-067); Delete removes the selected node, Ctrl+Z and
+//! Ctrl+Shift+Z undo and redo, and every change is autosaved (D-068).
 
-use gpui_kit::{Context, Entity, FocusHandle, IntoElement, Render, Window};
+use std::cell::Cell;
+use std::rc::Rc;
 
-use crate::i18n::t;
+use gpui_kit::component::ActiveTheme as _;
+use gpui_kit::component::button::Button;
+use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::list::ListItem;
+use gpui_kit::component::v_flex;
+use gpui_kit::{
+    AppContext as _, Context, Entity, FocusHandle, Hsla, InteractiveElement as _, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
+    PathBuilder, Pixels, Point, Render, ScrollEvent, Styled as _, Subscription, Window, canvas,
+    div, point, px,
+};
+use rustbot_core::registry::{Category, DataType, Direction, Pin, PinKind};
+use rustbot_core::{GraphFile, NodeId, PinRef, Registry};
+
+use crate::canvas::{self, Hit};
+use crate::i18n::{t, t_or};
 use crate::state::AppState;
 
 pub(crate) struct Editor {
     focus: FocusHandle,
     state: Entity<AppState>,
+    /// How far the view is scrolled: graph `[0, 0]` is drawn at the canvas origin + `pan`.
+    pan: Point<Pixels>,
+    /// The canvas's top-left corner in the window, from the last frame.
+    origin: Rc<Cell<Point<Pixels>>>,
+    drag: Drag,
+    picker: Option<Picker>,
 }
 
 super::dock_panel!(Editor, "Editor", "panel-editor");
+
+enum Drag {
+    None,
+    /// Moving a node; `grab` is where it was held, relative to its corner.
+    Node {
+        id: NodeId,
+        grab: [f32; 2],
+        moved: bool,
+    },
+    Pan {
+        last: Point<Pixels>,
+    },
+    /// A wire being pulled out of `from`; `to` is the pointer in graph coordinates.
+    Wire {
+        from: PinRef,
+        pin: Pin,
+        to: [f32; 2],
+    },
+}
+
+/// The searchable node list (D-067). With `wire`, it lists only nodes that fit that pin
+/// and wires the new node to it.
+struct Picker {
+    at: [f32; 2],
+    query: Entity<InputState>,
+    wire: Option<(PinRef, Pin)>,
+    _changes: Subscription,
+}
 
 impl Editor {
     pub(crate) fn new(state: Entity<AppState>, cx: &mut Context<'_, Self>) -> Self {
@@ -18,15 +70,512 @@ impl Editor {
         Self {
             focus: cx.focus_handle(),
             state,
+            pan: Point::default(),
+            origin: Rc::default(),
+            drag: Drag::None,
+            picker: None,
         }
+    }
+
+    /// A window position in graph coordinates.
+    fn graph_point(&self, position: Point<Pixels>) -> [f32; 2] {
+        let at = position - self.origin.get() - self.pan;
+        [at.x.into(), at.y.into()]
+    }
+
+    fn hit(&self, at: [f32; 2], cx: &Context<'_, Self>) -> Option<(Hit, [f32; 2])> {
+        let state = self.state.read(cx);
+        let file = state.open_file()?;
+        let hit = canvas::hit(file, &state.registry, at);
+        let corner = match &hit {
+            Hit::Node(id) => canvas::position(file, id),
+            _ => [0., 0.],
+        };
+        Some((hit, corner))
+    }
+
+    fn select(&self, node: Option<NodeId>, cx: &mut Context<'_, Self>) {
+        self.state.update(cx, |state, cx| {
+            state.selected_node = node;
+            cx.notify();
+        });
+    }
+
+    fn mouse_down(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.focus.focus(window, cx);
+        self.picker = None;
+        let at = self.graph_point(event.position);
+        match self.hit(at, cx) {
+            Some((Hit::Pin(from, pin), _)) => self.drag = Drag::Wire { from, pin, to: at },
+            Some((Hit::Node(id), corner)) => {
+                self.select(Some(id.clone()), cx);
+                self.drag = Drag::Node {
+                    id,
+                    grab: [at[0] - corner[0], at[1] - corner[1]],
+                    moved: false,
+                };
+            }
+            _ => {
+                self.select(None, cx);
+                self.drag = Drag::Pan {
+                    last: event.position,
+                };
+            }
+        }
+        cx.notify();
+    }
+
+    fn mouse_move(
+        &mut self,
+        event: &MouseMoveEvent,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if event.pressed_button != Some(MouseButton::Left) && !matches!(self.drag, Drag::None) {
+            // The button was let go outside the canvas.
+            return self.finish_drag(event.position, window, cx);
+        }
+        let at = self.graph_point(event.position);
+        match &mut self.drag {
+            Drag::None => return,
+            Drag::Node { id, grab, moved } => {
+                let corner = [at[0] - grab[0], at[1] - grab[1]];
+                let (id, undoable) = (id.clone(), !*moved);
+                *moved = true;
+                self.state.update(cx, |state, cx| {
+                    state.edit(undoable, cx, |file, _| {
+                        file.layout.nodes.insert(id, corner);
+                    });
+                });
+            }
+            Drag::Pan { last } => {
+                self.pan += event.position - *last;
+                *last = event.position;
+            }
+            Drag::Wire { to, .. } => *to = at,
+        }
+        cx.notify();
+    }
+
+    fn mouse_up(&mut self, event: &MouseUpEvent, window: &mut Window, cx: &mut Context<'_, Self>) {
+        self.finish_drag(event.position, window, cx);
+    }
+
+    /// Ends a drag. A wire dropped on a fitting pin joins it; dropped on empty canvas, it
+    /// opens the node list for nodes that fit.
+    fn finish_drag(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if let Drag::Wire { from, pin, .. } = std::mem::replace(&mut self.drag, Drag::None) {
+            let at = self.graph_point(position);
+            match self.hit(at, cx) {
+                Some((Hit::Pin(to, other), _))
+                    if canvas::fits(&pin, &other) && to.node != from.node =>
+                {
+                    self.state.update(cx, |state, cx| {
+                        state.edit(true, cx, |file, _| {
+                            canvas::connect(file, (&from, &pin), &to);
+                        });
+                    });
+                }
+                Some((Hit::Empty, _)) => self.open_picker(at, Some((from, pin)), window, cx),
+                _ => {}
+            }
+        }
+        cx.notify();
+    }
+
+    fn open_picker(
+        &mut self,
+        at: [f32; 2],
+        wire: Option<(PinRef, Pin)>,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let query = cx.new(|cx| InputState::new(window, cx).placeholder(t("picker-search")));
+        let changes = cx.subscribe_in(&query, window, |this, _, event, window, cx| {
+            if let InputEvent::PressEnter { .. } = event
+                && let Some((kind, _)) = this.matches(cx).into_iter().next()
+            {
+                this.pick(&kind, cx);
+            }
+            let _ = window;
+            cx.notify();
+        });
+        query.update(cx, |query, cx| query.focus(window, cx));
+        self.picker = Some(Picker {
+            at,
+            query,
+            wire,
+            _changes: changes,
+        });
+        cx.notify();
+    }
+
+    /// The node types the picker lists: `(id, name)`, sorted by name.
+    fn matches(&self, cx: &Context<'_, Self>) -> Vec<(String, String)> {
+        let Some(picker) = &self.picker else {
+            return Vec::new();
+        };
+        let query = picker.query.read(cx).value().to_lowercase();
+        let mut found: Vec<(String, String)> = self
+            .state
+            .read(cx)
+            .registry
+            .iter()
+            .filter(|node| {
+                picker
+                    .wire
+                    .as_ref()
+                    .is_none_or(|(_, pin)| canvas::fitting_pin(node, pin).is_some())
+            })
+            .map(|node| (node.id.clone(), node_name(&node.id)))
+            .filter(|(id, name)| {
+                name.to_lowercase().contains(&query) || id.to_lowercase().contains(&query)
+            })
+            .collect();
+        found.sort_by(|a, b| a.1.cmp(&b.1));
+        found
+    }
+
+    /// Adds a node from the picker, wired to the pin the picker was opened from.
+    fn pick(&mut self, kind: &str, cx: &mut Context<'_, Self>) {
+        let Some(picker) = self.picker.take() else {
+            return;
+        };
+        let mut added = None;
+        self.state.update(cx, |state, cx| {
+            state.edit(true, cx, |file, registry| {
+                // The new node's first row sits under the pointer, on the wire's side.
+                let left = match &picker.wire {
+                    Some((_, pin)) if pin.direction == Direction::In => canvas::WIDTH,
+                    _ => 0.,
+                };
+                let at = [
+                    picker.at[0] - left,
+                    picker.at[1] - canvas::HEADER - canvas::ROW / 2.,
+                ];
+                let id = canvas::add_node(file, registry, kind, at);
+                if let Some((from, pin)) = &picker.wire {
+                    let target = registry
+                        .get(kind)
+                        .and_then(|node| canvas::fitting_pin(node, pin));
+                    if let Some(target) = target {
+                        let to = PinRef {
+                            node: id.clone(),
+                            pin: target.name.clone(),
+                        };
+                        canvas::connect(file, (from, pin), &to);
+                    }
+                }
+                added = Some(id);
+            });
+        });
+        self.select(added, cx);
+    }
+
+    fn key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<'_, Self>) {
+        let key = event.keystroke.key.as_str();
+        let modifiers = event.keystroke.modifiers;
+        if key == "escape" {
+            self.picker = None;
+            self.drag = Drag::None;
+            return cx.notify();
+        }
+        // Typing in the node list is not a shortcut for the canvas.
+        if self.picker.is_some() {
+            return;
+        }
+        let state = self.state.clone();
+        match key {
+            "delete" | "backspace" => {
+                let Some(node) = state.read(cx).selected_node.clone() else {
+                    return;
+                };
+                state.update(cx, |state, cx| {
+                    state.selected_node = None;
+                    state.edit(true, cx, |file, _| canvas::remove_node(file, &node));
+                });
+            }
+            "z" if modifiers.control => {
+                state.update(cx, |state, cx| state.undo(modifiers.shift, cx));
+            }
+            "y" if modifiers.control => state.update(cx, |state, cx| state.undo(true, cx)),
+            _ => return,
+        }
+        cx.stop_propagation();
+    }
+
+    fn render_node(
+        &self,
+        file: &GraphFile,
+        registry: &Registry,
+        id: &NodeId,
+        cx: &Context<'_, Self>,
+    ) -> impl IntoElement + use<> {
+        let theme = cx.theme();
+        let node = &file.graph.nodes[id];
+        let kind = registry.get(&node.kind);
+        let [x, y] = canvas::position(file, id);
+        let [w, h] = canvas::size(kind);
+        let selected = self.state.read(cx).selected_node.as_ref() == Some(id);
+        let accent = match kind.map(|kind| kind.category) {
+            Some(Category::Trigger) => theme.blue,
+            Some(Category::Action) => theme.green,
+            Some(Category::Logic) => theme.yellow,
+            Some(Category::Data) => theme.magenta,
+            None => theme.danger,
+        };
+        let title = kind.map_or_else(|| node.kind.clone(), |kind| node_name(&kind.id));
+        let pins = [Direction::In, Direction::Out]
+            .into_iter()
+            .flat_map(|direction| {
+                canvas::pins(kind, direction)
+                    .into_iter()
+                    .map(move |(pin, [px_x, px_y])| (pin.clone(), direction, px_x, px_y))
+            });
+        let pins: Vec<_> = pins
+            .map(|(pin, direction, pin_x, pin_y)| {
+                let label = div()
+                    .absolute()
+                    .top(px(pin_y - 8.))
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(t_or(&format!("pin-{}", pin.name), &pin.name));
+                let label = if direction == Direction::In {
+                    label.left(px(12.))
+                } else {
+                    label.right(px(12.))
+                };
+                let dot = div()
+                    .absolute()
+                    .left(px(pin_x - 5.))
+                    .top(px(pin_y - 5.))
+                    .size(px(10.))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(theme.background)
+                    .bg(pin_color(pin.kind, cx));
+                [label.into_any_element(), dot.into_any_element()]
+            })
+            .collect();
+        div()
+            .absolute()
+            .left(self.pan.x + px(x))
+            .top(self.pan.y + px(y))
+            .w(px(w))
+            .h(px(h))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(if selected { theme.ring } else { theme.border })
+            .bg(theme.popover)
+            .shadow_sm()
+            .child(
+                div()
+                    .h(px(canvas::HEADER))
+                    .px(px(10.))
+                    .flex()
+                    .items_center()
+                    .rounded_t(px(6.))
+                    .bg(accent.opacity(0.18))
+                    .text_sm()
+                    .child(title),
+            )
+            .children(pins.into_iter().flatten())
+    }
+
+    /// The wires, and the one being pulled, painted under the nodes. Painting also records
+    /// where the canvas is in the window, for turning pointer positions into graph ones.
+    fn render_wires(
+        &self,
+        file: &GraphFile,
+        registry: &Registry,
+        cx: &Context<'_, Self>,
+    ) -> impl IntoElement + use<> {
+        let mut wires: Vec<([f32; 2], [f32; 2], Hsla)> = file
+            .graph
+            .edges
+            .iter()
+            .filter_map(|edge| {
+                let from = canvas::pin_position(file, registry, &edge.from)?;
+                let to = canvas::pin_position(file, registry, &edge.to)?;
+                let kind = registry
+                    .get(&file.graph.nodes.get(&edge.from.node)?.kind)?
+                    .pins
+                    .iter()
+                    .find(|pin| pin.name == edge.from.pin)?
+                    .kind;
+                Some((from, to, pin_color(kind, cx).opacity(0.8)))
+            })
+            .collect();
+        if let Drag::Wire { from, pin, to } = &self.drag
+            && let Some(start) = canvas::pin_position(file, registry, from)
+        {
+            let (a, b) = if pin.direction == Direction::Out {
+                (start, *to)
+            } else {
+                (*to, start)
+            };
+            wires.push((a, b, cx.theme().ring));
+        }
+        let origin = self.origin.clone();
+        let pan = self.pan;
+        canvas(
+            move |bounds, _, _| origin.set(bounds.origin),
+            move |bounds, (), window, _| {
+                for (a, b, color) in wires {
+                    let a = bounds.origin + pan + point(px(a[0]), px(a[1]));
+                    let b = bounds.origin + pan + point(px(b[0]), px(b[1]));
+                    let bend = ((b.x - a.x).abs() * 0.5).max(px(40.));
+                    let mut path = PathBuilder::stroke(px(2.));
+                    path.move_to(a);
+                    path.cubic_bezier_to(b, point(a.x + bend, a.y), point(b.x - bend, b.y));
+                    if let Ok(path) = path.build() {
+                        window.paint_path(path, color);
+                    }
+                }
+            },
+        )
+        .absolute()
+        .size_full()
+    }
+
+    fn render_picker(
+        &self,
+        picker: &Picker,
+        cx: &mut Context<'_, Self>,
+    ) -> impl IntoElement + use<> {
+        let theme = cx.theme();
+        let matches = self.matches(cx);
+        let empty = matches.is_empty();
+        let rows = matches
+            .into_iter()
+            .take(12)
+            .enumerate()
+            .map(|(ix, (kind, name))| {
+                ListItem::new(ix)
+                    .child(name)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.pick(&kind, cx);
+                    }))
+            });
+        v_flex()
+            .absolute()
+            .left(self.pan.x + px(picker.at[0]))
+            .top(self.pan.y + px(picker.at[1]))
+            .w(px(240.))
+            .p(px(4.))
+            .gap(px(4.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(theme.border)
+            .bg(theme.popover)
+            .shadow_md()
+            // Clicks in the list are not clicks on the canvas.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .child(Input::new(&picker.query))
+            .children(rows)
+            .children(empty.then(|| {
+                div()
+                    .p(px(6.))
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+                    .child(t("picker-empty"))
+            }))
+    }
+}
+
+/// A node type's name in the app's language; a plugin's node without one shows its id.
+fn node_name(id: &str) -> String {
+    t_or(&format!("node-{}", id.replace('.', "-")), id)
+}
+
+fn pin_color(kind: PinKind, cx: &gpui_kit::App) -> Hsla {
+    let theme = cx.theme();
+    match kind {
+        PinKind::Flow => theme.foreground,
+        PinKind::Data(DataType::Text) => theme.cyan,
+        PinKind::Data(DataType::Number) => theme.yellow,
+        PinKind::Data(DataType::Bool) => theme.red,
+        PinKind::Data(DataType::User) => theme.blue,
+        PinKind::Data(DataType::Channel) => theme.green,
+        PinKind::Data(DataType::Server) => theme.magenta,
     }
 }
 
 impl Render for Editor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let state = self.state.read(cx);
-        let open = state.open_graph.and_then(|ix| state.project.graphs.get(ix));
-        let text = open.map_or_else(|| t("editor-empty"), |file| file.name.clone());
-        super::placeholder(text, cx)
+        let Some(file) = state.open_file() else {
+            return super::placeholder(t("editor-empty"), cx).into_any_element();
+        };
+        let wire_layer = self.render_wires(file, &state.registry, cx);
+
+        let ids: Vec<NodeId> = file.graph.nodes.keys().cloned().collect();
+        let nodes: Vec<_> = ids
+            .iter()
+            .map(|id| {
+                let state = self.state.read(cx);
+                let file = state.open_file().expect("checked above");
+                self.render_node(file, &state.registry, id, cx)
+                    .into_any_element()
+            })
+            .collect();
+        let picker = self
+            .picker
+            .as_ref()
+            .map(|picker| self.render_picker(picker, cx).into_any_element());
+        let add = div()
+            .absolute()
+            .top(px(8.))
+            .left(px(8.))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(
+                Button::new("add-node")
+                    .label("+")
+                    .tooltip(t("canvas-add"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        let at = [120. - f32::from(this.pan.x), 80. - f32::from(this.pan.y)];
+                        this.open_picker(at, None, window, cx);
+                    })),
+            );
+
+        let theme = cx.theme();
+        div()
+            .id("graph-canvas")
+            .track_focus(&self.focus)
+            .size_full()
+            .relative()
+            .overflow_hidden()
+            .bg(theme.muted)
+            .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    let at = this.graph_point(event.position);
+                    this.open_picker(at, None, window, cx);
+                }),
+            )
+            .on_mouse_move(cx.listener(Self::mouse_move))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
+            .on_scroll(cx.listener(|this, event: &ScrollEvent, _, cx| {
+                this.pan += event.delta.pixel_delta(px(20.));
+                cx.notify();
+            }))
+            .on_key_down(cx.listener(Self::key_down))
+            .child(wire_layer)
+            .children(nodes)
+            .child(add)
+            .children(picker)
+            .into_any_element()
     }
 }

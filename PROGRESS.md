@@ -56,21 +56,26 @@ output as `LogLine`s, and stops it with SIGINT, then a kill after a grace period
 `Toolchain::bot_dir` is the project's folder in the app's data. The runner has not been
 tried on a real built bot with a real token yet: that is the live test of step 9.
 
-Step 8 (app shell, D-066–D-068, C-008) is in progress. The window has a welcome screen
-(New/Open project through the system dialogs) and the dock: the project tree and
-Properties on the left, the editor in the centre, Logs and Problems below, and a status
-bar. All text is in Fluent, English and Polish, and the problems are translated. It was
-checked on screen on Fedora KDE.
+Step 8 (app shell, D-066–D-068, C-008, C-009) is in progress.
+- 8a ✅ The window has a welcome screen (New/Open project through the system dialogs) and
+  the dock: the project tree and Properties on the left, the editor in the centre, Logs
+  and Problems below, and a status bar. All text is in Fluent, English and Polish.
+- 8b ✅ The graph canvas (`src/panels/editor.rs`, `src/canvas.rs`) draws nodes, pins and
+  wires. You can drag nodes, select one, wire pins by dragging, delete with Delete or
+  Backspace, add nodes from a searchable list (right-click, "+", or a wire dropped on
+  empty canvas, D-067), pan, and undo and redo with Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
+  Changes are autosaved (D-068). Seen on screen; dragging and autosave were tried in the
+  real window. Wiring, the list, Delete and undo are covered only by unit tests of
+  `canvas.rs`, because headless UI tests need gpui-kit's `test-support` feature, which is
+  not approved yet.
 
 ## Exact next step
-Step 8b: the graph canvas in `crates/rustbot-creator/src/panels/editor.rs` (D-042). It
-draws nodes at their layout positions with their pins, and draws wires. It must support
-dragging nodes, selecting a node (which drives Properties), wiring pins by dragging, and
-Delete. Adding nodes is a searchable list opened by right-click, a "+" button, or a wire
-dropped on empty canvas (D-067). Undo with Ctrl+Z, and autosave after a short pause
-(D-068). Then 8c, the Properties form plus the token and test server fields when nothing
-is selected. Then 8d, Run/Stop: the trust prompt (D-064), consent for gcc and the
-toolchain, codegen → build → run, logs in the panel, state in the status bar.
+8c: the Properties form for the selected node, with one input per field labelled from
+Fluent (`prop-…`), written through `AppState::edit`. When nothing is selected, it shows
+the bot settings: the token (masked, saved with `rustbot_secrets`) and the test server
+(`rustbot_runner::set_test_server`). Then 8d, Run/Stop: the trust prompt (D-064), consent
+for gcc and the toolchain, codegen → build → run, logs in the panel, and the bot's state
+in the status bar.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

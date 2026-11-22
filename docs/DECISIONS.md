@@ -738,6 +738,21 @@ alternatives that were considered, and why.
   system dialog and adds a `/ping` command (`templates/ping.json`).
   `rustbot-creator <folder>` opens a project directly. The default gpui-kit theme is used
   until Phase 5.
+
+### C-009 — How the graph canvas works
+- **Date:** 2026-11-22
+- **Choice:** Nodes are 190 px wide, with a 30 px title tinted by category (trigger blue,
+  action green, logic yellow, data magenta, an unknown type red) over 24 px rows of pins:
+  inputs on the left, outputs on the right. Wires are cubic Béziers, coloured by pin kind
+  (flow in the text colour, each data type its own colour). A left drag on empty canvas
+  or the scroll wheel pans the view; there is no zoom yet. An input keeps one wire, so a
+  new wire replaces the old one. A new node gets the next free `nN` id and empty fields,
+  and appears with its first row under the pointer. A node without a layout position is
+  drawn in a column on the left. Undo keeps up to 200 steps, and a drag is one step.
+  Autosave waits 500 ms (D-068) and also runs when the app quits; a failed save goes to
+  the logs and is retried on the next change. Node, pin and field names come from Fluent
+  (`node-…`, `pin-…`, `prop-…`), and a plugin's node without them shows its id. The
+  geometry and edits live in `src/canvas.rs` and are unit-tested without the UI.
 ---
 
 ## Open questions (to ask the owner when relevant)
