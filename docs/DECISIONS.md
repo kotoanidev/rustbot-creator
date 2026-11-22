@@ -565,6 +565,16 @@ alternatives that were considered, and why.
   them in the Logs panel, as in the djs-rs examples.
 - **Alternatives:** `djs-rs` + `tokio` only.
 
+### D-060 — Fully local, no accounts
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** The app works 100% locally, and nobody needs an account to use it: there
+  is no RustBot Creator account, sign-in, telemetry or cloud backend. The internet is used
+  only where a feature cannot work without it: installing packages (the toolchain, crates,
+  system packages), hosting and deploys, external integrations (GitHub, Cloudflare and
+  later ones), and running the bot itself, which talks to Discord. Each of these is
+  optional and started by the user. Templates, node types, themes, translations and docs
+  ship with the app.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

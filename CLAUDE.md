@@ -55,6 +55,9 @@ rustbot-secrets    bot/GitHub/Cloudflare tokens in the OS keyring (D-020)
 ```
 
 Invariants that span crates:
+- Fully local, no accounts (D-060). Network access only for installing packages,
+  hosting/deploys, external integrations and the running bot. Never add sign-in,
+  telemetry, a cloud backend or downloads of anything the app could ship itself.
 - The graph and forms are the source of truth. `generated/` is never edited by hand, and
   the user's own code lives in `src/` and is called through a "custom code" node (D-015).
 - Built-in nodes and panels are registered the same way plugins will register theirs
