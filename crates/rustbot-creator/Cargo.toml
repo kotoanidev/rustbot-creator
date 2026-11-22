@@ -15,5 +15,10 @@ rustbot-core = { path = "../rustbot-core" }
 serde_json.workspace = true
 unic-langid.workspace = true
 
+[dev-dependencies]
+# Headless UI tests (D-070).
+gpui-kit = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
+
 [lints]
 workspace = true

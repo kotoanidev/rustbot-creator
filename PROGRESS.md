@@ -65,9 +65,10 @@ Step 8 (app shell, D-066–D-068, C-008, C-009) is in progress.
   Backspace, add nodes from a searchable list (right-click, "+", or a wire dropped on
   empty canvas, D-067), pan, and undo and redo with Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
   Changes are autosaved (D-068). Seen on screen; dragging and autosave were tried in the
-  real window. Wiring, the list, Delete and undo are covered only by unit tests of
-  `canvas.rs`, because headless UI tests need gpui-kit's `test-support` feature, which is
-  not approved yet.
+  real window. Headless UI tests (D-070) drag a node, drop a wire to add a wired node,
+  delete and then undo and redo, and search the right-click list. They found that a
+  right-click took the focus back from the list's search, so the list now opens on
+  release.
 
 ## Exact next step
 8c: the Properties form for the selected node, with one input per field labelled from
@@ -75,7 +76,7 @@ Fluent (`prop-…`), written through `AppState::edit`. When nothing is selected,
 the bot settings: the token (masked, saved with `rustbot_secrets`) and the test server
 (`rustbot_runner::set_test_server`). Then 8d, Run/Stop: the trust prompt (D-064), consent
 for gcc and the toolchain, codegen → build → run, logs in the panel, and the bot's state
-in the status bar.
+in the status bar, with Run/Stop next to it (D-071).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

@@ -119,7 +119,7 @@ impl Workspace {
 }
 
 /// A project named after its folder, with a `/ping` command to start from.
-fn new_project(root: &Path) -> Result<Project, rustbot_core::Error> {
+pub(crate) fn new_project(root: &Path) -> Result<Project, rustbot_core::Error> {
     let name = root
         .file_name()
         .map_or_else(|| "bot".to_owned(), |n| n.to_string_lossy().into_owned());

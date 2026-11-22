@@ -481,7 +481,7 @@ impl Editor {
             .shadow_md()
             // Clicks in the list are not clicks on the canvas.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .on_mouse_up(MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .child(Input::new(&picker.query))
             .children(rows)
             .children(empty.then(|| {
@@ -558,9 +558,10 @@ impl Render for Editor {
             .overflow_hidden()
             .bg(theme.muted)
             .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
-            .on_mouse_down(
+            // On release: a press moves the focus to the canvas, away from the list's search.
+            .on_mouse_up(
                 MouseButton::Right,
-                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                cx.listener(|this, event: &MouseUpEvent, window, cx| {
                     let at = this.graph_point(event.position);
                     this.open_picker(at, None, window, cx);
                 }),
@@ -577,5 +578,124 @@ impl Render for Editor {
             .child(add)
             .children(picker)
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
+    use gpui_kit::{
+        AppContext as _, Entity, MouseButton, TestAppContext, VisualTestContext, point, px,
+    };
+    use rustbot_core::{NodeId, PinRef};
+
+    use super::Editor;
+    use crate::state::AppState;
+
+    /// The editor alone in a window, on a new project's `/ping` graph: the slash command
+    /// `n1` at [80, 120] wired to the reply `n2` at [380, 120].
+    fn editor(
+        cx: &mut TestAppContext,
+    ) -> (Entity<AppState>, &mut VisualTestContext, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (_, cx) = cx.add_window_view(|_, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            state = Some(app.clone());
+            Editor::new(app, cx)
+        });
+        cx.update(gpui_kit::test::TestWindowExt::render_frame);
+        (state.unwrap(), cx, dir)
+    }
+
+    fn id(id: &str) -> NodeId {
+        NodeId(id.to_owned())
+    }
+
+    #[gpui_kit::test]
+    fn a_node_is_dragged(cx: &mut TestAppContext) {
+        let (state, cx, _dir) = editor(cx);
+        cx.update(|window, cx| {
+            window.drag(point(px(150.), px(135.)), point(px(250.), px(235.)), cx);
+        });
+        cx.read(|cx| {
+            let state = state.read(cx);
+            assert_eq!(
+                state.open_file().unwrap().layout.nodes[&id("n1")],
+                [180., 220.]
+            );
+            assert_eq!(state.selected_node, Some(id("n1")));
+        });
+    }
+
+    /// A wire pulled from the reply's `then` and dropped on empty canvas lists the nodes
+    /// that fit; Enter adds the first and wires it.
+    #[gpui_kit::test]
+    fn a_dropped_wire_adds_a_wired_node(cx: &mut TestAppContext) {
+        let (state, cx, _dir) = editor(cx);
+        let then = point(px(380. + crate::canvas::WIDTH), px(120. + 30. + 12.));
+        cx.update(|window, cx| window.drag(then, point(px(700.), px(400.)), cx));
+        cx.update(|window, cx| window.press("enter", cx));
+        cx.read(|cx| {
+            let file = state.read(cx).open_file().unwrap();
+            assert_eq!(file.graph.nodes[&id("n3")].kind, "core.reply");
+            let from = PinRef {
+                node: id("n2"),
+                pin: "then".to_owned(),
+            };
+            let to = PinRef {
+                node: id("n3"),
+                pin: "run".to_owned(),
+            };
+            assert!(
+                file.graph
+                    .edges
+                    .iter()
+                    .any(|edge| edge.from == from && edge.to == to)
+            );
+        });
+    }
+
+    #[gpui_kit::test]
+    fn delete_then_undo_and_redo(cx: &mut TestAppContext) {
+        let (state, cx, _dir) = editor(cx);
+        let reply = point(px(450.), px(135.));
+        cx.update(|window, cx| {
+            window.pointer_down(reply, MouseButton::Left, cx);
+            window.pointer_up(reply, MouseButton::Left, cx);
+            window.press("delete", cx);
+        });
+        let count = |cx: &mut VisualTestContext| {
+            cx.read(|cx| {
+                let file = state.read(cx).open_file().unwrap().clone();
+                (file.graph.nodes.len(), file.graph.edges.len())
+            })
+        };
+        assert_eq!(count(cx), (1, 0));
+        cx.update(|window, cx| window.press("ctrl-z", cx));
+        assert_eq!(count(cx), (2, 1));
+        cx.update(|window, cx| window.press("ctrl-shift-z", cx));
+        assert_eq!(count(cx), (1, 0));
+    }
+
+    /// A right-click opens the full list; typing filters it.
+    #[gpui_kit::test]
+    fn a_right_click_lists_and_searches_nodes(cx: &mut TestAppContext) {
+        let (state, cx, _dir) = editor(cx);
+        let at = point(px(600.), px(450.));
+        cx.update(|window, cx| {
+            window.pointer_down(at, MouseButton::Right, cx);
+            window.pointer_up(at, MouseButton::Right, cx);
+            window.render_frame(cx);
+        });
+        cx.update(|window, cx| window.input("slash", cx));
+        cx.update(|window, cx| window.press("enter", cx));
+        cx.read(|cx| {
+            let file = state.read(cx).open_file().unwrap();
+            assert_eq!(file.graph.nodes[&id("n3")].kind, "core.slash_command");
+            assert_eq!(file.graph.edges.len(), 1);
+        });
     }
 }

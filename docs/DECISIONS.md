@@ -647,6 +647,20 @@ alternatives that were considered, and why.
 - **Alternatives:** also bump existing projects when they are opened; stay on alpha.1
   until the Workers phase.
 
+### D-070 — Headless UI tests with gpui-kit's `test-support`
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** `rustbot-creator` enables gpui-kit's `test-support` feature in its
+  dev-dependencies only. Tests render the real views in a hidden window and simulate
+  clicks and keys, so the canvas, the forms and Run are checked in CI. The extra crates it
+  pulls never reach the app.
+- **Alternatives:** unit tests of the logic only, with manual checks in the window.
+
+### D-071 — Run/Stop in the status bar
+- **Date:** 2026-11-22 · **Decided by:** Owner
+- **Decision:** "▶ Run" / "■ Stop" sits on the left of the status bar, next to the bot's
+  state. It is always visible and takes no room.
+- **Alternatives:** a toolbar above the editor; a button in a custom title bar.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -753,6 +767,14 @@ alternatives that were considered, and why.
   the logs and is retried on the next change. Node, pin and field names come from Fluent
   (`node-…`, `pin-…`, `prop-…`), and a plugin's node without them shows its id. The
   geometry and edits live in `src/canvas.rs` and are unit-tested without the UI.
+
+### C-010 — `wgpu` 30.0.1 in the lockfile
+- **Date:** 2026-11-22
+- **Choice:** With gpui-kit's `test-support` (D-070), cargo also resolves the optional
+  `gpui-fast` backend, which pins `wgpu = "=30.0.1"`, while gpui's own backend had locked
+  30.0.2. `cargo update -p wgpu --precise 30.0.1` satisfies both. `gpui-fast` is in the
+  lockfile but is never built (`cargo tree -e normal,dev` does not list it). Undo this
+  when gpui-kit's two backends agree on wgpu again.
 ---
 
 ## Open questions (to ask the owner when relevant)
