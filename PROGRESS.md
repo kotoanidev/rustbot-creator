@@ -83,16 +83,19 @@ Step 8 (app shell, D-066–D-068, C-008, C-009) is in progress.
 
 Step 8 (app shell) is ✅ done.
 
+Step 9 (budgets) is in progress; see `docs/PERFORMANCE.md`. Startup (warm ~0.2 s) and
+memory (108–130 MB) are within budget. The 500-node canvas now draws only what is on
+screen, with one path per wire colour and no shadows: 60 FPS at the median, but p99 is
+26–33 ms against 16.6 ms, because of rare CPU spikes whose cause is open. A cold first
+start takes 1.09 s.
+
 ## Exact next step
-Phase 2, step 9: the budgets (D-038) and a live test with the owner's test bot.
-- Live test (the owner does it, because only they may enter the token): open or create a
-  project, click empty canvas, paste the bot token and the test server id under
-  Properties, press Run, accept the trust question if asked and the Rust install, then
-  use `/ping` on the test server and expect "Pong, <name>!". Then Stop.
-- Measure: startup to an interactive window (≤ 500 ms), memory with one project
-  (≤ 200 MB), frame time p99 with a 500-node graph (≤ 16.6 ms), and the rebuild after a
-  small change in the app (≤ 10 s; the toolchain test measured 1.1 s). Write the results
-  to `docs/PERFORMANCE.md`.
+1. **Live test with the owner** (the owner does it, because only they may enter the
+   token): open or create a project, click empty canvas, paste the bot token and the test
+   server id under Properties, press Run, accept the questions (trust, Rust install), use
+   `/ping` on the test server and expect "Pong, <name>!", then Stop.
+2. Find the frame spikes on the 500-node graph (p99). The `RUSTBOT_MEASURE=frames` mode
+   measures them. Then mark Phase 2 done in `ROADMAP.md`.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

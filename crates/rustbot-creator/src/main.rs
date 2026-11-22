@@ -2,6 +2,7 @@
 
 mod canvas;
 mod i18n;
+mod measure;
 mod panels;
 mod run;
 mod state;
@@ -11,6 +12,7 @@ mod workspace;
 use gpui_kit::{AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 
 fn main() {
+    measure::start();
     let path = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);

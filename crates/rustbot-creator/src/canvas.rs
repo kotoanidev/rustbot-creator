@@ -118,6 +118,14 @@ pub(crate) fn hit(file: &GraphFile, registry: &Registry, point: [f32; 2]) -> Hit
     Hit::Empty
 }
 
+/// Whether the box from `min` to `max` touches `view`, `[left, top, right, bottom]`. Before
+/// the canvas has a size there is no view, and everything is drawn.
+pub(crate) fn in_view(view: Option<[f32; 4]>, min: [f32; 2], max: [f32; 2]) -> bool {
+    view.is_none_or(|[left, top, right, bottom]| {
+        min[0] <= right && max[0] >= left && min[1] <= bottom && max[1] >= top
+    })
+}
+
 /// Whether a wire can join `a` and `b`: one output and one input of the same kind.
 pub(crate) fn fits(a: &Pin, b: &Pin) -> bool {
     a.direction != b.direction && a.kind == b.kind
@@ -250,6 +258,15 @@ mod tests {
         remove_node(&mut file, &NodeId("n1".to_owned()));
         assert_eq!(file.graph.edges, Vec::new());
         assert!(!file.layout.nodes.contains_key(&NodeId("n1".to_owned())));
+    }
+
+    #[test]
+    fn only_what_touches_the_view_is_drawn() {
+        let view = Some([0., 0., 100., 100.]);
+        assert!(in_view(view, [90., 90.], [200., 200.]));
+        assert!(!in_view(view, [101., 0.], [200., 50.]));
+        assert!(!in_view(view, [0., -50.], [50., -1.]));
+        assert!(in_view(None, [5000., 5000.], [5001., 5001.]));
     }
 
     #[test]

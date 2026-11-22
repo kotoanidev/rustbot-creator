@@ -29,6 +29,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<'_, Self>,
     ) -> Self {
+        crate::measure::first_frame(window);
         let mut this = Self {
             open: None,
             error: None,

@@ -31,6 +31,8 @@ cargo test -p rustbot-codegen --release -- --ignored budget --nocapture   # D-03
 INSTA_UPDATE=always cargo test -p rustbot-codegen    # accept changed snapshots of generated code; review the diff
 cargo test -p rustbot-toolchain -- --ignored install --nocapture   # real rustup + Rust install and bot build (~300 MB)
 cargo test -p rustbot-secrets -- --ignored           # round trip through the real system keyring
+RUSTBOT_MEASURE=1 target/release/rustbot-creator <project>       # prints startup to the first frame (D-038)
+RUSTBOT_MEASURE=frames target/release/rustbot-creator <project>  # prints the editor's frame intervals
 ```
 
 Measurements go to `docs/PERFORMANCE.md`.

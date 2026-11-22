@@ -11,10 +11,10 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::list::ListItem;
 use gpui_kit::component::v_flex;
 use gpui_kit::{
-    AppContext as _, Context, Entity, FocusHandle, Hsla, InteractiveElement as _, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
-    PathBuilder, Pixels, Point, Render, ScrollEvent, Styled as _, Subscription, Window, canvas,
-    div, point, px,
+    AppContext as _, Bounds, Context, Entity, FocusHandle, Hsla, InteractiveElement as _,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement as _, PathBuilder, Pixels, Point, Render, ScrollEvent, Styled as _, Subscription,
+    Window, canvas, div, point, px,
 };
 use rustbot_core::registry::{Category, DataType, Direction, Pin, PinKind};
 use rustbot_core::{GraphFile, NodeId, PinRef, Registry};
@@ -28,10 +28,11 @@ pub(crate) struct Editor {
     state: Entity<AppState>,
     /// How far the view is scrolled: graph `[0, 0]` is drawn at the canvas origin + `pan`.
     pan: Point<Pixels>,
-    /// The canvas's top-left corner in the window, from the last frame.
-    origin: Rc<Cell<Point<Pixels>>>,
+    /// Where the canvas is in the window, from the last frame.
+    view: Rc<Cell<Bounds<Pixels>>>,
     drag: Drag,
     picker: Option<Picker>,
+    frames: crate::measure::Frames,
 }
 
 super::dock_panel!(Editor, "Editor", "panel-editor");
@@ -71,16 +72,35 @@ impl Editor {
             focus: cx.focus_handle(),
             state,
             pan: Point::default(),
-            origin: Rc::default(),
+            view: Rc::default(),
             drag: Drag::None,
             picker: None,
+            frames: crate::measure::Frames::default(),
         }
     }
 
     /// A window position in graph coordinates.
     fn graph_point(&self, position: Point<Pixels>) -> [f32; 2] {
-        let at = position - self.origin.get() - self.pan;
+        let at = position - self.view.get().origin - self.pan;
         [at.x.into(), at.y.into()]
+    }
+
+    /// The part of the graph on screen, with a margin, as `[left, top, right, bottom]`.
+    /// Only what touches it is drawn, so a large graph costs what is visible.
+    fn visible(&self) -> Option<[f32; 4]> {
+        let size = self.view.get().size;
+        if size.width <= px(0.) || size.height <= px(0.) {
+            return None;
+        }
+        let margin = 40.;
+        let left = -f32::from(self.pan.x) - margin;
+        let top = -f32::from(self.pan.y) - margin;
+        Some([
+            left,
+            top,
+            left + f32::from(size.width) + 2. * margin,
+            top + f32::from(size.height) + 2. * margin,
+        ])
     }
 
     fn hit(&self, at: [f32; 2], cx: &Context<'_, Self>) -> Option<(Hit, [f32; 2])> {
@@ -377,7 +397,6 @@ impl Editor {
             .border_1()
             .border_color(if selected { theme.ring } else { theme.border })
             .bg(theme.popover)
-            .shadow_sm()
             .child(
                 div()
                     .h(px(canvas::HEADER))
@@ -426,18 +445,37 @@ impl Editor {
             };
             wires.push((a, b, cx.theme().ring));
         }
-        let origin = self.origin.clone();
+        let visible = self.visible();
+        wires.retain(|(a, b, _)| {
+            let bend = ((b[0] - a[0]).abs() * 0.5).max(40.);
+            let min = [a[0].min(b[0]) - bend, a[1].min(b[1])];
+            let max = [a[0].max(b[0]) + bend, a[1].max(b[1])];
+            canvas::in_view(visible, min, max)
+        });
+        let view = self.view.clone();
         let pan = self.pan;
         canvas(
-            move |bounds, _, _| origin.set(bounds.origin),
+            move |bounds, _, _| view.set(bounds),
             move |bounds, (), window, _| {
+                // One path per colour: the GPU rasterizes each path on its own, so dozens of
+                // single-wire paths cost more than the rest of the frame.
+                let mut paths: Vec<(Hsla, PathBuilder)> = Vec::new();
                 for (a, b, color) in wires {
                     let a = bounds.origin + pan + point(px(a[0]), px(a[1]));
                     let b = bounds.origin + pan + point(px(b[0]), px(b[1]));
                     let bend = ((b.x - a.x).abs() * 0.5).max(px(40.));
-                    let mut path = PathBuilder::stroke(px(2.));
+                    let ix = paths
+                        .iter()
+                        .position(|(c, _)| *c == color)
+                        .unwrap_or_else(|| {
+                            paths.push((color, PathBuilder::stroke(px(2.))));
+                            paths.len() - 1
+                        });
+                    let path = &mut paths[ix].1;
                     path.move_to(a);
                     path.cubic_bezier_to(b, point(a.x + bend, a.y), point(b.x - bend, b.y));
+                }
+                for (color, path) in paths {
                     if let Ok(path) = path.build() {
                         window.paint_path(path, color);
                     }
@@ -513,14 +551,26 @@ fn pin_color(kind: PinKind, cx: &gpui_kit::App) -> Hsla {
 }
 
 impl Render for Editor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        self.frames.tick(window);
         let state = self.state.read(cx);
         let Some(file) = state.open_file() else {
             return super::placeholder(t("editor-empty"), cx).into_any_element();
         };
         let wire_layer = self.render_wires(file, &state.registry, cx);
 
-        let ids: Vec<NodeId> = file.graph.nodes.keys().cloned().collect();
+        let visible = self.visible();
+        let ids: Vec<NodeId> = file
+            .graph
+            .nodes
+            .iter()
+            .filter(|(id, node)| {
+                let [x, y] = canvas::position(file, id);
+                let [w, h] = canvas::size(state.registry.get(&node.kind));
+                canvas::in_view(visible, [x, y], [x + w, y + h])
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
         let nodes: Vec<_> = ids
             .iter()
             .map(|id| {
