@@ -59,6 +59,7 @@ fn ping_snapshot() {
         names,
         [
             "generated/Cargo.toml",
+            "generated/rust-toolchain.toml",
             "generated/src/commands/mod.rs",
             "generated/src/commands/ping.rs",
             "generated/src/main.rs",
@@ -276,4 +277,43 @@ fn budget_500_nodes() {
     let each = started.elapsed() / runs;
     println!("generate, 501 nodes: {each:?} per run");
     assert!(each.as_millis() <= 100, "{each:?}");
+}
+
+/// Files a cloned project hides in `generated/` would run at build time; they are removed.
+#[test]
+fn write_owns_all_of_generated() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = ping_project(dir.path());
+    for planted in [
+        "generated/build.rs",
+        "generated/.cargo/config.toml",
+        "generated/examples/x.rs",
+    ] {
+        p.write_file(Path::new(planted), "planted").unwrap();
+    }
+    p.write_file(Path::new("generated/Cargo.lock"), "lock")
+        .unwrap();
+    p.write_file(Path::new("generated/target/debug/x"), "build output")
+        .unwrap();
+
+    write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
+    let left: Vec<String> = p
+        .files_under(Path::new("generated"), &[])
+        .unwrap()
+        .iter()
+        .map(|f| f.display().to_string())
+        .collect();
+    assert_eq!(
+        left,
+        [
+            "generated/Cargo.lock",
+            "generated/Cargo.toml",
+            "generated/rust-toolchain.toml",
+            "generated/src/commands/mod.rs",
+            "generated/src/commands/ping.rs",
+            "generated/src/main.rs",
+            "generated/src/settings.rs",
+            "generated/target/debug/x",
+        ]
+    );
 }

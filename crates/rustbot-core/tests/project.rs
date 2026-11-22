@@ -237,7 +237,7 @@ fn other_files_stay_inside_the_project() {
         .write_file(Path::new("generated/Cargo.toml"), "")
         .unwrap();
     assert_eq!(
-        project.files_under(Path::new("generated")).unwrap(),
+        project.files_under(Path::new("generated"), &[]).unwrap(),
         vec![
             Path::new("generated/Cargo.toml").to_owned(),
             Path::new("generated/src/main.rs").to_owned(),
@@ -250,7 +250,7 @@ fn other_files_stay_inside_the_project() {
         .remove_file(Path::new("generated/src/main.rs"))
         .unwrap();
     assert_eq!(
-        project.files_under(Path::new("nothing")).unwrap(),
+        project.files_under(Path::new("nothing"), &[]).unwrap(),
         Vec::<std::path::PathBuf>::new()
     );
 

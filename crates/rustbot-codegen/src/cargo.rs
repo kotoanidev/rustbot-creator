@@ -12,6 +12,8 @@ struct CargoToml<'a> {
     dependencies: Dependencies<'a>,
 }
 
+// The bools are Cargo.toml keys, not state.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Serialize)]
 struct Package<'a> {
     name: &'a str,
@@ -20,6 +22,12 @@ struct Package<'a> {
     publish: bool,
     #[serde(skip_serializing_if = "str::is_empty")]
     license: &'a str,
+    // Nothing runs at build time and nothing is picked up by file name: the bot is exactly
+    // the generated files, even if someone drops a `build.rs` or `examples/` next to them.
+    build: bool,
+    autoexamples: bool,
+    autotests: bool,
+    autobenches: bool,
 }
 
 #[derive(Serialize)]
@@ -51,6 +59,10 @@ pub(crate) fn manifest(manifest: &Manifest) -> String {
             edition: "2024",
             publish: false,
             license: &manifest.bot.license,
+            build: false,
+            autoexamples: false,
+            autotests: false,
+            autobenches: false,
         },
         workspace: Empty {},
         dependencies: Dependencies {

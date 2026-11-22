@@ -240,11 +240,13 @@ impl Project {
     }
 
     /// Every file under the folder `relative`, recursively and sorted, as paths relative to
-    /// the project folder. A missing folder has none.
+    /// the project folder, without descending into the folders in `skip` (e.g. a `target/`).
+    /// A missing folder has none.
     ///
     /// # Errors
     /// [`Error::InvalidPath`], [`Error::Symlink`] or an I/O error.
-    pub fn files_under(&self, relative: &Path) -> Result<Vec<PathBuf>, Error> {
+    pub fn files_under(&self, relative: &Path, skip: &[&Path]) -> Result<Vec<PathBuf>, Error> {
+        let skip: Vec<PathBuf> = skip.iter().map(|dir| self.root.join(dir)).collect();
         let mut files = Vec::new();
         let mut dirs = vec![self.checked(relative)?];
         while let Some(dir) = dirs.pop() {
@@ -257,7 +259,9 @@ impl Project {
                 let path = entry.map_err(|source| io_error(&dir, source))?.path();
                 reject_symlink(&path)?;
                 if path.is_dir() {
-                    dirs.push(path);
+                    if !skip.contains(&path) {
+                        dirs.push(path);
+                    }
                 } else if let Ok(relative) = path.strip_prefix(&self.root) {
                     files.push(relative.to_owned());
                 }
