@@ -1546,6 +1546,32 @@ alternatives that were considered, and why.
   - **Checks:** a test makes every template in the current language. Its only problems
     must be empty channel and role fields, and with those filled in it must generate.
     `template_bots_compile` builds each bot by hand.
+
+### C-029 — How the rest of the catalog works
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Created things (D-120):** after "then", `created_channel`, `created_thread` and
+    `created_role` are variables with `id`, `name` and `mention`. They are known on
+    "then" only, like a form's fields, and a second node of the same kind replaces the
+    first for the rest of the run.
+  - **Private channels (D-121):** @everyone is denied "View channel". The chosen user,
+    the chosen role and the bot are allowed to view, send and read the history. The bot
+    finds its own ID with one "Get Current User" request.
+  - **Threads:** public, from the last message the bot sent, the event's message, or no
+    message in a channel. Members may start threads by default, so no permission is
+    checked.
+  - **Permissions:** the channel nodes need "Manage channels" and the role nodes "Manage
+    roles", with the usual warning when nothing checks them (D-085).
+  - **Ranking (D-122):** a "Data" node. A variable per user ranks every user, and one per
+    user on each server ranks this server. An empty count lists 10, and nobody ranked
+    gives "—". Its mentions notify nobody.
+  - **"Levels" template:** 1 XP per message from members, not bots, kept per user on
+    each server. Since "New message" asks for the Message Content intent, the bot needs
+    it switched on in the portal (D-095).
+  - **A fix found on the way:** an action whose "error" is wired ran in an `async` block
+    that borrowed the "last sent message" cell. That made the handler not `Send`, so a
+    bot pinning "the last one" with "error" wired did not build. The block now reads a
+    copy.
 ---
 
 ## Open questions (to ask the owner when relevant)

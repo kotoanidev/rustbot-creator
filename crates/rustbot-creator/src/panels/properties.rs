@@ -1873,6 +1873,9 @@ fn variable_label(name: &str) -> String {
         "user" => t("var-user"),
         "channel" => t("var-channel"),
         "server" => t("var-server"),
+        "created_channel" => t("var-created-channel"),
+        "created_thread" => t("var-created-thread"),
+        "created_role" => t("var-created-role"),
         _ => match name.strip_prefix("option.") {
             Some(option) => t_with("var-option", &[("name", option)]),
             None => name.to_owned(),
@@ -1887,6 +1890,8 @@ fn choice_label(choices: rustbot_core::registry::Choices, value: &str) -> String
         rustbot_core::registry::Choices::Comparison => "comparison",
         rustbot_core::registry::Choices::DeleteMessages => "delete_messages",
         rustbot_core::registry::Choices::MessageTarget => "message_target",
+        rustbot_core::registry::Choices::ChannelVisibility => "channel_visibility",
+        rustbot_core::registry::Choices::ThreadStart => "thread_start",
     };
     t_or(&format!("choice-{list}-{value}"), value)
 }

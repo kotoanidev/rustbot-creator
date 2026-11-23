@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "nodes": {
+    "n1": {
+      "type": "core.slash_command",
+      "props": {
+        "name": "level",
+        "description": "$tpl-level-description",
+        "options": []
+      }
+    },
+    "n2": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-level-reply"
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "n1.then",
+      "to": "n2.run"
+    }
+  ]
+}

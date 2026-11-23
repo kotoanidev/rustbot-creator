@@ -1162,3 +1162,117 @@ fn forms_come_first_and_their_fields_follow_them() {
         ]
     );
 }
+
+/// What a node creates is a variable after its "then" only (D-120), a ranking ranks a
+/// number kept per user (D-122), and a thread started in a channel needs the channel.
+#[test]
+#[allow(clippy::too_many_lines)] // the graphs, as data
+fn created_things_and_rankings_are_variables_after_their_node() {
+    let registry = with_memory();
+    let check = |nodes: serde_json::Value, edges: serde_json::Value| -> Vec<ProblemKind> {
+        let graph: Graph = serde_json::from_value(serde_json::json!({
+            "schema": 1, "nodes": nodes, "edges": edges
+        }))
+        .unwrap();
+        registry
+            .validate(&graph)
+            .into_iter()
+            .map(|p| p.kind)
+            .collect()
+    };
+    let wires = |pins: &[(&str, &str)]| {
+        serde_json::Value::Array(
+            pins.iter()
+                .map(|(from, to)| serde_json::json!({ "from": from, "to": to }))
+                .collect(),
+        )
+    };
+    let command = serde_json::json!({ "type": "core.slash_command", "props": {
+        "name": "ticket", "description": "Opens a ticket" } });
+    let reply = |content: &str| serde_json::json!({ "type": "core.reply", "props": { "content": content } });
+    let channel = serde_json::json!({ "type": "core.create_channel", "props": {
+        "name": "ticket-{user.username}", "visibility": "private", "user": "user" } });
+    let send = serde_json::json!({ "type": "core.send_message", "props": {
+        "channel": "created_channel", "content": "{user.mention}: {created_channel.name}" } });
+    assert_eq!(
+        check(
+            serde_json::json!({ "n1": command, "n2": channel, "n3": send,
+                "n4": reply("{created_channel.mention}") }),
+            wires(&[
+                ("n1.then", "n2.run"),
+                ("n2.then", "n3.run"),
+                ("n3.then", "n4.run")
+            ])
+        ),
+        Vec::new()
+    );
+    // Nothing was created when Discord refused.
+    assert_eq!(
+        check(
+            serde_json::json!({ "n1": command, "n2": channel,
+                "n3": reply("{created_channel.mention}") }),
+            wires(&[("n1.then", "n2.run"), ("n2.error", "n3.run")])
+        ),
+        vec![ProblemKind::UnknownVariable {
+            prop: "content".to_owned(),
+            path: "created_channel.mention".to_owned()
+        }]
+    );
+    let role = serde_json::json!({ "type": "core.create_role", "props": {
+        "name": "VIP", "color": "#FFAA00" } });
+    let give = serde_json::json!({ "type": "core.add_role", "props": {
+        "user": "user", "role": "created_role" } });
+    assert_eq!(
+        check(
+            serde_json::json!({ "n1": command, "n2": role, "n3": give,
+                "n4": reply("{created_role.mention}") }),
+            wires(&[
+                ("n1.then", "n2.run"),
+                ("n2.then", "n3.run"),
+                ("n3.then", "n4.run")
+            ])
+        ),
+        Vec::new()
+    );
+    let thread = |start: &str, channel: &str| {
+        serde_json::json!({ "type": "core.create_thread", "props": {
+            "name": "Talk", "message": start, "channel": channel } })
+    };
+    let threaded = |thread: serde_json::Value| {
+        check(
+            serde_json::json!({ "n1": command, "n2": thread,
+                "n3": reply("{created_thread.mention}") }),
+            wires(&[("n1.then", "n2.run"), ("n2.then", "n3.run")]),
+        )
+    };
+    assert_eq!(threaded(thread("channel", "channel")), Vec::new());
+    assert_eq!(
+        threaded(thread("channel", "")),
+        vec![ProblemKind::MissingProp("channel".to_owned())]
+    );
+    assert_eq!(
+        threaded(thread("event", "")),
+        vec![ProblemKind::NoEventMessage]
+    );
+    let ranking = |variable: &str| {
+        serde_json::json!({ "type": "core.ranking", "props": {
+            "variable": variable, "count": "5" } })
+    };
+    let ranked = |variable: &str| {
+        check(
+            serde_json::json!({ "n1": command, "n2": ranking(variable),
+                "n3": reply("{ranking}") }),
+            wires(&[("n1.then", "n2.run"), ("n2.then", "n3.run")]),
+        )
+    };
+    assert_eq!(ranked("warnings"), Vec::new());
+    assert_eq!(ranked("log"), vec![ProblemKind::RankingNotPerUser]);
+    // Per user on a server: "Bot is ready" knows no server, but no one user is needed.
+    assert_eq!(
+        check(
+            serde_json::json!({ "n1": { "type": "core.ready" }, "n2": ranking("warnings") }),
+            wires(&[("n1.then", "n2.run")])
+        ),
+        vec![ProblemKind::MemoryNeedsServer]
+    );
+}

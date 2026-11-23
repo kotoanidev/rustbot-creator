@@ -499,6 +499,12 @@ impl<'a> Body<'a> {
             }
             "core.ban" | "core.kick" | "core.timeout" | "core.add_role" | "core.remove_role"
             | "core.set_nickname" => self.moderate(id)?,
+            "core.create_channel" | "core.create_thread" | "core.create_role" => self.create(id)?,
+            "core.delete_channel" | "core.delete_role" | "core.add_to_thread" => {
+                let action = self.manage(id);
+                self.fallible(id, &action)?
+            }
+            "core.ranking" => (self.ranking(id)?, false),
             _ => {
                 return Err(Error::NoCodegen {
                     graph: self.file.name.clone(),
@@ -721,17 +727,7 @@ impl<'a> Body<'a> {
     /// last one sent (D-102, D-103).
     fn message_action(&mut self, id: &NodeId) -> TokenStream {
         let graph = &self.file.graph;
-        let target = if text(graph, id, "message") == "event" {
-            self.event
-                .expect("validated: the event's message")
-                .message_ids()
-        } else {
-            quote!(
-                last_sent
-                    .get()
-                    .ok_or("no message was sent before this node")?
-            )
-        };
+        let target = self.message_target(text(graph, id, "message"));
         let mut prepare = TokenStream::new();
         let call = match graph.nodes[id].kind.as_str() {
             "core.react" => {
@@ -761,6 +757,243 @@ impl<'a> Body<'a> {
             #prepare
             #call.await?;
         }
+    }
+
+    /// The channel and ID of the event's message or of the last one sent (D-103).
+    fn message_target(&self, which: &str) -> TokenStream {
+        if which == "event" {
+            self.event
+                .expect("validated: the event's message")
+                .message_ids()
+        } else {
+            quote!(
+                last_sent
+                    .get()
+                    .ok_or("no message was sent before this node")?
+            )
+        }
+    }
+
+    /// "Create channel", "Create thread" or "Create role" (D-119), which may fail like an
+    /// action (D-082). What it made is `created_…` after "then" (D-120).
+    fn create(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
+        let graph = &self.file.graph;
+        let name = self.template(text(graph, id, "name"), false);
+        let reason = self.reason(text(graph, id, "reason"));
+        let (var, made) = match graph.nodes[id].kind.as_str() {
+            "core.create_channel" => ("created_channel", self.create_channel(id, &name, &reason)),
+            "core.create_thread" => {
+                let made = match text(graph, id, "message") {
+                    "channel" => {
+                        let channel = self.channel(text(graph, id, "channel"));
+                        quote! {
+                            ctx.threads(#channel)
+                                .create(
+                                    &djs_rs::model::rest::StartThreadWithoutMessage::new(
+                                        #name,
+                                        djs_rs::model::channel::ChannelType::PublicThread,
+                                    ),
+                                    #reason,
+                                )
+                                .await?
+                        }
+                    }
+                    which => {
+                        let target = self.message_target(which);
+                        quote! {{
+                            let (channel, message) = #target;
+                            ctx.messages(channel)
+                                .start_thread(
+                                    message,
+                                    &djs_rs::model::rest::StartThreadFromMessage::new(#name),
+                                    #reason,
+                                )
+                                .await?
+                        }}
+                    }
+                };
+                ("created_thread", made)
+            }
+            "core.create_role" => {
+                let guild = self.guild_id();
+                let color = text(graph, id, "color").trim();
+                let colors = |color: TokenStream| {
+                    quote! {
+                        body.colors = Some(djs_rs::model::guild::RoleColors {
+                            primary_color: #color,
+                            secondary_color: None,
+                            tertiary_color: None,
+                        });
+                    }
+                };
+                let color = if let Some(hex) = color.strip_prefix('#').filter(|_| is_literal(color))
+                {
+                    let value = u32::from_str_radix(hex, 16).expect("validated colour");
+                    colors(quote!(#value))
+                } else if color.is_empty() {
+                    TokenStream::new()
+                } else {
+                    let value = self.template(color, false);
+                    let set = colors(quote!(color));
+                    quote! {
+                        if let Ok(color) = u32::from_str_radix(#value.trim().trim_start_matches('#'), 16)
+                            && color <= 0xFF_FFFF
+                        {
+                            #set
+                        }
+                    }
+                };
+                let made = quote! {{
+                    let guild = #guild;
+                    let mut body = djs_rs::model::rest::CreateGuildRole::default();
+                    body.name = Some(#name.into());
+                    #color
+                    ctx.roles(guild).create(&body, #reason).await?
+                }};
+                ("created_role", made)
+            }
+            other => unreachable!("{other} creates nothing"),
+        };
+        let then = self.after(id, "then")?;
+        let error = self.after(id, "error")?;
+        let bind = if uses(&then, var) {
+            let var = format_ident!("{var}");
+            quote!(#var)
+        } else {
+            quote!(_)
+        };
+        if error.is_empty() {
+            // A failure ends the handler, and djs-rs logs it (D-082).
+            return Ok((quote!(let #bind = #made; #then), false));
+        }
+        let log = self.log();
+        let attempt = attempt(&quote!(Ok(#made)));
+        Ok((
+            quote! {
+                #attempt
+                match result {
+                    Ok(#bind) => { #then }
+                    Err(error) => { #log #error }
+                }
+            },
+            false,
+        ))
+    }
+
+    /// The text channel of "Create channel" (D-119), private to a user, a role and the bot
+    /// if chosen (D-121).
+    fn create_channel(
+        &mut self,
+        id: &NodeId,
+        name: &TokenStream,
+        reason: &TokenStream,
+    ) -> TokenStream {
+        let graph = &self.file.graph;
+        let guild = self.guild_id();
+        let mut steps = Vec::new();
+        let category = text(graph, id, "category");
+        if !category.is_empty() {
+            let category = self.channel(category);
+            steps.push(quote!(body.parent_id = Some(#category);));
+        }
+        if text(graph, id, "visibility") == "private" {
+            let permissions = quote!(djs_rs::model::permissions::Permissions);
+            let see = quote! {
+                #permissions::VIEW_CHANNEL
+                    | #permissions::SEND_MESSAGES
+                    | #permissions::READ_MESSAGE_HISTORY
+            };
+            let overwrite = quote!(djs_rs::model::channel::Overwrite);
+            let mut overwrites = vec![
+                // The @everyone role has the server's ID.
+                quote! {
+                    #overwrite::role(
+                        djs_rs::model::id::RoleId::new(guild.get()),
+                        #permissions::empty(),
+                        #permissions::VIEW_CHANNEL,
+                    )
+                },
+                // The bot must still see the channel to write in it.
+                quote!(#overwrite::member(ctx.rest().get_current_user().await?.id, #see, #permissions::empty())),
+            ];
+            let user = text(graph, id, "user");
+            if !user.is_empty() {
+                let user = self.user_id(user);
+                overwrites.push(quote!(#overwrite::member(#user, #see, #permissions::empty())));
+            }
+            let role = text(graph, id, "role");
+            if !role.is_empty() {
+                let role = self.role_id(role);
+                overwrites.push(quote!(#overwrite::role(#role, #see, #permissions::empty())));
+            }
+            steps.push(quote!(body.permission_overwrites = Vec::from([#(#overwrites),*]);));
+        }
+        let mutable = (!steps.is_empty()).then(|| quote!(mut));
+        quote! {{
+            let guild = #guild;
+            let #mutable body = djs_rs::model::rest::CreateGuildChannel::new(#name);
+            #(#steps)*
+            ctx.guild_channels(guild).create(&body, #reason).await?
+        }}
+    }
+
+    /// "Delete channel", "Delete role" or "Add to thread" (D-119), which `?` ends on
+    /// failure.
+    fn manage(&mut self, id: &NodeId) -> TokenStream {
+        let graph = &self.file.graph;
+        match graph.nodes[id].kind.as_str() {
+            "core.delete_channel" => {
+                let channel = self.channel(text(graph, id, "channel"));
+                let reason = self.reason(text(graph, id, "reason"));
+                quote!(ctx.channels().delete(#channel, #reason).await?;)
+            }
+            "core.delete_role" => {
+                let guild = self.guild_id();
+                let role = self.role_id(text(graph, id, "role"));
+                let reason = self.reason(text(graph, id, "reason"));
+                quote!(ctx.roles(#guild).delete(#role, #reason).await?;)
+            }
+            "core.add_to_thread" => {
+                let thread = self.channel(text(graph, id, "thread"));
+                let user = self.user_id(text(graph, id, "user"));
+                quote!(ctx.thread_members(#thread).add(#user).await?;)
+            }
+            other => unreachable!("{other} is not a managing action"),
+        }
+    }
+
+    /// "Ranking" (D-122): `ranking`, the top users of a number variable as lines, if a
+    /// node after it reads it; then what follows.
+    fn ranking(&mut self, id: &NodeId) -> Result<TokenStream, Error> {
+        let then = self.after(id, "then")?;
+        if !uses(&then, "ranking") {
+            return Ok(then);
+        }
+        let graph = &self.file.graph;
+        let var = self.memory_var(text(graph, id, "variable"));
+        // Keys are a user's ID, or `server:user` on each server (C-026).
+        let prefix = match var.scope {
+            MemoryScope::User => quote!(""),
+            MemoryScope::Member => {
+                let guild = self.guild_id();
+                quote!(&format!("{}:", #guild))
+            }
+            MemoryScope::Global | MemoryScope::Server => {
+                unreachable!("validated: a ranking is of a variable per user")
+            }
+        };
+        let count = match text(graph, id, "count") {
+            count if count.trim().is_empty() => quote!(10),
+            count => {
+                let count = self.number(count);
+                quote!(#count as usize)
+            }
+        };
+        let name = &var.name;
+        Ok(quote! {
+            let ranking = crate::memory::ranking(#name, #prefix, #count);
+            #then
+        })
     }
 
     /// The call sending a message node's message: an expression giving the sent message
@@ -1034,13 +1267,10 @@ impl<'a> Body<'a> {
                 }
             }
         };
+        let attempt = attempt(&quote!(#action Ok(())));
         Ok((
             quote! {
-                let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
-                    #action
-                    Ok(())
-                }
-                .await;
+                #attempt
                 #handle
             },
             false,
@@ -1166,21 +1396,7 @@ impl<'a> Body<'a> {
                 }
             }
             kind @ ("core.add_role" | "core.remove_role") => {
-                let role = match text(graph, id, "role") {
-                    role if is_id(role) => {
-                        let id: u64 = role.parse().expect("validated ID");
-                        quote!(djs_rs::model::id::RoleId::new(#id))
-                    }
-                    role => {
-                        let (_, option, _) =
-                            option_path(role, self.options).expect("validated variable");
-                        let (name, missing) = (
-                            &option.name,
-                            format!("the option {} was not given", option.name),
-                        );
-                        quote!(cmd.get_role(#name).map(|role| role.id).ok_or(#missing)?)
-                    }
-                };
+                let role = self.role_id(text(graph, id, "role"));
                 let method = format_ident!("{}", kind.trim_start_matches("core."));
                 quote!(members.#method(user, #role, #reason))
             }
@@ -1209,18 +1425,22 @@ impl<'a> Body<'a> {
     }
 
     /// A template as a Rust expression. Memory variables are read where they are used, so
-    /// a change made earlier in the run shows (D-108).
+    /// a change made earlier in the run shows (D-108), and what nodes made is read from
+    /// what they made (D-120, D-122).
     fn template(&mut self, text: &str, quiet: bool) -> TokenStream {
-        let mut memory = BTreeMap::new();
+        let mut local = BTreeMap::new();
         for segment in template::parse(text).expect("validated templates parse") {
-            if let Segment::Var(path) = segment
-                && path.first().is_some_and(|first| first == "memory")
-            {
+            let Segment::Var(path) = segment else {
+                continue;
+            };
+            if path.first().is_some_and(|first| first == "memory") {
                 let read = self.memory_read(&path);
-                memory.insert(path.join("."), read);
+                local.insert(path.join("."), read);
+            } else if let Some(value) = made(&path.join(".")) {
+                local.insert(path.join("."), value);
             }
         }
-        template_expr(text, self.options, quiet, &mut self.vars, &memory)
+        template_expr(text, self.options, quiet, &mut self.vars, &local)
     }
 
     /// `{memory.<name>}`, or `{memory.<name>.<user variable>}` for another user, as text.
@@ -1429,6 +1649,10 @@ impl<'a> Body<'a> {
             let id: u64 = channel.parse().expect("validated ID");
             return quote!(djs_rs::model::id::ChannelId::new(#id));
         }
+        if matches!(channel, "created_channel" | "created_thread") {
+            let made = format_ident!("{channel}");
+            return quote!(#made.id());
+        }
         let (_, option, _) = option_path(channel, self.options).expect("validated variable");
         let (name, missing) = (
             &option.name,
@@ -1474,11 +1698,32 @@ impl<'a> Body<'a> {
         }
     }
 
-    /// A role field's role, an `Option<RoleId>`: a fixed ID or a role option (D-080).
+    /// A role field's role, a `RoleId`, which `?` ends on when a role option is not given.
+    fn role_id(&self, role: &str) -> TokenStream {
+        if is_id(role) {
+            let id: u64 = role.parse().expect("validated ID");
+            return quote!(djs_rs::model::id::RoleId::new(#id));
+        }
+        if role == "created_role" {
+            return quote!(created_role.id);
+        }
+        let (_, option, _) = option_path(role, self.options).expect("validated variable");
+        let (name, missing) = (
+            &option.name,
+            format!("the option {} was not given", option.name),
+        );
+        quote!(cmd.get_role(#name).map(|role| role.id).ok_or(#missing)?)
+    }
+
+    /// A role field's role, an `Option<RoleId>`: a fixed ID, a role option (D-080) or the
+    /// role created before (D-120).
     fn role(&self, role: &str) -> TokenStream {
         if is_id(role) {
             let id: u64 = role.parse().expect("validated ID");
             return quote!(Some(djs_rs::model::id::RoleId::new(#id)));
+        }
+        if role == "created_role" {
+            return quote!(Some(created_role.id));
         }
         let (_, option, _) = option_path(role, self.options).expect("validated variable");
         let name = &option.name;
@@ -1488,6 +1733,28 @@ impl<'a> Body<'a> {
 
 /// A text prop. Validation guarantees required props are strings.
 /// Whether a template has no variables, so its Rust expression is a string literal.
+/// `result`, from `body` run in an `async` block so its `?` stops only the block (D-082).
+/// A future must be `Send`, and one borrowing the `last_sent` cell is not, so the block
+/// reads a copy; nothing in it sends a message.
+fn attempt(body: &TokenStream) -> TokenStream {
+    let (copy, cell) = if uses(body, "last_sent") {
+        (
+            quote!(let sent_before = last_sent.get();),
+            quote!(let last_sent = std::cell::Cell::new(sent_before);),
+        )
+    } else {
+        (TokenStream::new(), TokenStream::new())
+    };
+    quote! {
+        #copy
+        let result: Result<_, Box<dyn std::error::Error + Send + Sync>> = async {
+            #cell
+            #body
+        }
+        .await;
+    }
+}
+
 fn is_literal(template: &str) -> bool {
     rustbot_core::template::parse(template).is_ok_and(|segments| {
         segments
@@ -1510,7 +1777,7 @@ fn template_expr(
     options: &[CommandOption],
     quiet: bool,
     vars: &mut BTreeSet<String>,
-    memory: &BTreeMap<String, TokenStream>,
+    local: &BTreeMap<String, TokenStream>,
 ) -> TokenStream {
     let segments = template::parse(text).expect("validated templates parse");
     let mut format = String::new();
@@ -1521,8 +1788,9 @@ fn template_expr(
             Segment::Var(path) => {
                 let path = path.join(".");
                 format.push_str("{}");
-                if let Some(read) = memory.get(&path) {
-                    args.push(if quiet {
+                // Read where it is used, not bound at the top.
+                if let Some(read) = local.get(&path) {
+                    args.push(if quiet && !is_mention(&path, options) {
                         quote!(quiet(&#read))
                     } else {
                         read.clone()
@@ -1569,6 +1837,9 @@ fn allowed_mentions(
             Segment::Var(path) if path.join(".") == "user.mention" => {
                 let author = author();
                 add.push(quote!(mentions.users.push(#author);));
+            }
+            Segment::Var(path) if path.join(".") == "created_role.mention" => {
+                add.push(quote!(mentions.roles.push(created_role.id);));
             }
             Segment::Var(path) => {
                 let path = path.join(".");
@@ -1617,8 +1888,36 @@ fn is_mention(path: &str, options: &[CommandOption]) -> bool {
                     DataType::User | DataType::Channel | DataType::Role
                 )
         }
-        None => matches!(path, "user.mention" | "channel.mention"),
+        None => matches!(
+            path,
+            "user.mention"
+                | "channel.mention"
+                | "created_channel.mention"
+                | "created_thread.mention"
+                | "created_role.mention"
+        ),
     }
+}
+
+/// A variable read from what a node before made (D-120, D-122): `ranking`, or a field of
+/// `created_channel`, `created_thread` or `created_role`.
+fn made(path: &str) -> Option<TokenStream> {
+    let (var, field) = path.split_once('.').unwrap_or((path, ""));
+    let made = format_ident!("{var}");
+    Some(match (var, field) {
+        ("ranking", "") => quote!(ranking),
+        ("created_channel" | "created_thread", "id") => quote!(#made.id()),
+        ("created_channel" | "created_thread", "name") => {
+            quote!(#made.name().unwrap_or_default())
+        }
+        ("created_channel" | "created_thread", "mention") => {
+            quote!(djs_rs::formatters::channel_mention(#made.id()))
+        }
+        ("created_role", "id") => quote!(created_role.id),
+        ("created_role", "name") => quote!(created_role.name),
+        ("created_role", "mention") => quote!(djs_rs::formatters::role_mention(created_role.id)),
+        _ => return None,
+    })
 }
 
 /// Whether the template's own text has `@everyone` or `@here`. Discord allows both or

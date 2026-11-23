@@ -54,7 +54,7 @@ pub(crate) fn register(client: &Client) {
                     .as_ref()
                     .and_then(|member| member.member.nick.as_deref())
                     .unwrap_or_else(|| author.display_name());
-                let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                let result: Result<_, Box<dyn std::error::Error + Send + Sync>> = async {
                     let members = ctx
                         .members(
                             interaction
@@ -136,7 +136,7 @@ pub(crate) fn register(client: &Client) {
                         }
                     }
                 }
-                let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                let result: Result<_, Box<dyn std::error::Error + Send + Sync>> = async {
                     let members = ctx
                         .members(
                             interaction

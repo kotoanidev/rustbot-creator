@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "nodes": {
+    "n1": {
+      "type": "core.message",
+      "props": {
+        "include_bots": false
+      }
+    },
+    "n2": {
+      "type": "core.memory_change",
+      "props": {
+        "variable": "xp",
+        "user": "",
+        "amount": "1"
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "n1.then",
+      "to": "n2.run"
+    }
+  ]
+}

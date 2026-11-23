@@ -54,15 +54,17 @@ layer, before the scope widens.
   - [x] Conditions with "yes"/"no" outputs: has permission, has role, compare (D-077)
   - [x] Moderation: ban, kick, timeout, add/remove a role
   - [x] Messages: send to a channel, a reply only the author sees, a basic embed (D-079)
-- [ ] Full node catalog and forms over what djs-rs covers: events, components, and so on
+- [x] Full node catalog and forms over what djs-rs covers: events, components, and so on
   - [x] Events: member joined/left, new message, bot ready, reactions (D-091–D-095)
   - [x] Adding commands and events from the project tree, deleting graphs (D-092)
   - [x] Buttons and select menus: clicks that always work or are waited for (D-096–D-100)
   - [x] More actions: DM, reactions, pins, editing, nicknames, waiting (D-101–D-103)
   - [x] The bot's memory: lasting variables in four scopes (D-104–D-108)
   - [x] Modals: forms with text fields after a command or click (D-110–D-114)
+  - [x] Channels, threads, roles and "Ranking" (D-119–D-122)
 - [x] Validation and errors shown on the graph
-- [x] Bot templates: empty, moderation, welcome, roles from a menu, reports (D-115–D-118)
+- [x] Bot templates: empty, moderation, welcome, roles from a menu, reports, levels
+      (D-115–D-119)
 
 ## Phase 4 — Advanced mode (D-015, D-030)
 - [ ] gpui-kit code editor for the user's own modules in `src/`

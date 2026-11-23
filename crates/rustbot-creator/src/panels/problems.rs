@@ -200,6 +200,7 @@ pub(crate) fn describe(problem: &Problem) -> String {
         ProblemKind::MemoryNeedsUser => t("problem-memory-needs-user"),
         ProblemKind::NotANumber(prop) if prop == "variable" => t("problem-memory-not-number"),
         ProblemKind::NotANumber(prop) => t_with("problem-not-a-number", &[("prop", prop)]),
+        ProblemKind::RankingNotPerUser => t("problem-ranking-not-per-user"),
         ProblemKind::BadOption { option, problem } => {
             let id = match problem {
                 OptionProblem::Name => "problem-option-name",

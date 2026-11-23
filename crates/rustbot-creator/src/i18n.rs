@@ -141,6 +141,11 @@ mod tests {
                 "message_target",
                 rustbot_core::registry::Choices::MessageTarget,
             ),
+            (
+                "channel_visibility",
+                rustbot_core::registry::Choices::ChannelVisibility,
+            ),
+            ("thread_start", rustbot_core::registry::Choices::ThreadStart),
         ] {
             for value in choices.values() {
                 let id = format!("choice-{list}-{value}");

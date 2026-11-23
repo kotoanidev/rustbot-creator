@@ -194,16 +194,29 @@ cards, and the folder dialog follows:
 Texts are in the app's language, and channels and roles are left empty for Problems to
 point at. Building them found two generator bugs, fixed in the commit before.
 
+Step 10, the rest of the catalog (D-119–D-122, C-029), is ✅ done in code, and with it
+the node catalog of phase 3:
+- "Create channel" (text, in a category, or private to a user, a role and the bot) and
+  "Delete channel";
+- "Create thread" (from the last or the event's message, or in a channel) and "Add to
+  thread";
+- "Create role" (name, colour) and "Delete role";
+- "Ranking", whose `{ranking}` lists the top users of a number variable;
+- the "Levels" template: XP for messages, `/level` and `/top`.
+
+What a node creates is a variable after its "then": `{created_channel.mention}`, and
+"Created channel" in the channel lists. Building the test bots found an older bug: an
+action on "the last message" with "error" wired did not build. It is fixed (C-029).
+
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
-test, and `template_bots_compile` for the templates). Memory, forms and templates have
-not run live yet. Next:
+test, and `template_bots_compile` for the templates). Memory, forms, templates and the
+new nodes have not run live yet. Next:
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
-   `{memory.warnings.option.target}`), forms and the templates (e.g. a new project from
-   "Reports by form", with the channel filled in) on the test server; fix what they
-   find.
-2. What comes next: ask the owner. For example, close phase 3 with the rest of the
-   catalog (channels, threads, roles, "Ranking" for memory, levels), or start phase 4,
-   the advanced mode.
+   `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
+   the channel filled in, or "Levels") and the new nodes (e.g. a private ticket channel)
+   on the test server; fix what they find.
+2. What comes next: ask the owner. Phase 3 has only live testing left; phase 4, the
+   advanced mode, is next on the roadmap.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

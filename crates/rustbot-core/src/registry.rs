@@ -177,7 +177,12 @@ impl PropKind {
             // Deleting nothing is the safe start (D-083).
             Self::Choice(Choices::DeleteMessages) => serde_json::Value::String("none".to_owned()),
             // The event's message exists only in some graphs.
-            Self::Choice(Choices::MessageTarget) => serde_json::Value::String("last".to_owned()),
+            Self::Choice(Choices::MessageTarget | Choices::ThreadStart) => {
+                serde_json::Value::String("last".to_owned())
+            }
+            Self::Choice(Choices::ChannelVisibility) => {
+                serde_json::Value::String("category".to_owned())
+            }
             Self::Bool => serde_json::Value::Bool(false),
             Self::Text { .. }
             | Self::Variable(_)
@@ -201,6 +206,10 @@ pub enum Choices {
     DeleteMessages,
     /// Which message a message action works on (D-103).
     MessageTarget,
+    /// Who sees a channel "Create channel" makes (D-121).
+    ChannelVisibility,
+    /// What "Create thread" starts from: a message, or none in a channel (D-119).
+    ThreadStart,
 }
 
 impl Choices {
@@ -226,6 +235,8 @@ impl Choices {
             Self::Comparison => &["equals", "not_equals", "contains", "greater", "less"],
             Self::DeleteMessages => &["none", "hour", "day", "week"],
             Self::MessageTarget => &["last", "event"],
+            Self::ChannelVisibility => &["category", "private"],
+            Self::ThreadStart => &["last", "event", "channel"],
         }
     }
 }
@@ -497,8 +508,9 @@ fn click_scope() -> Vec<Variable> {
 struct Context {
     routed: bool,
     clicked: bool,
-    /// The forms sent earlier in the run, whose fields are known (D-111).
-    forms: Vec<NodeId>,
+    /// The nodes earlier in the run that went on at "then", whose variables are known: the
+    /// fields of a form (D-111) and what a node created (D-120).
+    ran: Vec<NodeId>,
     /// After a form nobody sent: its interaction was answered with it, so nothing can
     /// reply.
     closed: bool,
@@ -654,6 +666,8 @@ pub enum ProblemKind {
     MemoryNeedsUser,
     /// A field that must hold a number, or a variable that is not a number for "Change by".
     NotANumber(String),
+    /// "Ranking" of a variable that is not a number kept per user (D-122).
+    RankingNotPerUser,
     /// A command option breaks Discord's rules.
     BadOption {
         /// Its position in the list, from 0.
@@ -748,6 +762,9 @@ impl fmt::Display for Problem {
                 f.write_str("the variable is kept per user, and no user is known here")
             }
             ProblemKind::NotANumber(prop) => write!(f, "{prop:?} is not a number"),
+            ProblemKind::RankingNotPerUser => {
+                f.write_str("a ranking needs a number variable kept per user")
+            }
             ProblemKind::BadOption { option, problem } => {
                 let why = match problem {
                     OptionProblem::Name => "a name needs 1-32 lower-case letters, digits, - or _",
@@ -1168,16 +1185,23 @@ impl Registry {
                         ..context.clone()
                     };
                     if edge.from.pin == "then" {
-                        after.forms.push(id.clone());
+                        after.ran.push(id.clone());
                     } else {
                         after.closed = true;
                     }
                     after
                 } else if !clicks.contains(&edge.from.pin) {
-                    Context {
+                    let mut after = Context {
                         late: context.late || !quick,
                         ..context.clone()
+                    };
+                    let provides = self
+                        .get(&node.kind)
+                        .is_some_and(|t| t.category != Category::Trigger && !t.provides.is_empty());
+                    if provides && edge.from.pin == "then" {
+                        after.ran.push(id.clone());
                     }
+                    after
                 } else if waits {
                     // A click is a new interaction to answer.
                     Context {
@@ -1199,16 +1223,22 @@ impl Registry {
     }
 
     /// The variables known in `context`: the graph's, or after a click that "always works"
-    /// only the clicker, the channel and the server (D-097), and the fields of the forms
-    /// sent before (D-114).
+    /// only the clicker, the channel and the server (D-097); then the fields of the forms
+    /// sent before (D-114) and what nodes before created (D-120).
     fn scope_in(&self, graph: &Graph, context: &Context) -> Vec<Variable> {
         let mut scope = if context.routed {
             click_scope()
         } else {
             self.scope(graph)
         };
-        for form in &context.forms {
-            let fields = graph.nodes.get(form).map(|node| node.props.get("fields"));
+        for id in &context.ran {
+            let Some(node) = graph.nodes.get(id) else {
+                continue;
+            };
+            if let Some(node_type) = self.get(&node.kind) {
+                scope.extend(node_type.provides.iter().cloned());
+            }
+            let fields = (node.kind == "core.show_form").then(|| node.props.get("fields"));
             scope.extend(
                 FormField::list(fields.flatten())
                     .into_iter()
@@ -1295,6 +1325,13 @@ fn check_node(
             });
         }
     }
+    let text = |name: &str| node.props.get(name).and_then(serde_json::Value::as_str);
+    if node.kind == "core.create_thread"
+        && text("message") == Some("channel")
+        && text("channel").is_none_or(str::is_empty)
+    {
+        problems.push(ProblemKind::MissingProp("channel".to_owned()));
+    }
     if context.closed && node.kind == "core.reply" {
         problems.push(ProblemKind::ReplyAfterClosedForm);
     }
@@ -1331,6 +1368,13 @@ fn check_memory_node(node: &Node, scope: &[Variable], memory: &[MemoryVar]) -> V
     let known = |name: &str| scope.iter().any(|v| v.name == name);
     if var.scope.has_server() && !known("server") {
         problems.push(ProblemKind::MemoryNeedsServer);
+    }
+    // A ranking ranks every user, so it needs no one user (D-122).
+    if node.kind == "core.ranking" {
+        if var.ty != MemoryType::Number || !var.scope.has_user() {
+            problems.push(ProblemKind::RankingNotPerUser);
+        }
+        return problems;
     }
     if var.scope.has_user() && text("user").is_none_or(str::is_empty) && !known("user") {
         problems.push(ProblemKind::MemoryNeedsUser);

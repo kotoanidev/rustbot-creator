@@ -48,7 +48,138 @@ pub(crate) fn all() -> Vec<NodeType> {
         memory_node("core.memory_change", vec![text_template("amount", true)]),
         memory_node("core.memory_reset", Vec::new()),
         show_form(),
+        create_channel(),
+        delete(
+            "core.delete_channel",
+            "channel",
+            DataType::Channel,
+            "manage_channels",
+        ),
+        create_thread(),
+        add_to_thread(),
+        create_role(),
+        delete("core.delete_role", "role", DataType::Role, "manage_roles"),
+        ranking(),
     ]
+}
+
+/// "Create channel" (D-119–D-121): a text channel, in a category if one is given, seen as
+/// the category or only by a chosen user, a chosen role and the bot. It is
+/// `created_channel` after it.
+fn create_channel() -> NodeType {
+    NodeType {
+        id: "core.create_channel".to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props: vec![
+            text("name", true),
+            prop("category", PropKind::Variable(DataType::Channel), false),
+            prop(
+                "visibility",
+                PropKind::Choice(Choices::ChannelVisibility),
+                true,
+            ),
+            prop("user", PropKind::Variable(DataType::User), false),
+            prop("role", PropKind::Variable(DataType::Role), false),
+            text_template("reason", false),
+        ],
+        provides: vec![var("created_channel", DataType::Channel)],
+        intents: Vec::new(),
+        permission: Some("manage_channels".to_owned()),
+        triggers: Vec::new(),
+    }
+}
+
+/// Deletes a channel or a role (D-119), with a reason for the audit log.
+fn delete(id: &str, field: &str, ty: DataType, permission: &str) -> NodeType {
+    NodeType {
+        id: id.to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props: vec![
+            prop(field, PropKind::Variable(ty), true),
+            text_template("reason", false),
+        ],
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: Some(permission.to_owned()),
+        triggers: Vec::new(),
+    }
+}
+
+/// "Create thread" (D-119): from the last message the bot sent or the event's, or without
+/// one in a channel. It is `created_thread` after it (D-120). Members may start threads by
+/// default, so no permission is checked.
+fn create_thread() -> NodeType {
+    NodeType {
+        id: "core.create_thread".to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props: vec![
+            text("name", true),
+            prop("message", PropKind::Choice(Choices::ThreadStart), true),
+            // Needed when it starts in a channel; validation checks that.
+            prop("channel", PropKind::Variable(DataType::Channel), false),
+            text_template("reason", false),
+        ],
+        provides: vec![var("created_thread", DataType::Channel)],
+        intents: Vec::new(),
+        permission: None,
+        triggers: Vec::new(),
+    }
+}
+
+fn add_to_thread() -> NodeType {
+    NodeType {
+        id: "core.add_to_thread".to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props: vec![
+            prop("thread", PropKind::Variable(DataType::Channel), true),
+            prop("user", PropKind::Variable(DataType::User), true),
+        ],
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+        triggers: Vec::new(),
+    }
+}
+
+/// "Create role" (D-119): a role with a name and a colour. It is `created_role` after it
+/// (D-120).
+fn create_role() -> NodeType {
+    NodeType {
+        id: "core.create_role".to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props: vec![
+            text("name", true),
+            prop("color", PropKind::Color, false),
+            text_template("reason", false),
+        ],
+        provides: vec![var("created_role", DataType::Role)],
+        intents: Vec::new(),
+        permission: Some("manage_roles".to_owned()),
+        triggers: Vec::new(),
+    }
+}
+
+/// "Ranking" (D-122): the users with the most of a number variable, as `{ranking}` lines.
+/// Empty "count" lists 10.
+fn ranking() -> NodeType {
+    NodeType {
+        id: "core.ranking".to_owned(),
+        category: Category::Data,
+        pins: vec![flow("run", Direction::In), flow("then", Direction::Out)],
+        props: vec![
+            prop("variable", PropKind::Memory, true),
+            prop("count", PropKind::Number { max: 25 }, false),
+        ],
+        provides: vec![var("ranking", DataType::Text)],
+        intents: Vec::new(),
+        permission: None,
+        triggers: Vec::new(),
+    }
 }
 
 /// A node changing a memory variable (D-108): which one, whose value (the user who started

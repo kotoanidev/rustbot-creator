@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "nodes": {
+    "n1": {
+      "type": "core.slash_command",
+      "props": {
+        "name": "top",
+        "description": "$tpl-top-description",
+        "options": []
+      }
+    },
+    "n2": {
+      "type": "core.ranking",
+      "props": {
+        "variable": "xp",
+        "count": "10"
+      }
+    },
+    "n3": {
+      "type": "core.reply",
+      "props": {
+        "embed_title": "$tpl-top-title",
+        "embed_description": "{ranking}"
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "n1.then",
+      "to": "n2.run"
+    },
+    {
+      "from": "n2.then",
+      "to": "n3.run"
+    }
+  ]
+}

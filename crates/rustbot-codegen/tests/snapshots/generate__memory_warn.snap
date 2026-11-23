@@ -26,7 +26,7 @@ pub(crate) fn register(client: &Client) {
                     .get_user("target")
                     .map(|user| djs_rs::formatters::user_mention(user.id).to_string())
                     .unwrap_or_default();
-                let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                let result: Result<_, Box<dyn std::error::Error + Send + Sync>> = async {
                     crate::memory::change(
                         "warnings",
                         &format!(

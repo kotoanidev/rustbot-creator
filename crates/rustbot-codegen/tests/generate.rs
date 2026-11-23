@@ -607,6 +607,150 @@ fn forms() -> Vec<GraphFile> {
     ]
 }
 
+/// The rest of the catalog (D-119–D-122): a private ticket channel, cleanup, a role made
+/// and given, a thread from the reply and one in the channel, rankings, and a thread on
+/// "New message".
+#[allow(clippy::too_many_lines)] // the graphs, as data
+fn catalog() -> Vec<GraphFile> {
+    let id = "123456789012345678";
+    let command = |name: &str, options: serde_json::Value| {
+        serde_json::json!({ "type": "core.slash_command", "props": {
+            "name": name, "description": "Catalog", "options": options } })
+    };
+    let reply = |content: &str| serde_json::json!({ "type": "core.reply", "props": { "content": content } });
+    vec![
+        command_graph(
+            "ticket",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": command("ticket", serde_json::json!([])),
+                    "n2": { "type": "core.create_channel", "props": {
+                        "name": "ticket-{user.username}", "category": id,
+                        "visibility": "private", "user": "user", "role": id,
+                        "reason": "Ticket of {user.name}" } },
+                    "n3": { "type": "core.send_message", "props": { "channel": "created_channel",
+                        "content": "{user.mention}, write here." } },
+                    "n4": { "type": "core.reply", "props": { "private": true,
+                        "content": "Opened {created_channel.mention} ({created_channel.name})" } },
+                    "n5": reply("No ticket today.")
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n2.error", "to": "n5.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "cleanup",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": command("cleanup", serde_json::json!([
+                        { "name": "channel", "type": "channel", "description": "Which", "required": true },
+                        { "name": "role", "type": "role", "description": "Which", "required": true } ])),
+                    "n2": { "type": "core.create_channel", "props": {
+                        "name": "archive", "visibility": "category" } },
+                    "n3": { "type": "core.delete_channel", "props": {
+                        "channel": "option.channel", "reason": "Cleanup" } },
+                    "n4": { "type": "core.delete_role", "props": { "role": "option.role" } },
+                    "n5": reply("Done.")
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n4.then", "to": "n5.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "vip",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": command("vip", serde_json::json!([
+                        { "name": "color", "type": "text", "description": "#RRGGBB", "required": false } ])),
+                    "n2": { "type": "core.create_role", "props": {
+                        "name": "VIP {user.name}", "color": "#FFAA00" } },
+                    "n3": { "type": "core.add_role", "props": { "user": "user", "role": "created_role" } },
+                    "n4": { "type": "core.has_role", "props": { "user": "user", "role": "created_role" } },
+                    "n5": reply("You are {created_role.mention} ({created_role.name}, {created_role.id})."),
+                    "n6": { "type": "core.create_role", "props": {
+                        "name": "Painted", "color": "{option.color}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n4.yes", "to": "n5.run" },
+                    { "from": "n5.then", "to": "n6.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "discuss",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": command("discuss", serde_json::json!([])),
+                    "n2": reply("Let's talk."),
+                    "n3": { "type": "core.create_thread", "props": {
+                        "name": "About {user.name}", "message": "last" } },
+                    "n4": { "type": "core.add_to_thread", "props": {
+                        "thread": "created_thread", "user": "user" } },
+                    "n5": { "type": "core.send_message", "props": { "channel": "created_thread",
+                        "content": "Welcome to {created_thread.mention}, {created_thread.id}." } },
+                    "n6": { "type": "core.create_thread", "props": {
+                        "name": "Side talk", "message": "channel", "channel": "channel",
+                        "reason": "Asked" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n4.then", "to": "n5.run" },
+                    { "from": "n3.error", "to": "n6.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "top",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": command("top", serde_json::json!([])),
+                    "n2": { "type": "core.ranking", "props": { "variable": "warnings", "count": "5" } },
+                    "n3": { "type": "core.reply", "props": {
+                        "embed_title": "Most warned", "embed_description": "{ranking}" } },
+                    "n4": { "type": "core.ranking", "props": { "variable": "balance", "count": "" } },
+                    "n5": reply("Richest:\n{ranking}")
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n4.then", "to": "n5.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "threads",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.message" },
+                    "n2": { "type": "core.create_thread", "props": {
+                        "name": "Re: {user.name}", "message": "event" } }
+                },
+                "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+            }),
+        ),
+    ]
+}
+
 /// An event graph from JSON.
 fn event_graph(name: &str, graph: serde_json::Value) -> GraphFile {
     GraphFile {
@@ -974,6 +1118,25 @@ fn forms_snapshot() {
 }
 
 #[test]
+fn catalog_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut manifest = Manifest::new("Catalog Bot");
+    manifest.memory = memory();
+    let p = project(dir.path(), manifest, &catalog());
+    let output = generate(&p, &Registry::with_core()).unwrap();
+    for (name, path) in [
+        ("catalog_ticket", "commands/ticket.rs"),
+        ("catalog_cleanup", "commands/cleanup.rs"),
+        ("catalog_vip", "commands/vip.rs"),
+        ("catalog_discuss", "commands/discuss.rs"),
+        ("catalog_top", "commands/top.rs"),
+        ("catalog_threads", "events/threads.rs"),
+    ] {
+        insta::assert_snapshot!(name, &output.files[&Path::new("generated/src").join(path)]);
+    }
+}
+
+#[test]
 fn events_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let p = project(dir.path(), Manifest::new("Event Bot"), &events());
@@ -1183,6 +1346,7 @@ fn generated_bot_compiles() {
     graphs.extend(actions());
     graphs.extend(remembering());
     graphs.extend(forms());
+    graphs.extend(catalog());
     let mut manifest = Manifest::new("Ping Bot");
     manifest.memory = memory();
     let p = project(dir.path(), manifest, &graphs);
@@ -1330,6 +1494,16 @@ fn main() {
             assert_eq!(memory::read("balance", "7", "100"), "98");
             assert_eq!(memory::read("motd", "", "Welcome!"), "Hi");
             assert_eq!(memory::read("warnings", "1:7", "0"), "1");
+            // A ranking per server (D-122): the most first, other servers left out.
+            memory::set("warnings", "1:8", memory::number(3.0)).unwrap();
+            memory::set("warnings", "1:9", memory::number(2.5)).unwrap();
+            memory::set("warnings", "2:9", memory::number(9.0)).unwrap();
+            assert_eq!(
+                memory::ranking("warnings", "1:", 2),
+                "1. <@8> — 3\n2. <@9> — 2.5"
+            );
+            assert_eq!(memory::ranking("balance", "", 10), "1. <@7> — 98");
+            assert_eq!(memory::ranking("warnings", "3:", 10), "—");
         }
         other => panic!("{other}"),
     }

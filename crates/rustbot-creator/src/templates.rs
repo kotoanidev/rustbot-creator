@@ -32,7 +32,7 @@ macro_rules! graph {
 }
 
 /// Every template, in the order the cards show them; the first is "Empty".
-pub(crate) const TEMPLATES: [Template; 5] = [
+pub(crate) const TEMPLATES: [Template; 6] = [
     Template {
         id: "empty",
         graphs: &[graph!(Command, "empty", "ping")],
@@ -65,6 +65,15 @@ pub(crate) const TEMPLATES: [Template; 5] = [
         id: "report",
         graphs: &[graph!(Command, "report", "report")],
         memory: &[],
+    },
+    Template {
+        id: "levels",
+        graphs: &[
+            graph!(Event, "levels", "message"),
+            graph!(Command, "levels", "level"),
+            graph!(Command, "levels", "top"),
+        ],
+        memory: &[("xp", MemoryType::Number, MemoryScope::Member)],
     },
 ];
 

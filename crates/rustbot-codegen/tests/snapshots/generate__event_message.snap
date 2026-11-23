@@ -42,7 +42,7 @@ pub(crate) fn register(client: &Client) {
                 };
                 if message.to_string().to_lowercase().contains(&"http".to_lowercase()) {
                     ctx.messages(event.channel_id).delete(event.id).await?;
-                    let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                    let result: Result<_, Box<dyn std::error::Error + Send + Sync>> = async {
                         let members = ctx
                             .members(
                                 event
