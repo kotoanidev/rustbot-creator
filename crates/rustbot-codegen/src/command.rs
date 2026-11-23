@@ -39,6 +39,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
 
     let mut vars = BTreeSet::new();
     let mut body = Vec::new();
+    let mut needs_quiet = false;
     let mut visited = BTreeSet::from([trigger.clone()]);
     let mut next = followers(graph, trigger);
     while let Some(id) = next.pop() {
@@ -51,8 +52,10 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         body.push(match graph.nodes[&id].kind.as_str() {
             "core.reply" => {
                 let template = text(graph, &id, "content");
-                let content = template_expr(template, &options, &mut vars);
-                let mentions = allowed_mentions(template, &options);
+                let everyone = mentions_everyone(template);
+                needs_quiet |= everyone;
+                let content = template_expr(template, &options, everyone, &mut vars);
+                let mentions = allowed_mentions(template, &options, everyone);
                 quote! {
                     cmd.reply(
                         &ctx,
@@ -81,6 +84,18 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         .iter()
         .any(|path| path.starts_with("user."))
         .then(|| quote!(let author = interaction.author().ok_or("the command has no user")?;));
+    // With @everyone allowed in a message, the same text from users must not trigger it.
+    let quiet = needs_quiet.then(|| {
+        quote! {
+            /// `@everyone` and `@here` in text from users, made harmless with a zero-width
+            /// space, for messages whose author allowed them (C-016).
+            fn quiet(text: &dyn std::fmt::Display) -> String {
+                text.to_string()
+                    .replace("@everyone", "@\u{200b}everyone")
+                    .replace("@here", "@\u{200b}here")
+            }
+        }
+    });
     let doc = format!(
         " The `/{name}` command, from `graphs/commands/{}.json`.",
         file.name
@@ -98,6 +113,8 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
                 #(#option_builders)*
                 .build()
         }
+
+        #quiet
 
         pub(crate) fn register(client: &Client) {
             client.command(#name, |ctx, cmd| async move {
@@ -140,6 +157,7 @@ fn text<'a>(graph: &'a Graph, id: &NodeId, prop: &str) -> &'a str {
 fn template_expr(
     text: &str,
     options: &[CommandOption],
+    quiet: bool,
     vars: &mut BTreeSet<String>,
 ) -> TokenStream {
     let segments = template::parse(text).expect("validated templates parse");
@@ -151,7 +169,12 @@ fn template_expr(
             Segment::Var(path) => {
                 let path = path.join(".");
                 format.push_str("{}");
-                args.push(ident(&path, options));
+                let var = ident(&path, options);
+                args.push(if quiet {
+                    quote!(quiet(&#var))
+                } else {
+                    quote!(#var)
+                });
                 vars.insert(path);
             }
         }
@@ -167,13 +190,12 @@ fn template_expr(
 /// notifies its user or role, and `@everyone`/`@here` work only typed into the template. Text
 /// from users, such as a text option or a nickname, never notifies anyone, so
 /// `/ban reason:@everyone` cannot ping the server.
-fn allowed_mentions(template: &str, options: &[CommandOption]) -> TokenStream {
+fn allowed_mentions(template: &str, options: &[CommandOption], everyone: bool) -> TokenStream {
     let segments = template::parse(template).expect("validated templates parse");
     let mut add = Vec::new();
-    let mut everyone = false;
     for segment in &segments {
         match segment {
-            Segment::Text(text) => everyone |= text.contains("@everyone") || text.contains("@here"),
+            Segment::Text(_) => {}
             Segment::Var(path) if path.join(".") == "user.mention" => {
                 add.push(quote!(mentions.users.push(author.id);));
             }
@@ -210,6 +232,18 @@ fn allowed_mentions(template: &str, options: &[CommandOption]) -> TokenStream {
         #(#add)*
         mentions
     })
+}
+
+/// Whether the template's own text has `@everyone` or `@here`. Discord allows both or
+/// neither, so the variables' values are then made harmless with `quiet`.
+fn mentions_everyone(template: &str) -> bool {
+    template::parse(template)
+        .expect("validated templates parse")
+        .iter()
+        .any(|segment| match segment {
+            Segment::Text(text) => text.contains("@everyone") || text.contains("@here"),
+            Segment::Var(_) => false,
+        })
 }
 
 /// The local holding a variable: `user.name` → `user_name`. Paths are validated against the

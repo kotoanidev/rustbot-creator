@@ -136,7 +136,13 @@ fn replies_notify_only_what_the_author_wrote() {
     assert!(some.contains(r#"mentions.users.extend(cmd.get_user("cel").map(|user|user.id));"#));
     assert!(some.contains(r#"mentions.roles.extend(cmd.get_role("rola").map(|role|role.id));"#));
     assert!(!some.contains("AllowedMentionType::Everyone"));
-    assert!(reply("@here {option.powód}").contains("AllowedMentionType::Everyone"));
+    // With @here allowed, a user's "@everyone" in a value must not ping: values go through
+    // `quiet`, and only then.
+    let here = reply("@here {option.powód}");
+    assert!(here.contains("AllowedMentionType::Everyone"));
+    assert!(here.contains("quiet(&option_1)"));
+    assert!(here.contains("fnquiet("));
+    assert!(!none.contains("quiet"));
 }
 
 #[test]

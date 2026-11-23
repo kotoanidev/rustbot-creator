@@ -928,6 +928,9 @@ alternatives that were considered, and why.
   - `@everyone`/`@here` notify only when typed into the template itself;
   - anything else notifies no one, including `<@id>` typed by hand.
 
+  Discord allows `@everyone` and `@here` together or not at all. So when a template
+  allows them, every variable's value goes through a generated `quiet()`, which puts a
+  zero-width space after the `@`. A user's "@everyone" cannot ride on an author's "@here".
   This is the safe default. The owner may want a per-node switch later.
 ---
 

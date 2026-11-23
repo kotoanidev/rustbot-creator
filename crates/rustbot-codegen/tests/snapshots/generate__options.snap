@@ -40,6 +40,13 @@ pub(crate) fn definition() -> Result<CreateApplicationCommand, ValidationError> 
         )
         .build()
 }
+/// `@everyone` and `@here` in text from users, made harmless with a zero-width
+/// space, for messages whose author allowed them (C-016).
+fn quiet(text: &dyn std::fmt::Display) -> String {
+    text.to_string()
+        .replace("@everyone", "@\u{200b}everyone")
+        .replace("@here", "@\u{200b}here")
+}
 pub(crate) fn register(client: &Client) {
     client
         .command(
@@ -116,10 +123,13 @@ pub(crate) fn register(client: &Client) {
                         djs_rs::model::interaction::MessageCallbackData::from(
                                 format!(
                                     "{} {} {} {} {} | {} {} {} | {} {} {} | {} {} {} {} @here",
-                                    option_0_name, option_0_id, option_0_username,
-                                    option_0_display_name, option_0_mention, option_1, option_2,
-                                    option_3, option_4_id, option_4_name, option_4_mention,
-                                    option_5_id, option_5_name, option_5_mention, user_mention
+                                    quiet(& option_0_name), quiet(& option_0_id), quiet(&
+                                    option_0_username), quiet(& option_0_display_name), quiet(&
+                                    option_0_mention), quiet(& option_1), quiet(& option_2),
+                                    quiet(& option_3), quiet(& option_4_id), quiet(&
+                                    option_4_name), quiet(& option_4_mention), quiet(&
+                                    option_5_id), quiet(& option_5_name), quiet(&
+                                    option_5_mention), quiet(& user_mention)
                                 ),
                             )
                             .allowed_mentions({
