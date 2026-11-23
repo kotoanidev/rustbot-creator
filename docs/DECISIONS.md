@@ -856,6 +856,50 @@ alternatives that were considered, and why.
 - **Alternatives:** a warning in Problems, which stays even once the intent is on; only
   Logs.
 
+### D-096 — Buttons and menus come next in the catalog
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** After the events, the catalog continues with buttons and select menus
+  under messages.
+- **Alternatives:** more actions (edit or pin a message, nicknames, channels); bot
+  templates; waiting for the owner's live test first.
+
+### D-097 — A click continues the same graph, in one of two modes
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** What a button or menu does is wired from the message node's outputs, in
+  the same graph. Two modes:
+  - **Always works** (the default): the click is routed by djs-rs (`client.component`),
+    so buttons keep working after the bot restarts. After the click, only the clicker,
+    the channel and the server are known; earlier variables are a problem there.
+  - **Wait for a click:** a "Wait for a click (minutes)" field makes the bot wait for
+    the click in the same handler (`await_component`). Every earlier variable stays
+    usable, which suits confirmations (`/ban` → "Sure?" → Yes → Ban). An output "time
+    ran out" follows when nobody clicks in time. These buttons stop working after the
+    time or a restart.
+- **Alternatives:** only one of the two modes; a separate "Button clicked" graph linked by
+  the button's ID.
+
+### D-098 — Buttons are a section of the message form
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Reply" and "Send to a channel" get a folding "Buttons" section, like
+  "Embed" (D-087). It holds up to 5 buttons, each with a label and a colour, or a link.
+  Each button other than a link adds an output "clicked: <label>" to the node.
+- **Alternatives:** a separate "Button" node wired to the message.
+
+### D-099 — A select menu has its own options, one output each
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A message can carry a select menu with options the user types in. One
+  option is picked at a time, and each option has its own output (e.g. "Red" → Add
+  role).
+- **Alternatives:** one "picked" output with a `{choice}` variable and several picks;
+  Discord's user, role and channel menus as well (later).
+
+### D-100 — Anyone can click, unless "only the command author" is ticked
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** By default anyone can click a button or use a menu (verification, role
+  menus). A checkbox "Only the command author can click" limits it, for confirmations;
+  others get a private reply saying the button is not theirs.
+- **Alternatives:** always anyone, with a manual "Compare" on the user's ID.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
