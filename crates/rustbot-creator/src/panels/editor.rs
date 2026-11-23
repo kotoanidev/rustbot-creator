@@ -688,12 +688,14 @@ mod tests {
     }
 
     /// A wire pulled from the reply's `then` and dropped on empty canvas lists the nodes
-    /// that fit; Enter adds the first and wires it.
+    /// that fit; typing narrows the list, and Enter adds the first and wires it.
     #[gpui_kit::test]
     fn a_dropped_wire_adds_a_wired_node(cx: &mut TestAppContext) {
         let (state, cx, _dir) = editor(cx);
         let then = point(px(380. + crate::canvas::WIDTH), px(120. + 30. + 12.));
         cx.update(|window, cx| window.drag(then, point(px(700.), px(400.)), cx));
+        let reply = super::node_name("core.reply");
+        cx.update(|window, cx| window.input(&reply, cx));
         cx.update(|window, cx| window.press("enter", cx));
         cx.read(|cx| {
             let file = state.read(cx).open_file().unwrap();

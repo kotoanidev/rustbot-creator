@@ -154,7 +154,7 @@ pub(crate) fn add_node(
     let props = registry.get(kind).map_or_else(Default::default, |node| {
         node.props
             .iter()
-            .map(|prop| (prop.name.clone(), serde_json::Value::String(String::new())))
+            .map(|prop| (prop.name.clone(), prop.kind.default_value()))
             .collect()
     });
     file.graph.nodes.insert(

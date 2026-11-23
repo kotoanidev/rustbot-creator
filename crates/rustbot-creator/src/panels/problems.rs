@@ -85,6 +85,9 @@ pub(crate) fn describe(problem: &Problem) -> String {
             "problem-unknown-variable",
             &[("prop", prop), ("path", path)],
         ),
+        ProblemKind::WrongVariableType { prop, path } => {
+            t_with("problem-variable-type", &[("prop", prop), ("path", path)])
+        }
         ProblemKind::BadOption { option, problem } => {
             let id = match problem {
                 OptionProblem::Name => "problem-option-name",

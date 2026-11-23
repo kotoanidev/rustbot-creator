@@ -733,6 +733,20 @@ alternatives that were considered, and why.
   fields come with the full catalog.
 - **Alternatives:** full (fields, author, thumbnail, title link, timestamp).
 
+### D-080 — A role field also takes a role ID
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A role field's list holds the role variables and, last, "Role with ID…".
+  That one takes an ID copied from Discord (developer mode → right-click the role → Copy
+  ID). It works offline, and the ID survives renaming the role.
+- **Alternatives:** variables only (no fixed role for now); the app fetches the test
+  server's roles with the bot token (the app itself would talk to Discord, D-060).
+
+### D-081 — "Compare" ignores letter case
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** For "equals" and "contains", "Spam", "SPAM" and "spam" are the same.
+  Numbers are compared as numbers.
+- **Alternatives:** exact comparison; a "match case" switch on the node.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -934,6 +948,28 @@ alternatives that were considered, and why.
   user's "@everyone" cannot ride on an author's "@here", and neither can a value glued to
   an `@` in the template, as in `@{option.x}` with "everyone".
   This is the safe default. The owner may want a per-node switch later.
+
+### C-017 — Typed fields, choices and how conditions are generated
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Field kinds:** `PropKind::Variable(type)` holds a variable's name (`user`,
+    `option.target`). A role field also takes an ID of 17-20 digits that fits a Discord ID
+    (D-080). `PropKind::Choice(list)` holds one value of a fixed list.
+  - **Permission list:** "Has permission?" offers the 13 permissions bots check most, by
+    lower-case name. Administrators pass every check, since Discord gives them every
+    permission.
+  - **Defaults:** a new node starts with empty fields, and Problems asks for the required
+    ones. No user is chosen for it, so a later "Ban" never targets the author by default.
+    `add_node` now gives the options list `[]` rather than `""`.
+  - **Form:** fields appear in the node type's order. Pickers are drop-downs, and a role
+    picker shows an ID field after "Role with ID…". A picker's list is rebuilt when the
+    variables change, such as after adding an option.
+  - **Generated code:** a condition becomes `if … { yes } else { no }`, and an empty branch
+    is left out. A node that two branches reach is generated in each of them, and only a
+    real loop is an error. The command module allows clippy's nested-`if` lints, since the
+    nesting mirrors the graph.
+  - **Compare:** "equals", "does not equal" and "contains" lower-case both sides (D-081).
+    "Greater" and "less" parse both sides as numbers and are false if either is not one.
 ---
 
 ## Open questions (to ask the owner when relevant)

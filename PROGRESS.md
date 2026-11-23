@@ -105,16 +105,16 @@ The owner finds the console hard to read and wants it improved later. Colour cod
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Phase 3, step 2b: the variable picker (D-078).** Step 2a, command options, is done:
-- registry and codegen (C-015);
-- the editor in Properties, tested headlessly;
-- replies that notify only what their author wrote (C-016, from a security review).
+**Phase 3, step 2d: moderation nodes (D-073).** These are done:
+- 2b, the variable picker: {x} and typed pickers, with "Role with ID…" (D-078, D-080);
+- 2c, the conditions "Has permission?", "Has role?" and "Compare" (D-077, D-081), with
+  branching codegen (C-017).
 
-2b covers two things. Fields of type user, channel or role become drop-downs of the
-variables that fit; `Registry::scope` already lists them with their types. Text fields get
-an {x} button that inserts a variable at the cursor. The nodes that need typed fields
-(moderation, D-073) come in 2c–2d, so 2b may build the typed field together with the first
-such node.
+2d covers "Ban", "Kick", "Timeout", "Add role" and "Remove role". Each gets a user field,
+plus a role field or a duration where needed, and a reason. Use djs-rs's guild member REST
+calls, which need the bot's permissions on the server. Decide with the owner what happens
+when an action fails (e.g. a missing permission or a higher role) and whether "Ban"
+deletes recent messages. Then 2e: messages (to a channel, only for the author, embed).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

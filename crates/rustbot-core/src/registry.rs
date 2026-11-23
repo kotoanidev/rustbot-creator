@@ -133,6 +133,68 @@ pub enum PropKind {
     },
     /// A slash command's options: a list of [`CommandOption`] (D-076).
     Options,
+    /// A user, channel or role, as the name of a variable of this type in scope, e.g.
+    /// `option.target` (D-078). A role may also be an ID (D-080).
+    Variable(DataType),
+    /// One value of a fixed list.
+    Choice(Choices),
+}
+
+impl PropKind {
+    /// What a new node holds in this field: nothing chosen or typed yet.
+    #[must_use]
+    pub fn default_value(self) -> serde_json::Value {
+        match self {
+            Self::Options => serde_json::Value::Array(Vec::new()),
+            Self::Text { .. } | Self::Variable(_) | Self::Choice(_) => {
+                serde_json::Value::String(String::new())
+            }
+        }
+    }
+}
+
+/// The fixed lists a [`PropKind::Choice`] field picks from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Choices {
+    /// The Discord permissions a bot most often checks, by their lower-case names.
+    Permission,
+    /// How "Compare" relates two values (D-081).
+    Comparison,
+}
+
+impl Choices {
+    /// The values, in the order a form lists them.
+    #[must_use]
+    pub fn values(self) -> &'static [&'static str] {
+        match self {
+            Self::Permission => &[
+                "administrator",
+                "manage_guild",
+                "manage_roles",
+                "manage_channels",
+                "manage_messages",
+                "manage_nicknames",
+                "kick_members",
+                "ban_members",
+                "moderate_members",
+                "mute_members",
+                "move_members",
+                "mention_everyone",
+                "view_audit_log",
+            ],
+            Self::Comparison => &["equals", "not_equals", "contains", "greater", "less"],
+        }
+    }
+}
+
+/// Whether a role field's value is an ID rather than a variable: 17-20 digits that fit a
+/// Discord ID (D-080).
+#[must_use]
+pub fn is_id(value: &str) -> bool {
+    (17..=20).contains(&value.len())
+        && value.bytes().all(|b| b.is_ascii_digit())
+        && value.parse::<u64>().is_ok_and(|id| id != 0)
 }
 
 /// An option of a slash command, which users fill in, as stored in the graph file (D-076).
@@ -259,6 +321,13 @@ pub enum ProblemKind {
         /// The path, e.g. `user.nmae`.
         path: String,
     },
+    /// A field names a variable of another type, e.g. a text option where a user is needed.
+    WrongVariableType {
+        /// The form field.
+        prop: String,
+        /// The variable, e.g. `option.reason`.
+        path: String,
+    },
     /// A command option breaks Discord's rules.
     BadOption {
         /// Its position in the list, from 0.
@@ -289,6 +358,9 @@ impl fmt::Display for Problem {
             ProblemKind::BadTemplate { prop, error } => write!(f, "{prop:?}: {error}"),
             ProblemKind::UnknownVariable { prop, path } => {
                 write!(f, "{prop:?}: no variable {{{path}}}")
+            }
+            ProblemKind::WrongVariableType { prop, path } => {
+                write!(f, "{prop:?}: {{{path}}} has the wrong type")
             }
             ProblemKind::BadOption { option, problem } => {
                 let why = match problem {
@@ -502,6 +574,38 @@ fn check_prop(
         (PropKind::Options, Some(value)) => {
             serde_json::from_value::<Vec<CommandOption>>(value.clone())
                 .map_or_else(|_| wrong_type(), |options| check_options(&options))
+        }
+        (PropKind::Variable(_) | PropKind::Choice(_), Some(serde_json::Value::String(text)))
+            if text.is_empty() =>
+        {
+            if prop.required {
+                vec![ProblemKind::MissingProp(prop.name.clone())]
+            } else {
+                Vec::new()
+            }
+        }
+        (PropKind::Variable(ty), Some(serde_json::Value::String(name))) => {
+            if ty == DataType::Role && is_id(name) {
+                return Vec::new();
+            }
+            match scope.iter().find(|var| &var.name == name) {
+                Some(var) if var.ty == ty => Vec::new(),
+                Some(_) => vec![ProblemKind::WrongVariableType {
+                    prop: prop.name.clone(),
+                    path: name.clone(),
+                }],
+                None => vec![ProblemKind::UnknownVariable {
+                    prop: prop.name.clone(),
+                    path: name.clone(),
+                }],
+            }
+        }
+        (PropKind::Choice(choices), Some(serde_json::Value::String(value))) => {
+            if choices.values().contains(&value.as_str()) {
+                Vec::new()
+            } else {
+                wrong_type()
+            }
         }
         (_, Some(_)) => wrong_type(),
     }

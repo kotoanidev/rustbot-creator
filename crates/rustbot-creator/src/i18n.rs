@@ -129,6 +129,16 @@ mod tests {
                 assert!(english.contains(id.as_str()), "{id}");
             }
         }
+        // Every value of a fixed list has a name, e.g. `choice-permission-ban_members`.
+        for (list, choices) in [
+            ("permission", rustbot_core::registry::Choices::Permission),
+            ("comparison", rustbot_core::registry::Choices::Comparison),
+        ] {
+            for value in choices.values() {
+                let id = format!("choice-{list}-{value}");
+                assert!(english.contains(id.as_str()), "{id}");
+            }
+        }
     }
 
     /// Every `t("…")` and `t_with("…"` in the source names an English message.

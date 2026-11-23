@@ -54,6 +54,56 @@ fn ban() -> GraphFile {
     file
 }
 
+/// `/check`: the D-014 example's conditions, nested (D-077, D-080, D-081).
+fn conditions() -> GraphFile {
+    let graph: Graph = serde_json::from_value(serde_json::json!({
+        "schema": 1,
+        "nodes": {
+            "n1": { "type": "core.slash_command", "props": {
+                "name": "check", "description": "Checks", "options": [
+                    { "name": "cel", "type": "user", "description": "Who", "required": true },
+                    { "name": "powód", "type": "text", "description": "Why" },
+                    { "name": "ile", "type": "number", "description": "How many" },
+                    { "name": "rola", "type": "role", "description": "Role" } ] } },
+            "n2": { "type": "core.has_permission",
+                    "props": { "user": "user", "permission": "ban_members" } },
+            "n3": { "type": "core.compare",
+                    "props": { "left": "{option.powód}", "operator": "contains", "right": "spam" } },
+            "n4": { "type": "core.reply", "props": { "content": "Spam!" } },
+            "n5": { "type": "core.has_role",
+                    "props": { "user": "option.cel", "role": "123456789012345678" } },
+            "n6": { "type": "core.reply", "props": { "content": "{option.cel.name} is a moderator" } },
+            "n7": { "type": "core.reply", "props": { "content": "No permission" } },
+            "n8": { "type": "core.has_role",
+                    "props": { "user": "user", "role": "option.rola" } },
+            "n9": { "type": "core.compare",
+                    "props": { "left": "{option.ile}", "operator": "greater", "right": "3" } },
+            "n10": { "type": "core.reply", "props": { "content": "More than 3" } },
+            "n11": { "type": "core.compare",
+                    "props": { "left": "{option.powód}", "operator": "not_equals", "right": "" } }
+        },
+        "edges": [
+            { "from": "n1.then", "to": "n2.run" },
+            { "from": "n2.yes", "to": "n3.run" },
+            { "from": "n3.yes", "to": "n4.run" },
+            { "from": "n3.no", "to": "n5.run" },
+            { "from": "n5.yes", "to": "n6.run" },
+            { "from": "n2.no", "to": "n7.run" },
+            { "from": "n1.then", "to": "n8.run" },
+            { "from": "n8.no", "to": "n9.run" },
+            { "from": "n9.yes", "to": "n10.run" },
+            { "from": "n1.then", "to": "n11.run" }
+        ]
+    }))
+    .unwrap();
+    GraphFile {
+        kind: GraphKind::Command,
+        name: "check".to_owned(),
+        graph,
+        layout: Layout::default(),
+    }
+}
+
 /// A project on disk with these graphs, opened again as the app would.
 fn project(dir: &Path, manifest: Manifest, graphs: &[GraphFile]) -> Project {
     let project = Project::create(dir, manifest).unwrap();
@@ -172,6 +222,19 @@ fn replies_notify_only_what_the_author_wrote() {
     assert!(!glued.contains("quiet(&user_mention)"));
     assert!(reply("@here {option.cel.mention}").contains("option_0_mention)"));
     assert!(!reply("@here {option.cel.mention}").contains("quiet(&option_0_mention)"));
+}
+
+#[test]
+fn conditions_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = project(dir.path(), Manifest::new("Check Bot"), &[conditions()]);
+    let registry = Registry::with_core();
+    assert_eq!(registry.validate(&p.graphs[0].graph), Vec::new());
+    let output = generate(&p, &registry).unwrap();
+    insta::assert_snapshot!(
+        "conditions",
+        &output.files[Path::new("generated/src/commands/check.rs")]
+    );
 }
 
 #[test]
@@ -338,6 +401,7 @@ fn generated_bot_compiles() {
         "{channel.id} {channel.name} {channel.mention} {server.id} {server.name}",
     ));
     graphs.push(ban());
+    graphs.push(conditions());
     let p = project(dir.path(), Manifest::new("Ping Bot"), &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
 

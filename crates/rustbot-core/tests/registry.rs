@@ -275,3 +275,88 @@ fn command_options_follow_discords_rules() {
         vec![ProblemKind::WrongPropType("options".to_owned())]
     );
 }
+
+/// `/ban` with a user, a text and a role option, followed by `condition`.
+fn with_condition(condition: &serde_json::Value) -> Graph {
+    serde_json::from_value(serde_json::json!({
+        "schema": 1,
+        "nodes": {
+            "n1": { "type": "core.slash_command", "props": {
+                "name": "ban", "description": "Bans", "options": [
+                    { "name": "cel", "type": "user", "description": "Who" },
+                    { "name": "powód", "type": "text", "description": "Why" },
+                    { "name": "rola", "type": "role", "description": "Role" } ] } },
+            "n2": condition
+        },
+        "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+    }))
+    .unwrap()
+}
+
+#[test]
+fn conditions_take_typed_variables_ids_and_choices() {
+    let ok = [
+        serde_json::json!({ "type": "core.has_permission",
+            "props": { "user": "user", "permission": "ban_members" } }),
+        serde_json::json!({ "type": "core.has_permission",
+            "props": { "user": "option.cel", "permission": "administrator" } }),
+        serde_json::json!({ "type": "core.has_role",
+            "props": { "user": "option.cel", "role": "option.rola" } }),
+        serde_json::json!({ "type": "core.has_role",
+            "props": { "user": "user", "role": "123456789012345678" } }),
+        serde_json::json!({ "type": "core.compare",
+            "props": { "left": "{option.powód}", "operator": "contains", "right": "" } }),
+    ];
+    for node in ok {
+        assert_eq!(kinds(&with_condition(&node)), Vec::new(), "{node}");
+    }
+    let wrong = |props: serde_json::Value| kinds(&with_condition(&props));
+    assert_eq!(
+        wrong(serde_json::json!({ "type": "core.has_role",
+            "props": { "user": "option.powód", "role": "12345" } })),
+        vec![
+            ProblemKind::WrongVariableType {
+                prop: "user".to_owned(),
+                path: "option.powód".to_owned()
+            },
+            ProblemKind::UnknownVariable {
+                prop: "role".to_owned(),
+                path: "12345".to_owned()
+            },
+        ]
+    );
+    assert_eq!(
+        wrong(serde_json::json!({ "type": "core.has_permission",
+            "props": { "user": "", "permission": "fly" } })),
+        vec![
+            ProblemKind::MissingProp("user".to_owned()),
+            ProblemKind::WrongPropType("permission".to_owned()),
+        ]
+    );
+    // A user field never takes an ID, only a role field does.
+    assert_eq!(
+        wrong(serde_json::json!({ "type": "core.has_permission",
+            "props": { "user": "123456789012345678", "permission": "ban_members" } })),
+        vec![ProblemKind::UnknownVariable {
+            prop: "user".to_owned(),
+            path: "123456789012345678".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn new_nodes_start_with_values_of_the_right_kind() {
+    for node_type in Registry::with_core().iter() {
+        for prop in &node_type.props {
+            let value = prop.kind.default_value();
+            let expected_list = prop.kind == rustbot_core::registry::PropKind::Options;
+            assert_eq!(
+                value.is_array(),
+                expected_list,
+                "{} {}",
+                node_type.id,
+                prop.name
+            );
+        }
+    }
+}

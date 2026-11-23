@@ -12,7 +12,7 @@ use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Subscription, Window, div, px,
 };
-use rustbot_core::registry::{CommandOption, DataType, PropKind};
+use rustbot_core::registry::{CommandOption, DataType, PropKind, is_id};
 use rustbot_core::{GraphFile, NodeId, Registry};
 
 use crate::i18n::{t, t_or, t_with};
@@ -24,6 +24,9 @@ pub(crate) struct Properties {
     /// The node the fields belong to: `(graph index, node id)`.
     shown: Option<(usize, NodeId)>,
     fields: Vec<Field>,
+    pickers: Vec<Picker>,
+    /// The form's fields in the node type's order.
+    layout: Vec<Slot>,
     /// The prop holding the shown node's command options, if it has one (D-076).
     options_prop: Option<String>,
     options: Vec<OptionRow>,
@@ -39,6 +42,27 @@ struct Field {
     templates: bool,
     input: Entity<InputState>,
     _changes: Subscription,
+}
+
+/// Where a form field is kept.
+#[derive(Clone, Copy)]
+enum Slot {
+    Text(usize),
+    Pick(usize),
+    Options,
+}
+
+/// A field picked from a list: a variable of a type (D-078), or one value of a fixed list.
+struct Picker {
+    prop: String,
+    /// What each entry writes into the graph, in list order.
+    values: Vec<String>,
+    labels: Vec<SharedString>,
+    /// A role field ends its list with "Role with ID…", which shows `id` (D-080).
+    id: Option<Entity<InputState>>,
+    id_chosen: bool,
+    select: Entity<SelectState<Vec<SharedString>>>,
+    _changes: Vec<Subscription>,
 }
 
 /// The editable parts of one command option; its "required" box is drawn from the graph.
@@ -71,6 +95,8 @@ impl Properties {
             state,
             shown: None,
             fields: Vec::new(),
+            pickers: Vec::new(),
+            layout: Vec::new(),
             options_prop: None,
             options: Vec::new(),
             fresh: true,
@@ -108,6 +134,9 @@ impl Properties {
                         .update(cx, |input, cx| input.set_value(value, window, cx));
                 }
             }
+            if !self.sync_pickers(window, cx) {
+                self.build_fields(window, cx);
+            }
             self.sync_options(window, cx);
         }
         if self.shown.is_none() && self.bot.is_none() {
@@ -118,6 +147,8 @@ impl Properties {
 
     fn build_fields(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
         self.fields.clear();
+        self.pickers.clear();
+        self.layout.clear();
         self.options_prop = None;
         self.options.clear();
         let Some((_, node)) = self.shown.clone() else {
@@ -130,47 +161,242 @@ impl Properties {
         let Some(kind) = state.registry.get(&file.graph.nodes[&node].kind) else {
             return;
         };
-        let props: Vec<(String, bool, String)> = kind
+        let props: Vec<(String, PropKind, String)> = kind
             .props
             .iter()
-            .filter_map(|prop| match prop.kind {
-                PropKind::Text { templates } => Some((
+            .map(|prop| {
+                (
                     prop.name.clone(),
-                    templates,
+                    prop.kind,
                     prop_text(file, &node, &prop.name),
-                )),
-                PropKind::Options => None,
+                )
             })
             .collect();
-        self.options_prop = kind
-            .props
+        for (prop, kind, value) in props {
+            match kind {
+                PropKind::Text { templates } => {
+                    self.layout.push(Slot::Text(self.fields.len()));
+                    let field = Self::text_field(prop, templates, value, window, cx);
+                    self.fields.push(field);
+                }
+                PropKind::Variable(_) | PropKind::Choice(_) => {
+                    self.layout.push(Slot::Pick(self.pickers.len()));
+                    let picker = self.picker(prop, kind, &value, window, cx);
+                    self.pickers.push(picker);
+                }
+                PropKind::Options => {
+                    self.layout.push(Slot::Options);
+                    self.options_prop = Some(prop);
+                }
+            }
+        }
+        self.build_options(window, cx);
+    }
+
+    fn text_field(
+        prop: String,
+        templates: bool,
+        value: String,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) -> Field {
+        let input = cx.new(|cx| InputState::new(window, cx).default_value(value));
+        let name = prop.clone();
+        let changes = cx.subscribe_in(
+            &input,
+            window,
+            move |this, input, event, _, cx| match event {
+                InputEvent::Focus => this.fresh = true,
+                InputEvent::Change => {
+                    let value = input.read(cx).value().to_string();
+                    this.write(&name, value, cx);
+                }
+                _ => {}
+            },
+        );
+        Field {
+            prop,
+            templates,
+            input,
+            _changes: changes,
+        }
+    }
+
+    /// The entries a picker offers now: what each writes, and its label.
+    fn entries(&self, kind: PropKind, cx: &gpui_kit::App) -> (Vec<String>, Vec<SharedString>) {
+        let values: Vec<String> = match kind {
+            PropKind::Variable(ty) => {
+                let state = self.state.read(cx);
+                state.open_file().map_or_else(Vec::new, |file| {
+                    state
+                        .registry
+                        .scope(&file.graph)
+                        .into_iter()
+                        .filter(|var| var.ty == ty)
+                        .map(|var| var.name)
+                        .collect()
+                })
+            }
+            PropKind::Choice(choices) => choices.values().iter().map(|&v| v.to_owned()).collect(),
+            PropKind::Text { .. } | PropKind::Options => Vec::new(),
+        };
+        let mut labels: Vec<SharedString> = values
             .iter()
-            .find(|prop| prop.kind == PropKind::Options)
-            .map(|prop| prop.name.clone());
-        for (prop, templates, value) in props {
-            let input = cx.new(|cx| InputState::new(window, cx).default_value(value));
+            .map(|value| match kind {
+                PropKind::Variable(_) => variable_label(value).into(),
+                PropKind::Choice(choices) => choice_label(choices, value).into(),
+                PropKind::Text { .. } | PropKind::Options => value.clone().into(),
+            })
+            .collect();
+        if kind == PropKind::Variable(DataType::Role) {
+            labels.push(t("var-role-id").into());
+        }
+        (values, labels)
+    }
+
+    fn picker(
+        &self,
+        prop: String,
+        kind: PropKind,
+        value: &str,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) -> Picker {
+        let (values, labels) = self.entries(kind, cx);
+        let takes_id = kind == PropKind::Variable(DataType::Role);
+        let id_chosen = takes_id && is_id(value);
+        let selected = if id_chosen {
+            Some(values.len())
+        } else {
+            values.iter().position(|v| v == value)
+        };
+        let select =
+            cx.new(|cx| SelectState::new(labels.clone(), selected.map(IndexPath::new), window, cx));
+        let ix = self.pickers.len();
+        let mut changes =
+            vec![
+                cx.subscribe_in(&select, window, move |this, _, event, window, cx| {
+                    if let SelectEvent::Confirm(Some(label)) = event {
+                        let entry = this.pickers[ix].labels.iter().position(|l| l == label);
+                        if let Some(entry) = entry {
+                            this.pick(ix, entry, window, cx);
+                        }
+                    }
+                }),
+            ];
+        let id = takes_id.then(|| {
+            let shown = if id_chosen {
+                value.to_owned()
+            } else {
+                String::new()
+            };
+            let input = cx.new(|cx| {
+                InputState::new(window, cx)
+                    .default_value(shown)
+                    .placeholder(t("role-id-placeholder"))
+            });
             let name = prop.clone();
-            let changes =
+            changes.push(
                 cx.subscribe_in(
                     &input,
                     window,
                     move |this, input, event, _, cx| match event {
                         InputEvent::Focus => this.fresh = true,
                         InputEvent::Change => {
-                            let value = input.read(cx).value().to_string();
+                            let value = input.read(cx).value().trim().to_owned();
                             this.write(&name, value, cx);
                         }
                         _ => {}
                     },
-                );
-            self.fields.push(Field {
-                prop,
-                templates,
-                input,
-                _changes: changes,
-            });
+                ),
+            );
+            input
+        });
+        Picker {
+            prop,
+            values,
+            labels,
+            id,
+            id_chosen,
+            select,
+            _changes: changes,
         }
-        self.build_options(window, cx);
+    }
+
+    /// Picker `ix` took entry `entry`: a value, or "Role with ID…", which writes the typed
+    /// ID. Each pick is an undo step of its own.
+    fn pick(&mut self, ix: usize, entry: usize, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let Some(picker) = self.pickers.get_mut(ix) else {
+            return;
+        };
+        picker.id_chosen = entry >= picker.values.len();
+        let value = if let Some(value) = picker.values.get(entry) {
+            value.clone()
+        } else {
+            let id = picker.id.clone();
+            id.map_or_else(String::new, |id| {
+                id.update(cx, |input, cx| input.focus(window, cx));
+                id.read(cx).value().trim().to_owned()
+            })
+        };
+        let prop = self.pickers[ix].prop.clone();
+        self.fresh = true;
+        self.write(&prop, value, cx);
+    }
+
+    /// Brings the pickers up to date after an undo. `false` when their lists changed, e.g. a
+    /// command option was added, and the form must be built again.
+    fn sync_pickers(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> bool {
+        let Some((_, node)) = self.shown.clone() else {
+            return true;
+        };
+        let kinds: Vec<Option<PropKind>> = {
+            let state = self.state.read(cx);
+            let Some(file) = state.open_file() else {
+                return true;
+            };
+            let kind = state.registry.get(&file.graph.nodes[&node].kind);
+            self.pickers
+                .iter()
+                .map(|picker| {
+                    kind.and_then(|k| k.props.iter().find(|p| p.name == picker.prop))
+                        .map(|p| p.kind)
+                })
+                .collect()
+        };
+        for (ix, kind) in kinds.into_iter().enumerate() {
+            let Some(kind) = kind else { return false };
+            if self.entries(kind, cx).1 != self.pickers[ix].labels {
+                return false;
+            }
+            let value = {
+                let state = self.state.read(cx);
+                state.open_file().map_or_else(String::new, |file| {
+                    prop_text(file, &node, &self.pickers[ix].prop)
+                })
+            };
+            let picker = &mut self.pickers[ix];
+            let id_chosen = picker.id.is_some() && is_id(&value);
+            // An empty value keeps "Role with ID…" open while the ID is being typed.
+            picker.id_chosen = id_chosen || (picker.id_chosen && value.is_empty());
+            let selected = if picker.id_chosen {
+                Some(picker.values.len())
+            } else {
+                picker.values.iter().position(|v| *v == value)
+            };
+            if picker.select.read(cx).selected_index(cx) != selected.map(IndexPath::new) {
+                picker.select.update(cx, |select, cx| {
+                    select.set_selected_index(selected.map(IndexPath::new), window, cx);
+                });
+            }
+            if let Some(id) = &picker.id
+                && id_chosen
+                && id.read(cx).value() != value.as_str()
+            {
+                id.update(cx, |input, cx| input.set_value(value, window, cx));
+            }
+        }
+        true
     }
 
     /// The shown node's command options, as the graph has them.
@@ -314,6 +540,48 @@ impl Properties {
                 required: false,
             });
         });
+    }
+
+    /// Text field `ix` with its label and, for templates, the {x} variable menu (D-078).
+    fn render_text_field(
+        &self,
+        ix: usize,
+        node_id: &str,
+        variables: &[String],
+        this: &gpui_kit::WeakEntity<Self>,
+    ) -> impl IntoElement + use<> {
+        let field = &self.fields[ix];
+        let name = t_or(&format!("prop-{node_id}-{}", field.prop), &field.prop);
+        let picker = (field.templates && !variables.is_empty()).then(|| {
+            let (variables, this) = (variables.to_vec(), this.clone());
+            Button::new(("insert-variable", ix))
+                .ghost()
+                .xsmall()
+                .label("{x}")
+                .dropdown_menu(move |mut menu, _, _| {
+                    for variable in &variables {
+                        let (this, variable) = (this.clone(), variable.clone());
+                        let item =
+                            PopupMenuItem::new(variable.clone()).on_click(move |_, window, cx| {
+                                let _ = this.update(cx, |this, cx| {
+                                    this.insert_variable(ix, &variable, window, cx);
+                                });
+                            });
+                        menu = menu.item(item);
+                    }
+                    menu
+                })
+        });
+        v_flex()
+            .gap(px(4.))
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_end()
+                    .child(label(name))
+                    .children(picker),
+            )
+            .child(Input::new(&field.input))
     }
 
     fn render_options(
@@ -582,6 +850,28 @@ fn variables(file: &GraphFile, registry: &Registry) -> Vec<String> {
     found
 }
 
+/// A variable as a picker lists it: "Command author", "Option: target" (D-078).
+fn variable_label(name: &str) -> String {
+    match name {
+        "user" => t("var-user"),
+        "channel" => t("var-channel"),
+        "server" => t("var-server"),
+        _ => match name.strip_prefix("option.") {
+            Some(option) => t_with("var-option", &[("name", option)]),
+            None => name.to_owned(),
+        },
+    }
+}
+
+/// A fixed list's value in the app's language, e.g. "Ban members".
+fn choice_label(choices: rustbot_core::registry::Choices, value: &str) -> String {
+    let list = match choices {
+        rustbot_core::registry::Choices::Permission => "permission",
+        rustbot_core::registry::Choices::Comparison => "comparison",
+    };
+    t_or(&format!("choice-{list}-{value}"), value)
+}
+
 /// The option types' names, in the order of [`CommandOption::TYPES`].
 fn type_names() -> Vec<SharedString> {
     CommandOption::TYPES
@@ -613,49 +903,38 @@ impl Render for Properties {
                 let node_id = kind.replace('.', "-");
                 let variables = variables(file, &state.registry);
                 let this = cx.entity().downgrade();
-                let options = self.options_prop.as_ref().map(|prop| {
-                    let name = t_or(&format!("prop-{node_id}-{prop}"), prop);
-                    self.render_options(name, cx)
-                });
                 v_flex()
                     .gap(px(6.))
                     .child(div().text_sm().child(super::editor::node_name(kind)))
-                    .children(self.fields.iter().enumerate().map(|(ix, field)| {
-                        let name = t_or(&format!("prop-{node_id}-{}", field.prop), &field.prop);
-                        // {x} lists the variables and inserts one at the cursor (D-078).
-                        let picker = (field.templates && !variables.is_empty()).then(|| {
-                            let (variables, this) = (variables.clone(), this.clone());
-                            Button::new(("insert-variable", ix))
-                                .ghost()
-                                .xsmall()
-                                .label("{x}")
-                                .dropdown_menu(move |mut menu, _, _| {
-                                    for variable in &variables {
-                                        let (this, variable) = (this.clone(), variable.clone());
-                                        let item = PopupMenuItem::new(variable.clone()).on_click(
-                                            move |_, window, cx| {
-                                                let _ = this.update(cx, |this, cx| {
-                                                    this.insert_variable(ix, &variable, window, cx);
-                                                });
-                                            },
-                                        );
-                                        menu = menu.item(item);
-                                    }
-                                    menu
-                                })
-                        });
-                        v_flex()
-                            .gap(px(4.))
-                            .child(
-                                h_flex()
-                                    .justify_between()
-                                    .items_end()
+                    .children(self.layout.iter().map(|slot| {
+                        match *slot {
+                            Slot::Text(ix) => self
+                                .render_text_field(ix, &node_id, &variables, &this)
+                                .into_any_element(),
+                            Slot::Pick(ix) => {
+                                let picker = &self.pickers[ix];
+                                let name =
+                                    t_or(&format!("prop-{node_id}-{}", picker.prop), &picker.prop);
+                                v_flex()
+                                    .gap(px(4.))
                                     .child(label(name))
-                                    .children(picker),
-                            )
-                            .child(Input::new(&field.input))
+                                    .child(Select::new(&picker.select).small())
+                                    .children(
+                                        picker
+                                            .id
+                                            .as_ref()
+                                            .filter(|_| picker.id_chosen)
+                                            .map(|id| Input::new(id).small()),
+                                    )
+                                    .into_any_element()
+                            }
+                            Slot::Options => {
+                                let prop = self.options_prop.clone().unwrap_or_default();
+                                let name = t_or(&format!("prop-{node_id}-{prop}"), &prop);
+                                self.render_options(name, cx).into_any_element()
+                            }
+                        }
                     }))
-                    .children(options)
                     .into_any_element()
             }
             _ => match &self.bot {
@@ -741,6 +1020,70 @@ mod tests {
         });
         assert_eq!(options(cx), Vec::new());
         assert_eq!(cx.read(|cx| properties.read(cx).options.len()), 0);
+    }
+
+    /// A user field lists the user variables; a role field also offers "Role with ID…",
+    /// whose field writes the typed ID; undo brings the list back (D-078, D-080).
+    #[gpui_kit::test]
+    fn pickers_write_variables_and_ids(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (properties, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, cx| {
+                app.edit(false, cx, |file, registry| {
+                    let options = serde_json::json!([
+                        { "name": "cel", "type": "user", "description": "Who" },
+                        { "name": "rola", "type": "role", "description": "Role" }
+                    ]);
+                    file.graph
+                        .nodes
+                        .get_mut(&NodeId("n1".to_owned()))
+                        .unwrap()
+                        .props
+                        .insert("options".to_owned(), options);
+                    crate::canvas::add_node(file, registry, "core.has_role", [0., 0.]);
+                });
+                app.selected_node = Some(NodeId("n3".to_owned()));
+            });
+            state = Some(app.clone());
+            Properties::new(app, window, cx)
+        });
+        let state = state.unwrap();
+        let prop = |cx: &mut gpui_kit::VisualTestContext, name: &str| {
+            cx.read(|cx| {
+                let file = state.read(cx).open_file().unwrap();
+                file.graph.nodes[&NodeId("n3".to_owned())].props[name].clone()
+            })
+        };
+        let values = cx.read(|cx| properties.read(cx).pickers[0].values.clone());
+        assert_eq!(values, ["user", "option.cel"]);
+        let labels = cx.read(|cx| properties.read(cx).pickers[1].labels.clone());
+        assert_eq!(labels.len(), 2, "option.rola and Role with ID…");
+
+        cx.update(|window, cx| {
+            properties.update(cx, |this, cx| this.pick(0, 1, window, cx));
+            properties.update(cx, |this, cx| this.pick(1, 1, window, cx));
+            window.render_frame(cx);
+        });
+        assert_eq!(prop(cx, "user"), "option.cel");
+        assert!(cx.read(|cx| properties.read(cx).pickers[1].id_chosen));
+        cx.update(|window, cx| window.input("123456789012345678", cx));
+        assert_eq!(prop(cx, "role"), "123456789012345678");
+
+        cx.update(|window, cx| {
+            properties.update(cx, |this, cx| this.pick(1, 0, window, cx));
+            window.render_frame(cx);
+        });
+        assert_eq!(prop(cx, "role"), "option.rola");
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.undo(false, cx));
+            window.render_frame(cx);
+        });
+        assert_eq!(prop(cx, "role"), "123456789012345678");
+        assert!(cx.read(|cx| properties.read(cx).pickers[1].id_chosen));
     }
 
     /// {x} inserts the chosen variable at the cursor, as one undo step (D-078).

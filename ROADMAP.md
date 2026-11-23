@@ -50,8 +50,8 @@ layer, before the scope widens.
       the bot's
 - [ ] The `/ban` example of D-014 (D-073), with values from form fields (D-074):
   - [x] Command options as a list in the command's form (D-076)
-  - [ ] Variable picker: lists for user/channel/role fields, {x} for text (D-078)
-  - [ ] Conditions with "yes"/"no" outputs: has permission, has role, compare (D-077)
+  - [x] Variable picker: lists for user/channel/role fields, {x} for text (D-078)
+  - [x] Conditions with "yes"/"no" outputs: has permission, has role, compare (D-077)
   - [ ] Moderation: ban, kick, timeout, add/remove a role
   - [ ] Messages: send to a channel, a reply only the author sees, a basic embed (D-079)
 - [ ] Full node catalog and forms over what djs-rs covers: events, components, and so on
