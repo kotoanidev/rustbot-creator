@@ -900,6 +900,30 @@ alternatives that were considered, and why.
   others get a private reply saying the button is not theirs.
 - **Alternatives:** always anyone, with a manual "Compare" on the user's ID.
 
+### D-101 — More actions come next in the catalog
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** After buttons and menus, the catalog continues with more actions.
+- **Alternatives:** modals; the bot's memory (lasting variables); bot templates.
+
+### D-102 — The actions of this round
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:**
+  - "Send a DM" to a user, with the same message form as "Send to a channel" (embed,
+    buttons, menu).
+  - "Add a reaction", "Pin" and "Unpin".
+  - "Edit message": new text and embed for a message the bot sent.
+  - "Change nickname", a moderation action needing "Manage nicknames", and "Wait", which
+    waits some seconds and goes on.
+- **Alternatives:** any subset of these.
+
+### D-103 — Message actions work on the event's message or the last one sent
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Add a reaction", "Pin", "Unpin" and "Edit message" pick their message
+  from a list: "The event's message" ("New message", reactions) or "Last sent by the
+  bot" in this run of the graph.
+- **Alternatives:** picking an earlier message node of the graph; also a message by its
+  ID and channel.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
