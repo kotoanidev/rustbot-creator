@@ -15,7 +15,7 @@ use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Subscription, Window, div, px,
 };
-use rustbot_core::registry::{ButtonStyle, CommandOption, DataType, MenuOption, PropKind, is_id};
+use rustbot_core::registry::{ButtonStyle, CommandOption, DataType, MenuOption, PropKind};
 use rustbot_core::{GraphFile, MemoryScope, MemoryType, NodeId, Registry};
 
 use crate::i18n::{t, t_or, t_with};
@@ -694,7 +694,8 @@ impl Properties {
         let (values, labels) = self.entries(kind, cx);
         // Roles and channels may be typed as IDs (D-080, D-088).
         let takes_id = matches!(kind, PropKind::Variable(DataType::Role | DataType::Channel));
-        let id_chosen = takes_id && is_id(value);
+        // Anything typed that is not a listed variable is an ID, whole or still being typed.
+        let id_chosen = takes_id && !value.is_empty() && !values.iter().any(|v| v == value);
         let selected = if id_chosen {
             Some(values.len())
         } else {
@@ -810,8 +811,10 @@ impl Properties {
                 })
             };
             let picker = &mut self.pickers[ix];
-            let id_chosen = picker.id.is_some() && is_id(&value);
-            // An empty value keeps "Role with ID…" open while the ID is being typed.
+            // A typed value that is no listed variable is an ID, whole or still being typed;
+            // an empty one keeps "Role with ID…" open if it was chosen.
+            let id_chosen =
+                picker.id.is_some() && !value.is_empty() && !picker.values.contains(&value);
             picker.id_chosen = id_chosen || (picker.id_chosen && value.is_empty());
             let selected = if picker.id_chosen {
                 Some(picker.values.len())
@@ -1834,8 +1837,19 @@ mod tests {
         });
         assert_eq!(prop(cx, "user"), "option.cel");
         assert!(cx.read(|cx| properties.read(cx).pickers[1].id_chosen));
-        cx.update(|window, cx| window.input("123456789012345678", cx));
-        assert_eq!(prop(cx, "role"), "123456789012345678");
+        // Typed key by key: a part of an ID keeps the field open (the owner's report).
+        for (typed, value) in [
+            ("1", "1"),
+            ("2345", "12345"),
+            ("6789012345678", "123456789012345678"),
+        ] {
+            cx.update(|window, cx| window.input(typed, cx));
+            assert_eq!(prop(cx, "role"), value);
+            assert!(
+                cx.read(|cx| properties.read(cx).pickers[1].id_chosen),
+                "{value}"
+            );
+        }
 
         cx.update(|window, cx| {
             properties.update(cx, |this, cx| this.pick(1, 0, window, cx));
