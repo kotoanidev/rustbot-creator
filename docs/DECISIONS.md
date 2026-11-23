@@ -747,6 +747,30 @@ alternatives that were considered, and why.
   Numbers are compared as numbers.
 - **Alternatives:** exact comparison; a "match case" switch on the node.
 
+### D-082 — A moderation action that fails continues at "error"
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Ban", "Kick", "Timeout", "Add role" and "Remove role" have two outputs:
+  "then", when the action worked, and "error", when it failed. It can fail when the bot
+  lacks the permission, the target's role is above the bot's, or the command came from a
+  DM. Wiring "error" lets the bot answer, e.g. "I can't do that". If "error" is not
+  wired, the failure goes to Logs and the rest of the command does not run.
+- **Alternatives:** the command stops, and Discord shows "The application did not
+  respond"; an automatic reply only the author sees.
+
+### D-083 — "Ban" can delete recent messages
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Ban" has a field "Delete messages from the last" with the choices "don't
+  delete", 1 hour, 24 hours and 7 days. "Don't delete" is the default.
+- **Alternatives:** a ban never deletes messages.
+
+### D-084 — A timeout's length is minutes, as a number or a variable
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Timeout" has a field "Minutes" that takes a number or a variable, e.g.
+  `{option.minutes}`, so a `/timeout` command can ask for the length. Discord allows at
+  most 28 days (40 320 minutes). Problems flags a larger number that is typed in, and one
+  from a variable takes the "error" output (D-082).
+- **Alternatives:** a fixed list (1 minute, 5 minutes, 10 minutes, 1 hour, 1 day, 1 week).
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -970,9 +994,30 @@ alternatives that were considered, and why.
     nesting mirrors the graph.
   - **Compare:** "equals", "does not equal" and "contains" lower-case both sides (D-081).
     "Greater" and "less" parse both sides as numbers and are false if either is not one.
+
+### C-018 — How moderation actions are generated
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Number fields:** `PropKind::Number { max }` takes a number above 0 and at most
+    `max`, or a `{variable}` template. Problems checks a typed number (`BadNumber`); a
+    template's number is checked when the bot runs. "Minutes" uses `max` = 40 320.
+  - **Fields:** each action takes the user (a user variable), its own fields, and an
+    optional "Reason (audit log)" with templates, left out when empty. "Delete their
+    messages" starts at "don't delete" and maps to `delete_message_seconds`.
+  - **"error" wired:** the action runs in an `async` block. A failure prints
+    `WARN /<command>: <error>` (a warning in Logs) and runs the "error" branch.
+  - **"error" not wired:** `?` ends the command handler, and djs-rs logs the error.
+  - **What counts as a failure:** Discord refusing the call, a command from a DM (no
+    server), an option that was not given, or minutes out of range.
+  - **Permissions:** an action does not check the author's permissions itself. That is
+    "Has permission?" in the graph (D-014's example).
 ---
 
 ## Open questions (to ask the owner when relevant)
+
+- **Moderation without a permission check:** a command with "Ban" and no "Has
+  permission?" before it lets any member ban through the bot. Options: Problems warns;
+  the command gets Discord's `default_member_permissions` from its actions; or both.
 
 - **Polish for gpui-kit's own strings (D-037):** gpui-component compiles its rust-i18n
   YAML into itself, so the app cannot add a Polish one at runtime. A few component

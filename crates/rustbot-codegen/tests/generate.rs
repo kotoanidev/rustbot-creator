@@ -104,6 +104,53 @@ fn conditions() -> GraphFile {
     }
 }
 
+/// `/moderate`: every moderation action, with "error" wired and not (D-073, D-082-D-084).
+fn moderation() -> GraphFile {
+    let graph: Graph = serde_json::from_value(serde_json::json!({
+        "schema": 1,
+        "nodes": {
+            "n1": { "type": "core.slash_command", "props": {
+                "name": "moderate", "description": "Moderates", "options": [
+                    { "name": "cel", "type": "user", "description": "Who", "required": true },
+                    { "name": "powód", "type": "text", "description": "Why" },
+                    { "name": "minuty", "type": "number", "description": "How long" },
+                    { "name": "rola", "type": "role", "description": "Role" } ] } },
+            "n2": { "type": "core.ban", "props": {
+                "user": "option.cel", "delete_messages": "day", "reason": "{option.powód}" } },
+            "n3": { "type": "core.reply", "props": { "content": "Banned {option.cel.mention}" } },
+            "n4": { "type": "core.reply", "props": { "content": "I can't ban them" } },
+            "n5": { "type": "core.kick", "props": { "user": "option.cel", "reason": "" } },
+            "n6": { "type": "core.reply", "props": { "content": "No kick" } },
+            "n7": { "type": "core.timeout", "props": {
+                "user": "option.cel", "minutes": "{option.minuty}", "reason": "Spam" } },
+            "n8": { "type": "core.add_role", "props": {
+                "user": "user", "role": "123456789012345678", "reason": "" } },
+            "n9": { "type": "core.remove_role", "props": {
+                "user": "option.cel", "role": "option.rola", "reason": "By {user.name}" } },
+            "n10": { "type": "core.ban", "props": {
+                "user": "user", "delete_messages": "none", "reason": "" } }
+        },
+        "edges": [
+            { "from": "n1.then", "to": "n2.run" },
+            { "from": "n2.then", "to": "n3.run" },
+            { "from": "n2.error", "to": "n4.run" },
+            { "from": "n1.then", "to": "n5.run" },
+            { "from": "n5.error", "to": "n6.run" },
+            { "from": "n1.then", "to": "n7.run" },
+            { "from": "n7.then", "to": "n8.run" },
+            { "from": "n8.then", "to": "n9.run" },
+            { "from": "n1.then", "to": "n10.run" }
+        ]
+    }))
+    .unwrap();
+    GraphFile {
+        kind: GraphKind::Command,
+        name: "moderate".to_owned(),
+        graph,
+        layout: Layout::default(),
+    }
+}
+
 /// A project on disk with these graphs, opened again as the app would.
 fn project(dir: &Path, manifest: Manifest, graphs: &[GraphFile]) -> Project {
     let project = Project::create(dir, manifest).unwrap();
@@ -234,6 +281,19 @@ fn conditions_snapshot() {
     insta::assert_snapshot!(
         "conditions",
         &output.files[Path::new("generated/src/commands/check.rs")]
+    );
+}
+
+#[test]
+fn moderation_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = project(dir.path(), Manifest::new("Mod Bot"), &[moderation()]);
+    let registry = Registry::with_core();
+    assert_eq!(registry.validate(&p.graphs[0].graph), Vec::new());
+    let output = generate(&p, &registry).unwrap();
+    insta::assert_snapshot!(
+        "moderation",
+        &output.files[Path::new("generated/src/commands/moderate.rs")]
     );
 }
 
@@ -402,6 +462,7 @@ fn generated_bot_compiles() {
     ));
     graphs.push(ban());
     graphs.push(conditions());
+    graphs.push(moderation());
     let p = project(dir.path(), Manifest::new("Ping Bot"), &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
 

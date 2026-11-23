@@ -52,7 +52,7 @@ layer, before the scope widens.
   - [x] Command options as a list in the command's form (D-076)
   - [x] Variable picker: lists for user/channel/role fields, {x} for text (D-078)
   - [x] Conditions with "yes"/"no" outputs: has permission, has role, compare (D-077)
-  - [ ] Moderation: ban, kick, timeout, add/remove a role
+  - [x] Moderation: ban, kick, timeout, add/remove a role
   - [ ] Messages: send to a channel, a reply only the author sees, a basic embed (D-079)
 - [ ] Full node catalog and forms over what djs-rs covers: events, components, and so on
 - [ ] Validation and errors shown on the graph

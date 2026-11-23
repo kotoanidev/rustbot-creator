@@ -88,6 +88,10 @@ pub(crate) fn describe(problem: &Problem) -> String {
         ProblemKind::WrongVariableType { prop, path } => {
             t_with("problem-variable-type", &[("prop", prop), ("path", path)])
         }
+        ProblemKind::BadNumber { prop, max } => t_with(
+            "problem-bad-number",
+            &[("prop", prop), ("max", &max.to_string())],
+        ),
         ProblemKind::BadOption { option, problem } => {
             let id = match problem {
                 OptionProblem::Name => "problem-option-name",

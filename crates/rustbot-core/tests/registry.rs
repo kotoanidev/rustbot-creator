@@ -360,3 +360,52 @@ fn new_nodes_start_with_values_of_the_right_kind() {
         }
     }
 }
+
+#[test]
+fn moderation_takes_a_user_a_role_and_minutes() {
+    let ok = [
+        serde_json::json!({ "type": "core.ban", "props": {
+            "user": "option.cel", "delete_messages": "day", "reason": "{option.powód}" } }),
+        serde_json::json!({ "type": "core.kick", "props": { "user": "option.cel" } }),
+        serde_json::json!({ "type": "core.timeout", "props": {
+            "user": "option.cel", "minutes": "40320", "reason": "" } }),
+        serde_json::json!({ "type": "core.timeout", "props": {
+            "user": "option.cel", "minutes": " 1.5 " } }),
+        serde_json::json!({ "type": "core.timeout", "props": {
+            "user": "option.cel", "minutes": "{option.powód}" } }),
+        serde_json::json!({ "type": "core.add_role", "props": {
+            "user": "user", "role": "option.rola" } }),
+        serde_json::json!({ "type": "core.remove_role", "props": {
+            "user": "option.cel", "role": "123456789012345678" } }),
+    ];
+    for node in ok {
+        assert_eq!(kinds(&with_condition(&node)), Vec::new(), "{node}");
+    }
+    let bad_number = |minutes: &str| {
+        kinds(&with_condition(
+            &serde_json::json!({ "type": "core.timeout",
+            "props": { "user": "option.cel", "minutes": minutes } }),
+        ))
+    };
+    for minutes in ["0", "-5", "40321", "ten", "NaN", "inf"] {
+        assert_eq!(
+            bad_number(minutes),
+            vec![ProblemKind::BadNumber {
+                prop: "minutes".to_owned(),
+                max: 40_320
+            }],
+            "{minutes}"
+        );
+    }
+    assert_eq!(
+        bad_number(""),
+        vec![ProblemKind::MissingProp("minutes".to_owned())]
+    );
+    assert_eq!(
+        bad_number("{option.nope}"),
+        vec![ProblemKind::UnknownVariable {
+            prop: "minutes".to_owned(),
+            path: "option.nope".to_owned()
+        }]
+    );
+}

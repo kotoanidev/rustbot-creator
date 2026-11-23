@@ -138,6 +138,12 @@ pub enum PropKind {
     Variable(DataType),
     /// One value of a fixed list.
     Choice(Choices),
+    /// A number above 0 and at most `max`, or a `{variable}` template that gives one when
+    /// the bot runs (D-084).
+    Number {
+        /// The largest number allowed.
+        max: u32,
+    },
 }
 
 impl PropKind {
@@ -146,7 +152,9 @@ impl PropKind {
     pub fn default_value(self) -> serde_json::Value {
         match self {
             Self::Options => serde_json::Value::Array(Vec::new()),
-            Self::Text { .. } | Self::Variable(_) | Self::Choice(_) => {
+            // Deleting nothing is the safe start (D-083).
+            Self::Choice(Choices::DeleteMessages) => serde_json::Value::String("none".to_owned()),
+            Self::Text { .. } | Self::Variable(_) | Self::Choice(_) | Self::Number { .. } => {
                 serde_json::Value::String(String::new())
             }
         }
@@ -161,6 +169,8 @@ pub enum Choices {
     Permission,
     /// How "Compare" relates two values (D-081).
     Comparison,
+    /// How far back "Ban" deletes the user's messages (D-083).
+    DeleteMessages,
 }
 
 impl Choices {
@@ -184,6 +194,7 @@ impl Choices {
                 "view_audit_log",
             ],
             Self::Comparison => &["equals", "not_equals", "contains", "greater", "less"],
+            Self::DeleteMessages => &["none", "hour", "day", "week"],
         }
     }
 }
@@ -328,6 +339,13 @@ pub enum ProblemKind {
         /// The variable, e.g. `option.reason`.
         path: String,
     },
+    /// A number field holds something other than a number from above 0 to `max` (D-084).
+    BadNumber {
+        /// The form field.
+        prop: String,
+        /// The largest number allowed.
+        max: u32,
+    },
     /// A command option breaks Discord's rules.
     BadOption {
         /// Its position in the list, from 0.
@@ -361,6 +379,9 @@ impl fmt::Display for Problem {
             }
             ProblemKind::WrongVariableType { prop, path } => {
                 write!(f, "{prop:?}: {{{path}}} has the wrong type")
+            }
+            ProblemKind::BadNumber { prop, max } => {
+                write!(f, "{prop:?} is not a number above 0 and at most {max}")
             }
             ProblemKind::BadOption { option, problem } => {
                 let why = match problem {
@@ -598,6 +619,25 @@ fn check_prop(
                     prop: prop.name.clone(),
                     path: name.clone(),
                 }],
+            }
+        }
+        (PropKind::Number { max }, Some(serde_json::Value::String(text))) => {
+            if prop.required && text.trim().is_empty() {
+                vec![ProblemKind::MissingProp(prop.name.clone())]
+            } else if text.trim().is_empty() || text.contains('{') {
+                // A template: its number is only known when the bot runs.
+                check_template(&prop.name, text, scope)
+            } else if text
+                .trim()
+                .parse::<f64>()
+                .is_ok_and(|n| n > 0.0 && n <= f64::from(max))
+            {
+                Vec::new()
+            } else {
+                vec![ProblemKind::BadNumber {
+                    prop: prop.name.clone(),
+                    max,
+                }]
             }
         }
         (PropKind::Choice(choices), Some(serde_json::Value::String(value))) => {

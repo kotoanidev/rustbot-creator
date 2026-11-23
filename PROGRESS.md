@@ -105,16 +105,17 @@ The owner finds the console hard to read and wants it improved later. Colour cod
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Phase 3, step 2d: moderation nodes (D-073).** These are done:
+**Phase 3, step 2e: messages (D-073, D-079).** These are done:
 - 2b, the variable picker: {x} and typed pickers, with "Role with ID…" (D-078, D-080);
 - 2c, the conditions "Has permission?", "Has role?" and "Compare" (D-077, D-081), with
-  branching codegen (C-017).
+  branching codegen (C-017);
+- 2d, the moderation actions "Ban", "Kick", "Time out", "Add role" and "Remove role", with
+  "then" and "error" outputs (D-082–D-084, C-018). The generated bot builds against
+  djs-rs with clippy, but no live run has happened yet: the owner tests later.
 
-2d covers "Ban", "Kick", "Timeout", "Add role" and "Remove role". Each gets a user field,
-plus a role field or a duration where needed, and a reason. Use djs-rs's guild member REST
-calls, which need the bot's permissions on the server. Decide with the owner what happens
-when an action fails (e.g. a missing permission or a higher role) and whether "Ban"
-deletes recent messages. Then 2e: messages (to a channel, only for the author, embed).
+2e covers "Send to a channel", a reply only the author sees (ephemeral) and a basic embed
+(D-079). Before starting it, ask the owner the open question "Moderation without a
+permission check" in `docs/DECISIONS.md`.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

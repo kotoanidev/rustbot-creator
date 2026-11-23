@@ -42,21 +42,22 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         options: &options,
         vars: BTreeSet::new(),
         quiet: false,
-        member: false,
+        interaction: false,
+        command: name,
         path: Vec::new(),
     };
     let body = code.after(trigger, "then")?;
     let Body {
         vars,
         quiet: needs_quiet,
-        member: needs_member,
+        interaction: needs_interaction,
         ..
     } = code;
 
     let bindings = vars.iter().map(|path| binding(path, &options));
     // The guild, channel and member are on the interaction; `cmd` itself is the command data,
     // which holds the options.
-    let interaction = (needs_member || vars.iter().any(|path| !path.starts_with("option.")))
+    let interaction = (needs_interaction || vars.iter().any(|path| !path.starts_with("option.")))
         .then(|| quote!(let interaction = cmd.interaction();));
     let author = vars
         .iter()
@@ -116,8 +117,10 @@ struct Body<'a> {
     vars: BTreeSet<String>,
     /// Some message needs `quiet()` (C-016).
     quiet: bool,
-    /// Some condition reads the command author's member data.
-    member: bool,
+    /// Some node reads the interaction: the author's member data, the server.
+    interaction: bool,
+    /// The command's name, for Logs.
+    command: &'a str,
     /// The nodes from the trigger to here, to find loops.
     path: Vec<NodeId>,
 }
@@ -195,6 +198,44 @@ impl Body<'_> {
                     }
                 }
             }
+            "core.ban" | "core.kick" | "core.timeout" | "core.add_role" | "core.remove_role" => {
+                self.interaction = true;
+                let action = self.action(id);
+                let then = self.after(id, "then")?;
+                let error = self.after(id, "error")?;
+                let command = self.command;
+                if error.is_empty() {
+                    // A failure ends the command, and djs-rs logs it (D-082).
+                    quote! {
+                        { #action }
+                        #then
+                    }
+                } else {
+                    let log = format!(
+                        "WARN /{}: {{error}}",
+                        command.replace('{', "{{").replace('}', "}}")
+                    );
+                    let log = quote!(eprintln!(#log););
+                    let handle = if then.is_empty() {
+                        quote!(if let Err(error) = result { #log #error })
+                    } else {
+                        quote! {
+                            match result {
+                                Ok(()) => { #then }
+                                Err(error) => { #log #error }
+                            }
+                        }
+                    };
+                    quote! {
+                        let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                            #action
+                            Ok(())
+                        }
+                        .await;
+                        #handle
+                    }
+                }
+            }
             _ => {
                 return Err(Error::NoCodegen {
                     graph: self.file.name.clone(),
@@ -262,12 +303,124 @@ impl Body<'_> {
     /// A user field's member data on this server, an `Option<&InteractionMember>`.
     fn member(&mut self, user: &str) -> TokenStream {
         if user == "user" {
-            self.member = true;
+            self.interaction = true;
             return quote!(interaction.member.as_ref());
         }
         let (_, option, _) = option_path(user, self.options).expect("validated variable");
         let name = &option.name;
         quote!(cmd.get_member(#name).map(|(_, member)| member))
+    }
+
+    /// A moderation action's call to Discord, which `?` ends on failure (D-073, D-082).
+    fn action(&mut self, id: &NodeId) -> TokenStream {
+        let graph = &self.file.graph;
+        let user = match text(graph, id, "user") {
+            "user" => quote!(
+                interaction
+                    .author()
+                    .map(|user| user.id)
+                    .ok_or("the command has no user")?
+            ),
+            option => {
+                let (_, option, _) = option_path(option, self.options).expect("validated variable");
+                let (name, missing) = (
+                    &option.name,
+                    format!("the option {} was not given", option.name),
+                );
+                quote!(cmd.get_user(#name).map(|user| user.id).ok_or(#missing)?)
+            }
+        };
+        let reason = self.reason(text(graph, id, "reason"));
+        let call = match graph.nodes[id].kind.as_str() {
+            "core.ban" => {
+                let seconds: u32 = match text(graph, id, "delete_messages") {
+                    "hour" => 3_600,
+                    "day" => 86_400,
+                    "week" => 604_800,
+                    _ => 0,
+                };
+                let ban = if seconds == 0 {
+                    quote!(djs_rs::model::rest::CreateGuildBan::default())
+                } else {
+                    quote! {{
+                        let mut ban = djs_rs::model::rest::CreateGuildBan::default();
+                        ban.delete_message_seconds = Some(#seconds);
+                        ban
+                    }}
+                };
+                quote!(members.ban(user, &#ban, #reason))
+            }
+            "core.kick" => quote!(members.kick(user, #reason)),
+            "core.timeout" => {
+                let minutes = template_expr(
+                    text(graph, id, "minutes"),
+                    self.options,
+                    false,
+                    &mut self.vars,
+                );
+                // Discord's longest timeout, as `core.timeout` allows (D-084).
+                quote! {{
+                    let minutes = #minutes
+                        .trim()
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|minutes| *minutes > 0.0 && *minutes <= 40_320.0)
+                        .ok_or("a timeout is more than 0 and at most 40320 minutes (28 days)")?;
+                    let until = djs_rs::model::util::Timestamp::from_unix_micros(
+                        djs_rs::model::util::Timestamp::now().as_unix_micros()
+                            + (minutes * 60_000_000.0) as i64,
+                    );
+                    members.timeout(user, Some(until), #reason)
+                }}
+            }
+            kind @ ("core.add_role" | "core.remove_role") => {
+                let role = match text(graph, id, "role") {
+                    role if is_id(role) => {
+                        let id: u64 = role.parse().expect("validated ID");
+                        quote!(djs_rs::model::id::RoleId::new(#id))
+                    }
+                    role => {
+                        let (_, option, _) =
+                            option_path(role, self.options).expect("validated variable");
+                        let (name, missing) = (
+                            &option.name,
+                            format!("the option {} was not given", option.name),
+                        );
+                        quote!(cmd.get_role(#name).map(|role| role.id).ok_or(#missing)?)
+                    }
+                };
+                let method = format_ident!("{}", kind.trim_start_matches("core."));
+                quote!(members.#method(user, #role, #reason))
+            }
+            other => unreachable!("{other} is not a moderation action"),
+        };
+        quote! {
+            let members = ctx.members(
+                interaction.guild_id.ok_or("the command was not used on a server")?,
+            );
+            let user = #user;
+            #call.await?;
+        }
+    }
+
+    /// An audit log reason, an `Option<&str>`; none when the field is empty.
+    fn reason(&mut self, reason: &str) -> TokenStream {
+        match reason {
+            "" => quote!(None),
+            reason => {
+                let literal = rustbot_core::template::parse(reason).is_ok_and(|segments| {
+                    segments
+                        .iter()
+                        .all(|s| matches!(s, rustbot_core::template::Segment::Text(_)))
+                });
+                let reason = template_expr(reason, self.options, false, &mut self.vars);
+                if literal {
+                    quote!(Some(#reason))
+                } else {
+                    quote!(Some(#reason).as_deref())
+                }
+            }
+        }
     }
 
     /// A role field's role, an `Option<RoleId>`: a fixed ID or a role option (D-080).

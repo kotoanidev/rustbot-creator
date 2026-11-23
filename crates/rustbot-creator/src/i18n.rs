@@ -133,6 +133,10 @@ mod tests {
         for (list, choices) in [
             ("permission", rustbot_core::registry::Choices::Permission),
             ("comparison", rustbot_core::registry::Choices::Comparison),
+            (
+                "delete_messages",
+                rustbot_core::registry::Choices::DeleteMessages,
+            ),
         ] {
             for value in choices.values() {
                 let id = format!("choice-{list}-{value}");

@@ -11,6 +11,11 @@ pub(crate) fn all() -> Vec<NodeType> {
         has_permission(),
         has_role(),
         compare(),
+        ban(),
+        kick(),
+        timeout(),
+        role_action("core.add_role"),
+        role_action("core.remove_role"),
     ]
 }
 
@@ -89,6 +94,55 @@ fn compare() -> NodeType {
             prop("operator", PropKind::Choice(Choices::Comparison), true),
             prop("right", PropKind::Text { templates: true }, false),
         ],
+    )
+}
+
+/// A moderation action (D-073): it continues at "then", or at "error" if Discord refused
+/// (D-082). Each takes the user it acts on and a reason for the audit log.
+fn moderation(id: &str, mut props: Vec<Prop>) -> NodeType {
+    props.insert(0, prop("user", PropKind::Variable(DataType::User), true));
+    props.push(prop("reason", PropKind::Text { templates: true }, false));
+    NodeType {
+        id: id.to_owned(),
+        category: Category::Action,
+        pins: vec![
+            flow("run", Direction::In),
+            flow("then", Direction::Out),
+            flow("error", Direction::Out),
+        ],
+        props,
+        provides: Vec::new(),
+        intents: Vec::new(),
+    }
+}
+
+fn ban() -> NodeType {
+    moderation(
+        "core.ban",
+        vec![prop(
+            "delete_messages",
+            PropKind::Choice(Choices::DeleteMessages),
+            true,
+        )],
+    )
+}
+
+fn kick() -> NodeType {
+    moderation("core.kick", Vec::new())
+}
+
+fn timeout() -> NodeType {
+    moderation(
+        "core.timeout",
+        // Discord's longest timeout: 28 days.
+        vec![prop("minutes", PropKind::Number { max: 40_320 }, true)],
+    )
+}
+
+fn role_action(id: &str) -> NodeType {
+    moderation(
+        id,
+        vec![prop("role", PropKind::Variable(DataType::Role), true)],
     )
 }
 

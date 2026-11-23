@@ -174,7 +174,9 @@ impl Properties {
             .collect();
         for (prop, kind, value) in props {
             match kind {
-                PropKind::Text { templates } => {
+                PropKind::Text { .. } | PropKind::Number { .. } => {
+                    // A number may come from a variable too (D-084).
+                    let templates = kind != PropKind::Text { templates: false };
                     self.layout.push(Slot::Text(self.fields.len()));
                     let field = Self::text_field(prop, templates, value, window, cx);
                     self.fields.push(field);
@@ -238,14 +240,16 @@ impl Properties {
                 })
             }
             PropKind::Choice(choices) => choices.values().iter().map(|&v| v.to_owned()).collect(),
-            PropKind::Text { .. } | PropKind::Options => Vec::new(),
+            PropKind::Text { .. } | PropKind::Options | PropKind::Number { .. } => Vec::new(),
         };
         let mut labels: Vec<SharedString> = values
             .iter()
             .map(|value| match kind {
                 PropKind::Variable(_) => variable_label(value).into(),
                 PropKind::Choice(choices) => choice_label(choices, value).into(),
-                PropKind::Text { .. } | PropKind::Options => value.clone().into(),
+                PropKind::Text { .. } | PropKind::Options | PropKind::Number { .. } => {
+                    value.clone().into()
+                }
             })
             .collect();
         if kind == PropKind::Variable(DataType::Role) {
@@ -868,6 +872,7 @@ fn choice_label(choices: rustbot_core::registry::Choices, value: &str) -> String
     let list = match choices {
         rustbot_core::registry::Choices::Permission => "permission",
         rustbot_core::registry::Choices::Comparison => "comparison",
+        rustbot_core::registry::Choices::DeleteMessages => "delete_messages",
     };
     t_or(&format!("choice-{list}-{value}"), value)
 }
