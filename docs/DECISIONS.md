@@ -1043,6 +1043,40 @@ alternatives that were considered, and why.
   files with the UI text (D-024). Command and option names stay English, e.g. `/ban`.
 - **Alternatives:** always English; a language switch on the template's card.
 
+### D-119 — The rest of the catalog: channels, threads, roles, a ranking
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Phase 3 closes with four groups of nodes:
+  - "Create channel" (a text channel, in a category if chosen) and "Delete channel";
+  - "Create thread" (from the event's or the last message, or in a channel) and "Add to
+    thread";
+  - "Create role" (name, colour) and "Delete role";
+  - "Ranking" (the top users by a number variable of memory), with a "Levels" template:
+    XP for messages, `/level` and `/top`.
+- **Alternatives:** phase 4, the advanced mode; phase 5, themes and the first run; a
+  pause for the owner's live test.
+
+### D-120 — What a node creates is a variable after it
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** After "Create channel", "Create thread" or "Create role", the rest of the
+  run knows what was created: `{created_channel.mention}` and the like in templates, and
+  "Created channel" in the channel, thread and role pickers. A ticket can be created and
+  written to at once.
+- **Alternatives:** nodes that only create; a later node needs the ID typed in.
+
+### D-121 — A new channel is visible as its category, or private
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Create channel" has a choice: "As the category or server" keeps
+  Discord's permissions. "Private" lets only a chosen user, a chosen role (e.g. the
+  moderators) and the bot see it, which is enough for tickets.
+- **Alternatives:** always as the category; privacy only by a category set up on
+  Discord.
+
+### D-122 — "Ranking" gives its list as text
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** After "Ranking", `{ranking}` holds ready lines such as "1. @who — 120":
+  the top 1–25, with mentions that notify nobody. It goes into any message or embed.
+- **Alternatives:** a node that replies with a ready embed itself.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
