@@ -4,7 +4,7 @@ use gpui_kit::{
     Context, Entity, FocusHandle, IntoElement, ParentElement as _, Render, Styled as _, Window,
     div, px,
 };
-use rustbot_core::registry::{Problem, ProblemKind};
+use rustbot_core::registry::{OptionProblem, Problem, ProblemKind};
 use rustbot_core::template::TemplateError;
 
 use crate::i18n::{t, t_with};
@@ -85,6 +85,17 @@ pub(crate) fn describe(problem: &Problem) -> String {
             "problem-unknown-variable",
             &[("prop", prop), ("path", path)],
         ),
+        ProblemKind::BadOption { option, problem } => {
+            let id = match problem {
+                OptionProblem::Name => "problem-option-name",
+                OptionProblem::Duplicate => "problem-option-duplicate",
+                OptionProblem::Description => "problem-option-description",
+                OptionProblem::Type => "problem-option-type",
+                OptionProblem::RequiredAfterOptional => "problem-option-order",
+                OptionProblem::TooMany => "problem-option-too-many",
+            };
+            t_with(id, &[("option", &(option + 1).to_string())])
+        }
     };
     match &problem.node {
         Some(node) => format!("{node}: {text}"),

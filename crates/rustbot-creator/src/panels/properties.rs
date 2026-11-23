@@ -115,13 +115,14 @@ impl Properties {
         let props: Vec<(String, bool, String)> = kind
             .props
             .iter()
-            .map(|prop| {
-                let PropKind::Text { templates } = prop.kind;
-                (
+            .filter_map(|prop| match prop.kind {
+                PropKind::Text { templates } => Some((
                     prop.name.clone(),
                     templates,
                     prop_text(file, &node, &prop.name),
-                )
+                )),
+                // shortcut: the options list gets its editor in the next commit (D-076).
+                PropKind::Options => None,
             })
             .collect();
         for (prop, templates, value) in props {

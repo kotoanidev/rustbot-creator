@@ -1,4 +1,4 @@
-//! The built-in `core.` node types. The vertical slice needs two (D-031).
+//! The built-in `core.` node types.
 
 use crate::registry::{
     Category, DataType, Direction, NodeType, Pin, PinKind, Prop, PropKind, Variable,
@@ -13,7 +13,15 @@ fn slash_command() -> NodeType {
         id: "core.slash_command".to_owned(),
         category: Category::Trigger,
         pins: vec![flow("then", Direction::Out)],
-        props: vec![text("name", false), text("description", false)],
+        props: vec![
+            text("name", false),
+            text("description", false),
+            Prop {
+                name: "options".to_owned(),
+                kind: PropKind::Options,
+                required: false,
+            },
+        ],
         provides: vec![
             var("user", DataType::User),
             var("channel", DataType::Channel),

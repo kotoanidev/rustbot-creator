@@ -27,6 +27,33 @@ fn command(name: &str, description: &str, content: &str) -> GraphFile {
     }
 }
 
+/// `/ban` with an option of every type (D-076) and a reply that reads all of them.
+fn ban() -> GraphFile {
+    let mut file = command(
+        "ban",
+        "Bans someone",
+        "{option.cel.name} {option.cel.id} {option.cel.username} {option.cel.display_name} \
+         {option.cel.mention} | {option.powód} {option.dni} {option.cicho} | \
+         {option.kanał.id} {option.kanał.name} {option.kanał.mention} | \
+         {option.rola.id} {option.rola.name} {option.rola.mention}",
+    );
+    let options = serde_json::json!([
+        { "name": "cel", "type": "user", "description": "Who", "required": true },
+        { "name": "powód", "type": "text", "description": "Why" },
+        { "name": "dni", "type": "number", "description": "Days of messages to delete" },
+        { "name": "cicho", "type": "bool", "description": "Do not announce it" },
+        { "name": "kanał", "type": "channel", "description": "Where to log it" },
+        { "name": "rola", "type": "role", "description": "A role to mention" }
+    ]);
+    let trigger = file
+        .graph
+        .nodes
+        .get_mut(&rustbot_core::NodeId("n1".to_owned()))
+        .unwrap();
+    trigger.props.insert("options".to_owned(), options);
+    file
+}
+
 /// A project on disk with these graphs, opened again as the app would.
 fn project(dir: &Path, manifest: Manifest, graphs: &[GraphFile]) -> Project {
     let project = Project::create(dir, manifest).unwrap();
@@ -69,6 +96,19 @@ fn ping_snapshot() {
     for (path, text) in &output.files {
         insta::assert_snapshot!(path.display().to_string(), text);
     }
+}
+
+#[test]
+fn options_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = project(dir.path(), Manifest::new("Ban Bot"), &[ban()]);
+    let registry = Registry::with_core();
+    assert_eq!(registry.validate(&p.graphs[0].graph), Vec::new());
+    let output = generate(&p, &registry).unwrap();
+    insta::assert_snapshot!(
+        "options",
+        &output.files[Path::new("generated/src/commands/ban.rs")]
+    );
 }
 
 #[test]
@@ -234,6 +274,7 @@ fn generated_bot_compiles() {
         "Says where it is",
         "{channel.id} {channel.name} {channel.mention} {server.id} {server.name}",
     ));
+    graphs.push(ban());
     let p = project(dir.path(), Manifest::new("Ping Bot"), &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
 

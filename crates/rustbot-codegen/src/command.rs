@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use rustbot_core::registry::{CommandOption, DataType};
 use rustbot_core::template::{self, Segment};
 use rustbot_core::{Graph, GraphFile, NodeId, PinRef, Registry};
 use serde_json::Value;
@@ -33,6 +34,8 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
     }
     let name = text(graph, trigger, "name");
     let description = text(graph, trigger, "description");
+    let options = CommandOption::list(node.props.get("options"));
+    let option_builders = options.iter().map(option_builder);
 
     let mut vars = BTreeSet::new();
     let mut body = Vec::new();
@@ -47,7 +50,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         }
         body.push(match graph.nodes[&id].kind.as_str() {
             "core.reply" => {
-                let content = template_expr(text(graph, &id, "content"), &mut vars);
+                let content = template_expr(text(graph, &id, "content"), &options, &mut vars);
                 quote!(cmd.reply(&ctx, #content).await?;)
             }
             _ => return Err(no_codegen(&id)),
@@ -58,9 +61,13 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         next.extend(more);
     }
 
-    let bindings = vars.iter().map(|path| binding(path));
-    // The guild, channel and member are on the interaction; `cmd` itself is the command data.
-    let interaction = (!vars.is_empty()).then(|| quote!(let interaction = cmd.interaction();));
+    let bindings = vars.iter().map(|path| binding(path, &options));
+    // The guild, channel and member are on the interaction; `cmd` itself is the command data,
+    // which holds the options.
+    let interaction = vars
+        .iter()
+        .any(|path| !path.starts_with("option."))
+        .then(|| quote!(let interaction = cmd.interaction();));
     let author = vars
         .iter()
         .any(|path| path.starts_with("user."))
@@ -78,7 +85,9 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         use djs_rs::prelude::*;
 
         pub(crate) fn definition() -> Result<CreateApplicationCommand, ValidationError> {
-            SlashCommandBuilder::new(#name, #description).build()
+            SlashCommandBuilder::new(#name, #description)
+                #(#option_builders)*
+                .build()
         }
 
         pub(crate) fn register(client: &Client) {
@@ -119,7 +128,11 @@ fn text<'a>(graph: &'a Graph, id: &NodeId, prop: &str) -> &'a str {
 
 /// A template as a Rust expression: a string literal, or `format!` with one argument per
 /// variable. Literal braces are doubled, so the text can never become a format directive.
-fn template_expr(text: &str, vars: &mut BTreeSet<String>) -> TokenStream {
+fn template_expr(
+    text: &str,
+    options: &[CommandOption],
+    vars: &mut BTreeSet<String>,
+) -> TokenStream {
     let segments = template::parse(text).expect("validated templates parse");
     let mut format = String::new();
     let mut args = Vec::new();
@@ -129,7 +142,7 @@ fn template_expr(text: &str, vars: &mut BTreeSet<String>) -> TokenStream {
             Segment::Var(path) => {
                 let path = path.join(".");
                 format.push_str("{}");
-                args.push(ident(&path));
+                args.push(ident(&path, options));
                 vars.insert(path);
             }
         }
@@ -142,14 +155,104 @@ fn template_expr(text: &str, vars: &mut BTreeSet<String>) -> TokenStream {
 }
 
 /// The local holding a variable: `user.name` → `user_name`. Paths are validated against the
-/// registry's fixed field names, so they are always identifiers.
-fn ident(path: &str) -> proc_macro2::Ident {
+/// registry's fixed field names, so they are always identifiers. An option is named by its
+/// position, `option.target.name` → `option_0_name`, since option names are free text.
+fn ident(path: &str, options: &[CommandOption]) -> proc_macro2::Ident {
+    if let Some((ix, _, field)) = option_path(path, options) {
+        return match field {
+            Some(field) => format_ident!("option_{ix}_{field}"),
+            None => format_ident!("option_{ix}"),
+        };
+    }
     format_ident!("{}", path.replace('.', "_"))
 }
 
+/// `option.<name>[.<field>]` as the option's position, the option and the field.
+fn option_path<'a, 'p>(
+    path: &'p str,
+    options: &'a [CommandOption],
+) -> Option<(usize, &'a CommandOption, Option<&'p str>)> {
+    let rest = path.strip_prefix("option.")?;
+    let (name, field) = rest
+        .split_once('.')
+        .map_or((rest, None), |(name, field)| (name, Some(field)));
+    let ix = options.iter().position(|option| option.name == name)?;
+    Some((ix, &options[ix], field))
+}
+
+/// `.option(…)` adding an option to the command's definition (D-076).
+fn option_builder(option: &CommandOption) -> TokenStream {
+    let builder = match option.ty {
+        DataType::Text => quote!(SlashCommandStringOption),
+        DataType::Number => quote!(SlashCommandNumberOption),
+        DataType::Bool => quote!(SlashCommandBooleanOption),
+        DataType::User => quote!(SlashCommandUserOption),
+        DataType::Channel => quote!(SlashCommandChannelOption),
+        DataType::Role => quote!(SlashCommandRoleOption),
+        DataType::Server => unreachable!("validation refuses server options"),
+    };
+    let (name, description, required) = (&option.name, &option.description, option.required);
+    quote!(.option(djs_rs::builders::#builder::new(#name, #description).required(#required)))
+}
+
+/// An option's value as text; empty when an optional option is not filled in.
+fn option_value(option: &CommandOption, field: Option<&str>) -> TokenStream {
+    let name = &option.name;
+    let unknown = || unreachable!("validation only lets known fields through, not {field:?}");
+    match (option.ty, field) {
+        (DataType::Text, None) => quote!(cmd.get_string(#name).unwrap_or_default()),
+        (DataType::Number, None) => {
+            quote!(cmd.get_number(#name).map(|n| n.to_string()).unwrap_or_default())
+        }
+        (DataType::Bool, None) => {
+            quote!(cmd.get_boolean(#name).map(|b| b.to_string()).unwrap_or_default())
+        }
+        (DataType::User, Some(field)) => {
+            let value = match field {
+                "id" => quote!(user.id.to_string()),
+                "username" => quote!(user.username.to_string()),
+                "display_name" => quote!(user.display_name().to_string()),
+                "mention" => quote!(djs_rs::formatters::user_mention(user.id).to_string()),
+                // What people see in the chat: nickname, then display name (D-054).
+                "name" => quote! {
+                    cmd.get_member(#name)
+                        .and_then(|(_, member)| member.member.nick.as_deref())
+                        .unwrap_or_else(|| user.display_name())
+                        .to_string()
+                },
+                _ => unknown(),
+            };
+            quote!(cmd.get_user(#name).map(|user| #value).unwrap_or_default())
+        }
+        (DataType::Channel, Some(field)) => {
+            let value = match field {
+                "id" => quote!(channel.id.to_string()),
+                "name" => quote!(channel.name.as_deref().unwrap_or_default().to_string()),
+                "mention" => quote!(djs_rs::formatters::channel_mention(channel.id).to_string()),
+                _ => unknown(),
+            };
+            quote!(cmd.get_channel(#name).map(|channel| #value).unwrap_or_default())
+        }
+        (DataType::Role, Some(field)) => {
+            let value = match field {
+                "id" => quote!(role.id.to_string()),
+                "name" => quote!(role.name.to_string()),
+                "mention" => quote!(djs_rs::formatters::role_mention(role.id).to_string()),
+                _ => unknown(),
+            };
+            quote!(cmd.get_role(#name).map(|role| #value).unwrap_or_default())
+        }
+        _ => unknown(),
+    }
+}
+
 /// The `let` that computes a variable from the interaction (D-053, D-054).
-fn binding(path: &str) -> TokenStream {
-    let name = ident(path);
+fn binding(path: &str, options: &[CommandOption]) -> TokenStream {
+    let name = ident(path, options);
+    if let Some((_, option, field)) = option_path(path, options) {
+        let value = option_value(option, field);
+        return quote!(let #name = #value;);
+    }
     let value = match path {
         "user.id" => quote!(author.id),
         "user.username" => quote!(&author.username),

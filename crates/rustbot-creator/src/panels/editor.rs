@@ -549,6 +549,7 @@ fn pin_color(kind: PinKind, cx: &gpui_kit::App) -> Hsla {
         PinKind::Data(DataType::User) => theme.blue,
         PinKind::Data(DataType::Channel) => theme.green,
         PinKind::Data(DataType::Server) => theme.magenta,
+        PinKind::Data(DataType::Role) => theme.yellow_light,
     }
 }
 

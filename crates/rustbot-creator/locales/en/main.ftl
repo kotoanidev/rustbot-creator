@@ -39,6 +39,12 @@ problem-template-unclosed = The field “{ $prop }” has a {"{"} that is never 
 problem-template-stray = The field “{ $prop }” has a {"}"} with no {"{"}. Write {"}}"} for a brace.
 problem-template-empty = The field “{ $prop }” has an empty variable, such as {"{}"}.
 problem-unknown-variable = The field “{ $prop }” uses { $path }, which does not exist.
+problem-option-name = Option { $option }: the name needs 1–32 lower-case letters, digits, - or _.
+problem-option-duplicate = Option { $option }: another option has the same name.
+problem-option-description = Option { $option }: the description needs 1–100 characters.
+problem-option-type = Option { $option } cannot have this type.
+problem-option-order = Option { $option } is required, so it must come before the optional ones.
+problem-option-too-many = A command can have at most 25 options.
 
 ## The graph canvas.
 canvas-add = Add a node
@@ -53,6 +59,7 @@ pin-then = then
 pin-run = run
 prop-core-slash_command-name = Command name
 prop-core-slash_command-description = Description
+prop-core-slash_command-options = Options
 prop-core-reply-content = Message
 
 ## The properties panel and the bot's settings.

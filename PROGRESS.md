@@ -105,13 +105,14 @@ The owner finds the console hard to read and wants it improved later. Colour cod
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Phase 3, step 2: the `/ban` example**, in the sub-steps listed in `ROADMAP.md`. The
-owner answered the details (D-076–D-079). Next is **2a, command options (D-076)**:
-- a `PropKind` for the options list;
-- validation by Discord's rules (names, unique, required before optional);
-- typed `{option.<name>}` variables;
-- codegen of the option definitions and values, with snapshot and `compiles` tests;
-- the list editor in the Properties panel.
+**Phase 3, step 2a, the rest: the options editor in the Properties panel (D-076).** The
+registry and codegen side is done (C-015). It covers the options prop, its validation as
+problems, `{option.<name>}` variables, and generated definitions and values, built against
+djs-rs by the `compiles` test.
+
+The editor is missing: the Properties panel skips the `options` prop (a `shortcut:` in
+`properties.rs`). It needs a list with "+ Add option" and per option a name, a type
+(drop-down), a description, "required" and remove. Then 2b, the variable picker (D-078).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

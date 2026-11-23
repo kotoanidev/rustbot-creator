@@ -1,7 +1,8 @@
 //! Graph validation against the node registry (D-047, D-052–D-054).
 
 use rustbot_core::registry::{
-    Category, DataType, Direction, NodeType, Pin, PinKind, ProblemKind, RegisterError,
+    Category, DataType, Direction, NodeType, OptionProblem, Pin, PinKind, ProblemKind,
+    RegisterError,
 };
 use rustbot_core::{Graph, NodeId, Registry};
 
@@ -182,5 +183,95 @@ fn register_refuses_bad_ids() {
     assert_eq!(
         registry.register(node_type),
         Err(RegisterError::InvalidId("reply".to_owned()))
+    );
+}
+
+/// `/ban` with options (D-076) and a reply that uses them.
+fn ban(options: &str, content: &str) -> Graph {
+    graph(&format!(
+        r#"{{ "schema": 1,
+              "nodes": {{
+                "n1": {{ "type": "core.slash_command",
+                        "props": {{ "name": "ban", "description": "Bans", "options": {options} }} }},
+                "n2": {{ "type": "core.reply", "props": {{ "content": {} }} }} }},
+              "edges": [ {{ "from": "n1.then", "to": "n2.run" }} ] }}"#,
+        serde_json::to_string(content).unwrap()
+    ))
+}
+
+#[test]
+fn command_options_become_variables() {
+    let options = r#"[
+        { "name": "cel", "type": "user", "description": "Who", "required": true },
+        { "name": "powód", "type": "text", "description": "Why" },
+        { "name": "rola", "type": "role", "description": "Which role" }
+    ]"#;
+    let ok = ban(
+        options,
+        "{option.cel.mention} {option.powód} {option.rola.name}",
+    );
+    assert_eq!(kinds(&ok), Vec::new());
+    // A user needs a field, plain text has none, and unknown options are reported.
+    for path in ["option.cel", "option.powód.name", "option.nope", "option"] {
+        let bad = ban(options, &format!("{{{path}}}"));
+        assert_eq!(
+            kinds(&bad),
+            vec![ProblemKind::UnknownVariable {
+                prop: "content".to_owned(),
+                path: path.to_owned(),
+            }],
+            "{path}"
+        );
+    }
+    let scope = Registry::with_core().scope(&ok);
+    assert!(
+        scope
+            .iter()
+            .any(|v| v.name == "option.rola" && v.ty == DataType::Role)
+    );
+    assert!(
+        scope
+            .iter()
+            .any(|v| v.name == "user" && v.ty == DataType::User)
+    );
+}
+
+#[test]
+fn command_options_follow_discords_rules() {
+    let problems = |options: &str| -> Vec<(usize, OptionProblem)> {
+        kinds(&ban(options, "ok"))
+            .into_iter()
+            .map(|kind| match kind {
+                ProblemKind::BadOption { option, problem } => (option, problem),
+                other => panic!("unexpected {other:?}"),
+            })
+            .collect()
+    };
+    assert_eq!(
+        problems(
+            r#"[ { "name": "Cel", "type": "user", "description": "x" },
+                 { "name": "a b", "type": "text", "description": "x" },
+                 { "name": "ok", "type": "text", "description": " " },
+                 { "name": "ok", "type": "server", "description": "x", "required": true } ]"#
+        ),
+        vec![
+            (0, OptionProblem::Name),
+            (1, OptionProblem::Name),
+            (2, OptionProblem::Description),
+            (3, OptionProblem::Duplicate),
+            (3, OptionProblem::Type),
+            (3, OptionProblem::RequiredAfterOptional),
+        ]
+    );
+    let many: Vec<String> = (0..26)
+        .map(|i| format!(r#"{{ "name": "o{i}", "type": "text", "description": "x" }}"#))
+        .collect();
+    assert_eq!(
+        problems(&format!("[{}]", many.join(","))),
+        vec![(25, OptionProblem::TooMany)]
+    );
+    assert_eq!(
+        kinds(&ban(r#""not a list""#, "ok")),
+        vec![ProblemKind::WrongPropType("options".to_owned())]
     );
 }

@@ -895,6 +895,23 @@ alternatives that were considered, and why.
   - **Colours:** errors are red, warnings yellow, build output muted, and the app's own
     step messages semibold.
   - **Clear:** "Clear" sits in the panel's tab-bar toolbar, like VS Code's panel actions.
+
+### C-015 — How command options are stored and generated (D-076)
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Storage:** the options are the slash command's `options` prop: a JSON list of
+    `{ "name", "type", "description", "required" }`. The project schema version does not
+    change, since props were already free JSON.
+  - **Types:** text, number (Discord's NUMBER, a decimal), yes/no, user, channel and role.
+    Role is a new data type with `id`, `name` and `mention`.
+  - **Validation:** Discord's rules, checked as problems. A name is 1-32 lower-case
+    letters (or letters without case), digits, `-` or `_`, and is unique. A description is
+    1-100 characters. Required options come first, and there are at most 25.
+  - **Variables:** an option is `{option.<name>}`. Users, channels and roles need a
+    field, as `{option.target.mention}` does.
+  - **Generated code:** the locals are named by position (`option_0_name`), since option
+    names may have letters that are not ASCII. An optional option that is not filled in
+    is empty text, and yes/no prints `true`/`false`.
 ---
 
 ## Open questions (to ask the owner when relevant)

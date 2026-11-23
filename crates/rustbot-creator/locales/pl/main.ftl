@@ -39,6 +39,12 @@ problem-template-unclosed = W polu „{ $prop }” jest {"{"} bez zamknięcia.
 problem-template-stray = W polu „{ $prop }” jest {"}"} bez {"{"}. Dla klamry napisz {"}}"}.
 problem-template-empty = W polu „{ $prop }” jest pusta zmienna, np. {"{}"}.
 problem-unknown-variable = Pole „{ $prop }” używa { $path }, które nie istnieje.
+problem-option-name = Opcja { $option }: nazwa musi mieć 1–32 znaki: małe litery, cyfry, - lub _.
+problem-option-duplicate = Opcja { $option }: inna opcja ma tę samą nazwę.
+problem-option-description = Opcja { $option }: opis musi mieć 1–100 znaków.
+problem-option-type = Opcja { $option } nie może mieć tego typu.
+problem-option-order = Opcja { $option } jest wymagana, więc musi stać przed opcjami niewymaganymi.
+problem-option-too-many = Komenda może mieć najwyżej 25 opcji.
 
 ## Płótno grafu.
 canvas-add = Dodaj węzeł
@@ -53,6 +59,7 @@ pin-then = potem
 pin-run = uruchom
 prop-core-slash_command-name = Nazwa komendy
 prop-core-slash_command-description = Opis
+prop-core-slash_command-options = Opcje
 prop-core-reply-content = Wiadomość
 
 ## Panel właściwości i ustawienia bota.
