@@ -398,6 +398,20 @@ var-created-thread = Utworzony wątek
 var-created-role = Utworzona rola
 problem-ranking-not-per-user = „Ranking” działa tylko na zmiennej liczbowej zapisywanej na użytkownika lub na użytkownika na każdym serwerze.
 
+# Settings (D-127, D-130)
+settings = Ustawienia
+settings-appearance = Wygląd
+settings-language = Język
+settings-language-system = Jak w systemie
+settings-theme = Motyw
+settings-theme-system = Jak w systemie (jasny lub ciemny)
+settings-themes-folder = Własne motywy: pliki JSON w formacie gpui-component, w { $path }.
+settings-font-size = Rozmiar czcionki
+settings-toolchain = Rust dla botów
+settings-toolchain-installed = Rust { $version } jest zainstalowany w { $path } i zajmuje { $size }.
+settings-toolchain-missing = Rust nie jest jeszcze zainstalowany. Zainstaluje go pierwsze „Uruchom”.
+settings-toolchain-measuring = Sprawdzam…
+
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Wybierz szablon
 template-fill-hint = Po utworzeniu panel Problemy pokaże kanały i role do uzupełnienia.

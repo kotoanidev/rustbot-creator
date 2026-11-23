@@ -1,7 +1,9 @@
-//! The app's text in Fluent (D-024, D-037), in the system's language: Polish for `pl*`,
-//! English otherwise. A message missing in Polish falls back to English.
+//! The app's text in Fluent (D-024, D-037), in the language of the settings (D-130) or of
+//! the system: Polish for `pl*`, English otherwise. A message missing in Polish falls back
+//! to English.
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::{FluentArgs, FluentResource};
@@ -9,13 +11,19 @@ use fluent_bundle::{FluentArgs, FluentResource};
 const ENGLISH: &str = include_str!("../locales/en/main.ftl");
 const POLISH: &str = include_str!("../locales/pl/main.ftl");
 
+/// Both languages, made once, so the language can change while the app runs.
 struct Text {
-    language: &'static str,
-    chosen: FluentBundle<FluentResource>,
     english: FluentBundle<FluentResource>,
+    polish: FluentBundle<FluentResource>,
 }
 
 static TEXT: OnceLock<Text> = OnceLock::new();
+
+/// The chosen language: [`SYSTEM`], [`EN`] or [`PL`].
+static CHOSEN: AtomicU8 = AtomicU8::new(SYSTEM);
+const SYSTEM: u8 = 0;
+const EN: u8 = 1;
+const PL: u8 = 2;
 
 fn bundle(language: &str, source: &str) -> FluentBundle<FluentResource> {
     let id = language.parse().expect("a valid language tag");
@@ -30,27 +38,41 @@ fn bundle(language: &str, source: &str) -> FluentBundle<FluentResource> {
 }
 
 fn text() -> &'static Text {
-    TEXT.get_or_init(|| {
-        let polish = ["LC_ALL", "LC_MESSAGES", "LANG"]
+    TEXT.get_or_init(|| Text {
+        english: bundle("en", ENGLISH),
+        polish: bundle("pl", POLISH),
+    })
+}
+
+/// Whether the system's language is Polish.
+fn system_is_polish() -> bool {
+    static POLISH_SYSTEM: OnceLock<bool> = OnceLock::new();
+    *POLISH_SYSTEM.get_or_init(|| {
+        ["LC_ALL", "LC_MESSAGES", "LANG"]
             .iter()
             .find_map(|key| std::env::var(key).ok().filter(|value| !value.is_empty()))
-            .is_some_and(|value| value.starts_with("pl"));
-        let (language, source) = if polish {
-            ("pl", POLISH)
-        } else {
-            ("en", ENGLISH)
-        };
-        Text {
-            language,
-            chosen: bundle(language, source),
-            english: bundle("en", ENGLISH),
-        }
+            .is_some_and(|value| value.starts_with("pl"))
     })
+}
+
+/// Uses `language`, `en` or `pl`, or the system's for anything else, e.g. empty.
+pub(crate) fn set_language(language: &str) {
+    let chosen = match language {
+        "en" => EN,
+        "pl" => PL,
+        _ => SYSTEM,
+    };
+    CHOSEN.store(chosen, Ordering::Relaxed);
 }
 
 /// The language of the app's text, `en` or `pl`.
 pub(crate) fn language() -> &'static str {
-    text().language
+    match CHOSEN.load(Ordering::Relaxed) {
+        EN => "en",
+        PL => "pl",
+        _ if system_is_polish() => "pl",
+        _ => "en",
+    }
 }
 
 /// The message `id`.
@@ -74,17 +96,20 @@ pub(crate) fn t_with(id: &str, args: &[(&str, &str)]) -> String {
 
 fn format(id: &str, args: Option<&FluentArgs<'_>>) -> Option<String> {
     let text = text();
-    [&text.chosen, &text.english]
-        .into_iter()
-        .find_map(|bundle| {
-            let pattern = bundle.get_message(id)?.value()?;
-            let mut errors = Vec::new();
-            Some(
-                bundle
-                    .format_pattern(pattern, args, &mut errors)
-                    .into_owned(),
-            )
-        })
+    let chosen = if language() == "pl" {
+        &text.polish
+    } else {
+        &text.english
+    };
+    [chosen, &text.english].into_iter().find_map(|bundle| {
+        let pattern = bundle.get_message(id)?.value()?;
+        let mut errors = Vec::new();
+        Some(
+            bundle
+                .format_pattern(pattern, args, &mut errors)
+                .into_owned(),
+        )
+    })
 }
 
 #[cfg(test)]

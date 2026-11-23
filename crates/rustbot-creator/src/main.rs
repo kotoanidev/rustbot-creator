@@ -5,6 +5,7 @@ mod i18n;
 mod measure;
 mod panels;
 mod run;
+mod settings;
 mod state;
 mod templates;
 mod trust;
@@ -17,7 +18,16 @@ fn main() {
     let path = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
-        gpui_kit::component::set_locale(i18n::language());
+        // Without a home folder the defaults are used, and changes are not kept.
+        let config = settings::config_dir().unwrap_or_default();
+        settings::init(config.join("settings.toml"), cx);
+        // The user's own themes (D-127), loaded again whenever one changes.
+        let themes = config.join("themes");
+        if std::fs::create_dir_all(&themes).is_ok() {
+            let _ = gpui_kit::component::ThemeRegistry::watch_dir(themes, cx, |cx| {
+                settings::apply(None, cx);
+            });
+        }
 
         let options = WindowOptions {
             titlebar: Some(TitlebarOptions {

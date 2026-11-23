@@ -1674,6 +1674,30 @@ alternatives that were considered, and why.
     just created is public, so adding to it needs nothing.
   - Members can still open as many tickets as they like. Limiting that, e.g. one ticket
     per member through memory, is up to the bot's author.
+
+### C-031 — How settings and themes work
+- **Date:** 2026-11-23
+- **Choice:**
+  - **The file:** `settings.toml` holds `language` (`en`, `pl`, or empty for the
+    system's), `theme` (a theme's name, or empty to follow the system) and `font-size`
+    (12–20, default 16). A missing or unknown key is ignored. A damaged file gives the
+    defaults, with a line on stderr, and is replaced when a setting changes. It is written
+    to a new file and renamed over the old one.
+  - **Language:** both Fluent bundles are made once, so the language changes without a
+    restart. Inputs made before the change keep their old placeholders until they are
+    made again.
+  - **Themes:** the built-in ones are gpui-component's "Default Light" and "Default Dark".
+    Choosing a theme sets it for its own mode. "Follow the system" uses the built-in pair
+    and follows the window's light or dark. The themes folder is created at start and
+    watched.
+  - **Where Settings open:** "⚙ Settings" on the right of the status bar opens a closable
+    tab in the dock's centre. "Settings" on the welcome screen shows them over it, with
+    "Back".
+  - **Toolchain:** Settings show whether Rust is installed, where, and the size of its
+    `rustup` and `cargo` folders, measured in the background. Installing it again comes
+    with the wizard's installer.
+  - **Dependencies:** the app now uses `serde`, `toml` and `directories`, which the
+    workspace already had (D-041).
 ---
 
 ## Open questions (to ask the owner when relevant)

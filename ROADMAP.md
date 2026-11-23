@@ -69,9 +69,10 @@ layer, before the scope widens.
       (D-115–D-119)
 
 ## Phase 5 — Themes + first run (D-034, D-017, D-127–D-130)
-- [ ] Settings as an editor tab, saved in `settings.toml`: language, theme, font size,
-      toolchain (D-130)
-- [ ] JSON themes in gpui-component's format: built-in dark and light, following the
+- [~] Settings as an editor tab, saved in `settings.toml`: language, theme, font size,
+      toolchain (D-130). Installing Rust again and reopening the wizard come with the
+      wizard.
+- [x] JSON themes in gpui-component's format: built-in dark and light, following the
       system, and the user's own from a folder (D-127)
 - [ ] First-run wizard: language and theme, Rust and gcc with consent, a first project
       from a template (D-128)

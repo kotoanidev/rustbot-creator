@@ -6,12 +6,14 @@ mod logs;
 mod problems;
 mod project_tree;
 mod properties;
+mod settings;
 
 pub(crate) use editor::Editor;
 pub(crate) use logs::Logs;
 pub(crate) use problems::Problems;
 pub(crate) use project_tree::ProjectTree;
 pub(crate) use properties::Properties;
+pub(crate) use settings::SettingsPanel;
 
 /// The dock traits of a panel with a `focus` field, named `$name` in saved layouts and
 /// `$tab` (a Fluent id) on its tab. Panels cannot be closed yet: nothing reopens them.

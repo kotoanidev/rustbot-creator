@@ -6310,6 +6310,7 @@ name = "rustbot-creator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "directories",
  "fluent-bundle",
  "gpui-kit",
  "rustbot-codegen",
@@ -6317,8 +6318,10 @@ dependencies = [
  "rustbot-runner",
  "rustbot-secrets",
  "rustbot-toolchain",
+ "serde",
  "serde_json",
  "tempfile",
+ "toml 1.2.1+spec-1.1.0",
  "unic-langid",
 ]
 

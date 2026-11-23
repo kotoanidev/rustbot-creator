@@ -398,6 +398,20 @@ var-created-thread = Created thread
 var-created-role = Created role
 problem-ranking-not-per-user = “Ranking” works only on a number variable kept per user, or per user on each server.
 
+# Settings (D-127, D-130)
+settings = Settings
+settings-appearance = Appearance
+settings-language = Language
+settings-language-system = The system's
+settings-theme = Theme
+settings-theme-system = Follow the system (light or dark)
+settings-themes-folder = Your own themes: JSON files in gpui-component's format, in { $path }.
+settings-font-size = Font size
+settings-toolchain = Rust for your bots
+settings-toolchain-installed = Rust { $version } is installed in { $path } and takes { $size }.
+settings-toolchain-missing = Rust is not installed yet. The first Run installs it.
+settings-toolchain-measuring = Checking…
+
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Choose a template
 template-fill-hint = After it is made, Problems lists the channels and roles to fill in.

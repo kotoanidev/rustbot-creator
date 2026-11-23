@@ -15,7 +15,7 @@ use gpui_kit::{
 use rustbot_core::Project;
 
 use crate::i18n::{t, t_with};
-use crate::panels::{Editor, Logs, Problems, ProjectTree, Properties};
+use crate::panels::{Editor, Logs, Problems, ProjectTree, Properties, SettingsPanel};
 use crate::run::Run;
 use crate::state::AppState;
 
@@ -24,6 +24,10 @@ pub(crate) struct Workspace {
     error: Option<String>,
     /// "New project" shows the templates (D-115).
     choosing: bool,
+    /// Settings (D-130), made when first opened: a tab of the dock, or the whole window
+    /// before a project is open (`showing_settings`).
+    settings: Option<Entity<SettingsPanel>>,
+    showing_settings: bool,
 }
 
 impl Workspace {
@@ -33,10 +37,20 @@ impl Workspace {
         cx: &mut Context<'_, Self>,
     ) -> Self {
         crate::measure::first_frame(window);
+        // A theme that follows the system follows it while the app runs (D-127).
+        crate::settings::apply(Some(window), cx);
+        cx.observe_window_appearance(window, |_, window, cx| {
+            if crate::settings::get(cx).theme.is_empty() {
+                gpui_kit::component::Theme::sync_system_appearance(Some(window), cx);
+            }
+        })
+        .detach();
         let mut this = Self {
             open: None,
             error: None,
             choosing: false,
+            settings: None,
+            showing_settings: false,
         };
         if let Some(path) = path {
             this.open_project(&path, window, cx);
@@ -103,6 +117,24 @@ impl Workspace {
         });
         self.open = Some((state, dock));
         self.error = None;
+    }
+
+    /// Opens Settings: as a tab in the dock's centre, or over the welcome screen.
+    fn open_settings(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let panel = if let Some(panel) = &self.settings {
+            panel.clone()
+        } else {
+            let panel = cx.new(|cx| SettingsPanel::new(window, cx));
+            self.settings = Some(panel.clone());
+            panel
+        };
+        match &self.open {
+            Some((_, dock)) => dock.update(cx, |dock, cx| {
+                dock.add_panel_view(panel_handle(panel), DockPlacement::Center, None, window, cx);
+            }),
+            None => self.showing_settings = true,
+        }
+        cx.notify();
     }
 
     fn pick_folder(window: &mut Window, cx: &mut Context<'_, Self>) {
@@ -209,11 +241,37 @@ fn template_cards(cx: &mut Context<'_, Workspace>) -> impl IntoElement {
         )
 }
 
+/// Settings over the welcome screen, before a project is open (D-130).
+fn settings_screen(
+    panel: Entity<SettingsPanel>,
+    cx: &mut Context<'_, Workspace>,
+) -> impl IntoElement {
+    v_flex()
+        .size_full()
+        .bg(cx.theme().background)
+        .child(div().flex_1().min_h_0().child(panel))
+        .child(
+            h_flex()
+                .p(px(16.))
+                .child(
+                    Button::new("settings-back")
+                        .label(t("back"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.showing_settings = false;
+                            cx.notify();
+                        })),
+                ),
+        )
+}
+
 impl Render for Workspace {
     fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         crate::measure::frame_start();
         if self.open.is_none() && self.choosing {
             return template_cards(cx).into_any_element();
+        }
+        if let (None, true, Some(panel)) = (&self.open, self.showing_settings, &self.settings) {
+            return settings_screen(panel.clone(), cx).into_any_element();
         }
         let theme = cx.theme();
         let Some((state, dock)) = &self.open else {
@@ -249,7 +307,12 @@ impl Render for Workspace {
                                 .on_click(
                                     cx.listener(|_, _, window, cx| Self::pick_folder(window, cx)),
                                 ),
-                        ),
+                        )
+                        .child(Button::new("open-settings").label(t("settings")).on_click(
+                            cx.listener(|this, _, window, cx| {
+                                this.open_settings(window, cx);
+                            }),
+                        )),
                 )
                 .children(
                     self.error
@@ -278,7 +341,16 @@ impl Render for Workspace {
                         h_flex()
                             .gap(px(16.))
                             .child(format!("Rust {}", rustbot_core::RUST_VERSION))
-                            .child(t("status-language")),
+                            .child(t("status-language"))
+                            .child(
+                                Button::new("status-settings")
+                                    .ghost()
+                                    .xsmall()
+                                    .label(format!("⚙ {}", t("settings")))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_settings(window, cx);
+                                    })),
+                            ),
                     ),
             )
             .child(crate::measure::frame_end())
@@ -354,6 +426,36 @@ mod tests {
             );
         });
         assert!(!root.join("generated").exists());
+    }
+
+    /// Settings open over the welcome screen, and as a tab once a project is open (D-130).
+    #[gpui_kit::test]
+    fn settings_open_from_the_welcome_screen_and_the_status_bar(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::test::TestWindowExt as _;
+        cx.update(gpui_kit::init);
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| super::Workspace::new(None, window, cx));
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            window.click("open-settings", cx);
+            window.render_frame(cx);
+        });
+        cx.read(|cx| {
+            let workspace = workspace.read(cx);
+            assert!(workspace.showing_settings && workspace.settings.is_some());
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("bot");
+        super::new_project(&root).unwrap();
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.open_project(&root, window, cx);
+        });
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            window.click("status-settings", cx);
+            window.render_frame(cx);
+        });
+        cx.read(|cx| assert!(workspace.read(cx).open.is_some()));
     }
 
     #[test]
