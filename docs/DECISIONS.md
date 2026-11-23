@@ -705,6 +705,34 @@ alternatives that were considered, and why.
   A full log viewer can come later.
 - **Alternatives:** a full log viewer with Phase 7 (hosting on the PC); both.
 
+### D-076 — Command options are a list in the command's form
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The slash command's properties have an "Options" list with "+ Add
+  option". Each option has a name, a type (text, number, yes/no, user, channel, role), a
+  description and "required". An option becomes the variable `{option.<name>}`, and the
+  graph stays uncluttered.
+- **Alternatives:** a small node per option, attached to the command.
+
+### D-077 — One node per condition, with "yes" and "no" outputs
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Conditions are separate node types in the node list: "Has permission?",
+  "Has role?" and "Compare". Each has a "run" input and two flow outputs, "yes" and "no".
+  They are easy to find with search, and their forms stay simple.
+- **Alternatives:** one "If" node whose form changes with the kind of condition.
+
+### D-078 — The variable picker: a list for typed fields, {x} for text
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Fields of type user, channel or role are drop-down lists of the variables
+  that fit, e.g. "Option: target" or "Command author". Text fields have an {x} button that
+  inserts the chosen variable at the cursor.
+- **Alternatives:** suggestions after typing `{`; both.
+
+### D-079 — The first embed is basic
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Title, description, colour, image and footer, each taking variables. More
+  fields come with the full catalog.
+- **Alternatives:** full (fields, author, thumbnail, title link, timestamp).
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

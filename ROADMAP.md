@@ -48,9 +48,12 @@ layer, before the scope widens.
 ## Phase 3 — Easy mode (D-014, D-032) — in progress
 - [x] Console step (D-075): select and copy, level colours, Clear, build lines apart from
       the bot's
-- [ ] The `/ban` example of D-014 (D-073): command options, a yes/no condition,
-      moderation (ban, kick, timeout, roles), messages (to a channel, only for the author,
-      embed), with values from form fields and a variable picker (D-074)
+- [ ] The `/ban` example of D-014 (D-073), with values from form fields (D-074):
+  - [ ] Command options as a list in the command's form (D-076)
+  - [ ] Variable picker: lists for user/channel/role fields, {x} for text (D-078)
+  - [ ] Conditions with "yes"/"no" outputs: has permission, has role, compare (D-077)
+  - [ ] Moderation: ban, kick, timeout, add/remove a role
+  - [ ] Messages: send to a channel, a reply only the author sees, a basic embed (D-079)
 - [ ] Full node catalog and forms over what djs-rs covers: events, components, and so on
 - [ ] Validation and errors shown on the graph
 - [ ] Bot templates

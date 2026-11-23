@@ -105,14 +105,13 @@ The owner finds the console hard to read and wants it improved later. Colour cod
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Phase 3, step 2: the `/ban` example (D-073, D-074).** Start by asking the owner for the
-details:
-- the exact node list (which command option types, conditions, moderation actions and
-  message nodes);
-- how the variable picker looks in a form field;
-- how a yes/no condition shows its two branches on the graph.
-
-Then extend the registry, the codegen (with snapshot and `compiles` tests) and the forms.
+**Phase 3, step 2: the `/ban` example**, in the sub-steps listed in `ROADMAP.md`. The
+owner answered the details (D-076–D-079). Next is **2a, command options (D-076)**:
+- a `PropKind` for the options list;
+- validation by Discord's rules (names, unique, required before optional);
+- typed `{option.<name>}` variables;
+- codegen of the option definitions and values, with snapshot and `compiles` tests;
+- the list editor in the Properties panel.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.
