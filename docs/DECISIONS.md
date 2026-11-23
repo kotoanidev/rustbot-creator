@@ -661,6 +661,19 @@ alternatives that were considered, and why.
   state. It is always visible and takes no room.
 - **Alternatives:** a toolbar above the editor; a button in a custom title bar.
 
+### D-072 — The bot detects that it is not on the test server
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Context:** the owner's first live run failed with 403: Discord refuses to register
+  commands in a server the bot is not on (`50001 Missing Access`), and the raw error did
+  not say what to do.
+- **Decision:** on start, the generated bot checks the server list Discord sends with
+  Ready. If the test server is not on it, the bot does not try to register its commands.
+  It prints a plain message to the Logs, in English like the rest of the bot's output,
+  with an invite link that has the `bot` and `applications.commands` scopes and the server
+  preselected.
+- **Alternatives:** an "Invite the bot" button in the bot settings, which needs the
+  application ID; both; only instructions.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -803,6 +816,13 @@ alternatives that were considered, and why.
   points to the bot settings. Stop moves the bot to a background thread and stops it with
   5 s of grace. Logs keep the last 5000 lines and follow new ones. Library errors keep
   their English text inside a translated sentence.
+
+### C-013 — Plain logs and clickable links
+- **Date:** 2026-11-23
+- **Choice:** the runner sets `NO_COLOR=1` for the bot, because tracing writes colour
+  codes even into a pipe, and the Logs panel shows plain text. A log line that is only an
+  `https://` address is drawn as gpui-component's `Link`, which opens it in the browser.
+  This covers the invite link of D-072. Links inside longer lines stay plain text.
 ---
 
 ## Open questions (to ask the owner when relevant)

@@ -89,13 +89,25 @@ startup 150–280 ms, memory 108–130 MB, frame time with 500 nodes p99 6.8–1
 colour, and skips drawing in the first frame. Only a cold first start after a build is
 slower (1.09 s).
 
+The owner's first live run (2026-11-23) worked up to Run, then failed with 403. Discord
+refuses to register commands in a server the bot is not on (`50001 Missing Access`).
+The fixes:
+- The generated bot checks the Ready server list (D-072). When the test server is
+  missing, it prints a plain message and an invite link on its own line. The Logs panel
+  opens such a line in the browser.
+- The runner sets `NO_COLOR=1`, so tracing's colour codes no longer clutter the Logs.
+
+The owner finds the console hard to read and wants it improved later. Colour codes are
+gone, but selecting and copying text, levels and wrapping are still open.
+
 ## Exact next step
-**Live test with the owner** (the owner does it, because only they may enter the token):
-`cargo run --release -p rustbot-creator`, then "New project…". Click empty canvas, paste
-the bot token under Properties and press Save, enter the test server id and press Enter.
-Press "▶ Run" and accept the Rust install. Use `/ping` on the test server and expect
-"Pong, <name>!", then "■ Stop". If it works, mark Phase 2 done in `ROADMAP.md` and plan
-Phase 3 (the easy mode's node catalog) with the owner (D-043).
+**Live test with the owner, again** (the owner does it, because only they may enter the
+token): `cargo run --release -p rustbot-creator`, open `~/Pulpit/my-bot`, press "▶ Run".
+If Logs say the bot is not on the test server, check the server ID, or click the link,
+add the bot to the server, "■ Stop" and "▶ Run" again. Use `/ping` on the test server
+and expect "Pong, <name>!". If it works, mark Phase 2 done in `ROADMAP.md`, then ask the
+owner what the console should become, and plan Phase 3 (the easy mode's node catalog)
+with the owner (D-043).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

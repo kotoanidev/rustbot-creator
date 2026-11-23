@@ -220,7 +220,9 @@ fn main_rs(intents: &BTreeSet<&str>) -> TokenStream {
         use std::sync::Arc;
 
         use djs_rs::model::id::GuildId;
+        use djs_rs::model::oauth2::Scope;
         use djs_rs::prelude::*;
+        use djs_rs::rest::oauth2::AuthorizeUrl;
 
         #[tokio::main]
         async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -244,6 +246,21 @@ fn main_rs(intents: &BTreeSet<&str>) -> TokenStream {
                 let definitions = Arc::clone(&definitions);
                 async move {
                     match test_guild {
+                        // Discord refuses commands for a server the bot is not on (D-072).
+                        Some(guild) if !ready.guilds.iter().any(|g| g.id == guild) => {
+                            let invite = AuthorizeUrl::bot(ready.application.id)
+                                .scopes([Scope::ApplicationsCommands])
+                                .guild_id(guild)
+                                .build();
+                            // The link on a line of its own, which the Logs panel opens.
+                            eprintln!(
+                                "The bot is not on the test server {guild}, so its commands \
+                                 cannot be added there. Check the server ID in the bot \
+                                 settings, or invite the bot with the link below and run it \
+                                 again:"
+                            );
+                            eprintln!("{invite}");
+                        }
                         Some(guild) => {
                             ctx.guild_commands(guild).set(&definitions).await?;
                         }
