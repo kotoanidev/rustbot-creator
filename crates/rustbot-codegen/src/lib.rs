@@ -15,6 +15,7 @@ use rustbot_core::{GraphKind, NodeId, Project, Registry};
 
 mod cargo;
 mod command;
+mod event;
 
 /// The gateway intents djs-rs knows, by their `Intents` constant names (D-049).
 const INTENTS: &[&str] = &[
@@ -96,6 +97,7 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
         intents.insert(intent);
     }
     let mut commands = BTreeMap::new();
+    let mut events = BTreeMap::new();
     for file in &project.graphs {
         let problems = registry.validate(&file.graph);
         if !problems.is_empty() {
@@ -116,8 +118,12 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
                     return Err(Error::NameClash(other.name.clone(), file.name.clone()));
                 }
             }
-            // No event node types exist yet, so validation has already refused these graphs.
-            GraphKind::Event => {}
+            GraphKind::Event => {
+                let module = module_name(&file.name);
+                if let Some(other) = events.insert(module.clone(), file) {
+                    return Err(Error::NameClash(other.name.clone(), file.name.clone()));
+                }
+            }
         }
     }
     if let Some(unknown) = intents.iter().find(|i| !INTENTS.contains(i)) {
@@ -139,9 +145,10 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
             rustbot_core::RUST_VERSION
         ),
     );
-    output
-        .files
-        .insert(src.join("main.rs"), rust(&main_rs(&intents)));
+    output.files.insert(
+        src.join("main.rs"),
+        rust(&main_rs(&intents, !events.is_empty())),
+    );
     output
         .files
         .insert(src.join("settings.rs"), rust(&settings_rs()));
@@ -156,6 +163,34 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
     output
         .files
         .insert(src.join("commands/mod.rs"), rust(&commands_mod(&modules)));
+    for (module, file) in &events {
+        // Validation leaves exactly one trigger; in a hand-edited file it may be a command.
+        let trigger = file.graph.nodes.iter().find(|(_, node)| {
+            registry
+                .get(&node.kind)
+                .is_some_and(|t| t.category == rustbot_core::registry::Category::Trigger)
+        });
+        let Some((trigger, node)) = trigger else {
+            continue;
+        };
+        let Some(kind) = event::Event::of(&node.kind) else {
+            return Err(Error::NoCodegen {
+                graph: file.name.clone(),
+                node: trigger.clone(),
+                kind: node.kind.clone(),
+            });
+        };
+        let code = event::module(file, trigger, kind)?;
+        output
+            .files
+            .insert(src.join(format!("events/{module}.rs")), rust(&code));
+    }
+    if !events.is_empty() {
+        let modules = events.keys().cloned().collect();
+        output
+            .files
+            .insert(src.join("events/mod.rs"), rust(&event::mod_rs(&modules)));
+    }
     Ok(output)
 }
 
@@ -203,7 +238,17 @@ fn module_name(graph: &str) -> String {
     name
 }
 
-fn main_rs(intents: &BTreeSet<&str>) -> TokenStream {
+fn main_rs(intents: &BTreeSet<&str>, has_events: bool) -> TokenStream {
+    let (events_mod, events_register) = if has_events {
+        (
+            quote!(
+                mod events;
+            ),
+            quote!(events::register(&client);),
+        )
+    } else {
+        (TokenStream::new(), TokenStream::new())
+    };
     let intents = if intents.is_empty() {
         quote!(Intents::empty())
     } else {
@@ -215,6 +260,7 @@ fn main_rs(intents: &BTreeSet<&str>) -> TokenStream {
         #![doc = " it is overwritten on every build."]
 
         mod commands;
+        #events_mod
         mod settings;
 
         use std::sync::Arc;
@@ -273,6 +319,7 @@ fn main_rs(intents: &BTreeSet<&str>) -> TokenStream {
                 }
             });
             commands::register(&client);
+            #events_register
 
             let shutdown = client.clone();
             tokio::spawn(async move {

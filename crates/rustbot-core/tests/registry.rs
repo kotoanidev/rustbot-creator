@@ -151,6 +151,7 @@ fn flow_cannot_feed_data() {
             provides: vec![],
             intents: vec![],
             permission: None,
+            triggers: vec![],
         })
         .unwrap();
     let mut g = ping("hi");
@@ -612,5 +613,98 @@ fn warnings_are_quick_on_many_joins() {
         started.elapsed().as_millis() < 100,
         "{:?}",
         started.elapsed()
+    );
+}
+
+/// A graph started by `trigger`, followed by `node`.
+fn event_graph(trigger: &str, node: &serde_json::Value) -> Vec<ProblemKind> {
+    kinds(
+        &serde_json::from_value(serde_json::json!({
+            "schema": 1,
+            "nodes": { "n1": { "type": trigger }, "n2": node },
+            "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+        }))
+        .unwrap(),
+    )
+}
+
+#[test]
+fn events_offer_their_variables_and_allow_their_nodes() {
+    let reply = |content: &str| serde_json::json!({ "type": "core.reply", "props": { "content": content } });
+    let send = |content: &str| {
+        serde_json::json!({ "type": "core.send_message",
+            "props": { "channel": "123456789012345678", "content": content } })
+    };
+    let none: Vec<ProblemKind> = Vec::new();
+    assert_eq!(
+        event_graph("core.message", &reply("You said {message}, {user.mention}")),
+        none
+    );
+    assert_eq!(
+        event_graph(
+            "core.message",
+            &serde_json::json!({ "type": "core.delete_message" })
+        ),
+        none
+    );
+    assert_eq!(
+        event_graph(
+            "core.member_join",
+            &send("Welcome {user.mention} to {server.name}")
+        ),
+        none
+    );
+    assert_eq!(
+        event_graph("core.member_leave", &send("Bye {user.name}")),
+        none
+    );
+    assert_eq!(
+        event_graph(
+            "core.reaction_add",
+            &send("{user.name} reacted {emoji} in {channel.mention}")
+        ),
+        none
+    );
+    assert_eq!(event_graph("core.ready", &send("Online")), none);
+
+    let commands_only = ProblemKind::WrongTrigger {
+        allowed: vec!["core.slash_command".to_owned(), "core.message".to_owned()],
+    };
+    assert_eq!(
+        event_graph("core.member_join", &reply("Hi")),
+        vec![commands_only]
+    );
+    assert_eq!(
+        event_graph(
+            "core.message",
+            &serde_json::json!({ "type": "core.has_permission",
+            "props": { "user": "user", "permission": "administrator" } })
+        ),
+        vec![ProblemKind::WrongTrigger {
+            allowed: vec!["core.slash_command".to_owned()]
+        }]
+    );
+    assert_eq!(
+        event_graph(
+            "core.message",
+            &serde_json::json!({ "type": "core.reply",
+            "props": { "content": "Psst", "private": true } })
+        ),
+        vec![ProblemKind::PrivateOutsideCommand]
+    );
+    // Variables come from the event: no message text when a member joins.
+    assert_eq!(
+        event_graph("core.member_join", &send("{message}")),
+        vec![ProblemKind::UnknownVariable {
+            prop: "content".to_owned(),
+            path: "message".to_owned()
+        }]
+    );
+    assert_eq!(
+        event_graph("core.ready", &send("{user.name}")),
+        vec![ProblemKind::UnknownVariable {
+            prop: "content".to_owned(),
+            path: "user.name".to_owned()
+        }]
     );
 }

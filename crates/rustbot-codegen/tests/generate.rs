@@ -193,6 +193,142 @@ fn messages() -> GraphFile {
     }
 }
 
+/// An event graph from JSON.
+fn event_graph(name: &str, graph: serde_json::Value) -> GraphFile {
+    GraphFile {
+        kind: GraphKind::Event,
+        name: name.to_owned(),
+        graph: serde_json::from_value(graph).unwrap(),
+        layout: Layout::default(),
+    }
+}
+
+/// One graph per event (D-091-D-095): a welcome with a role, a goodbye, link moderation,
+/// a start-up note and reaction roles.
+#[allow(clippy::too_many_lines)] // one graph per event, as data
+fn events() -> Vec<GraphFile> {
+    let id = "123456789012345678";
+    vec![
+        event_graph(
+            "member_join",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.member_join" },
+                    "n2": { "type": "core.send_message", "props": { "channel": id,
+                        "content": "Welcome {user.mention} to {server.name}, {user.name}!" } },
+                    "n3": { "type": "core.add_role", "props": { "user": "user", "role": id } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "member_leave",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.member_leave" },
+                    "n2": { "type": "core.send_message", "props": { "channel": id,
+                        "content": "Bye {user.name} ({user.username}, {user.id})" } }
+                },
+                "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+            }),
+        ),
+        event_graph(
+            "message",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.message" },
+                    "n2": { "type": "core.compare", "props": {
+                        "left": "{message}", "operator": "contains", "right": "http" } },
+                    "n3": { "type": "core.delete_message" },
+                    "n4": { "type": "core.timeout", "props": { "user": "user", "minutes": "10" } },
+                    "n5": { "type": "core.send_message", "props": { "channel": "channel",
+                        "content": "{user.mention}, no links in {channel.mention}." } },
+                    "n6": { "type": "core.has_role", "props": { "user": "user", "role": id } },
+                    "n7": { "type": "core.reply", "props": {
+                        "content": "Hi {user.name} in {channel.name} on {server.id}",
+                        "embed_title": "You said", "embed_description": "{message}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.yes", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n4.error", "to": "n5.run" },
+                    { "from": "n2.no", "to": "n6.run" },
+                    { "from": "n6.yes", "to": "n7.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "echo",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.message", "props": { "include_bots": true } },
+                    "n2": { "type": "core.reply", "props": { "content": "@here {message}" } }
+                },
+                "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+            }),
+        ),
+        event_graph(
+            "ready",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.ready" },
+                    "n2": { "type": "core.send_message", "props": { "channel": id, "content": "Online" } }
+                },
+                "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+            }),
+        ),
+        event_graph(
+            "reaction_add",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.reaction_add" },
+                    "n2": { "type": "core.compare", "props": {
+                        "left": "{emoji}", "operator": "equals", "right": "👍" } },
+                    "n3": { "type": "core.add_role", "props": { "user": "user", "role": id } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.yes", "to": "n3.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "reaction_remove",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.reaction_remove" },
+                    "n2": { "type": "core.remove_role", "props": { "user": "user", "role": id } },
+                    "n3": { "type": "core.send_message", "props": { "channel": "channel",
+                        "content": "{user.name} took back {emoji}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "quiet",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": { "n1": { "type": "core.ready" } },
+                "edges": []
+            }),
+        ),
+    ]
+}
+
 /// A project on disk with these graphs, opened again as the app would.
 fn project(dir: &Path, manifest: Manifest, graphs: &[GraphFile]) -> Project {
     let project = Project::create(dir, manifest).unwrap();
@@ -350,6 +486,44 @@ fn messages_snapshot() {
         "messages",
         &output.files[Path::new("generated/src/commands/announce.rs")]
     );
+}
+
+#[test]
+fn events_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = project(dir.path(), Manifest::new("Event Bot"), &events());
+    let registry = Registry::with_core();
+    for file in &p.graphs {
+        assert_eq!(registry.validate(&file.graph), Vec::new(), "{}", file.name);
+    }
+    let output = generate(&p, &registry).unwrap();
+    for name in [
+        "mod",
+        "member_join",
+        "member_leave",
+        "message",
+        "echo",
+        "ready",
+        "reaction_add",
+        "reaction_remove",
+        "quiet",
+    ] {
+        insta::assert_snapshot!(
+            format!("event_{name}"),
+            &output.files[Path::new(&format!("generated/src/events/{name}.rs"))]
+        );
+    }
+    let main = &output.files[Path::new("generated/src/main.rs")];
+    assert!(main.contains("mod events;") && main.contains("events::register(&client);"));
+    // The intents the events need (D-049), privileged ones included (D-095).
+    for intent in [
+        "GUILD_MEMBERS",
+        "GUILD_MESSAGES",
+        "MESSAGE_CONTENT",
+        "GUILD_MESSAGE_REACTIONS",
+    ] {
+        assert!(main.contains(&format!("Intents::{intent}")), "{intent}");
+    }
 }
 
 #[test]
@@ -519,6 +693,7 @@ fn generated_bot_compiles() {
     graphs.push(conditions());
     graphs.push(moderation());
     graphs.push(messages());
+    graphs.extend(events());
     let p = project(dir.path(), Manifest::new("Ping Bot"), &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
 

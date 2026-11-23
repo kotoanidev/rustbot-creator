@@ -1150,6 +1150,32 @@ alternatives that were considered, and why.
   - **Cost:** the editor checks the open graph as it draws (0.7 ms for 500 nodes, frames
     within D-038, `docs/PERFORMANCE.md`). Keeping the result per change is the noted
     upgrade.
+
+### C-022 — How event graphs work
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Triggers:** `core.member_join`, `core.member_leave`, `core.message`, `core.ready`,
+    `core.reaction_add` and `core.reaction_remove`.
+  - **What each provides:** `user` and `server` for members; `user`, `channel`,
+    `server` and `message` (its text) for messages; the same with `emoji` instead of
+    `message` for reactions; nothing for "ready".
+  - **Intents:** members need `GUILD_MEMBERS`, messages need `GUILD_MESSAGES` and
+    `MESSAGE_CONTENT`, and reactions need `GUILD_MESSAGE_REACTIONS`.
+  - **Where nodes work:** `NodeType` has an optional `triggers` list, which plugins can
+    set too. "Reply" works under commands and "New message", "Has permission?" only
+    under commands (Discord sends a member's permissions with commands only), and
+    "Delete message" only under "New message". Elsewhere it is `WrongTrigger`. "Only the
+    command author sees it" outside a command is `PrivateOutsideCommand`.
+  - **The palette** offers no triggers, since a graph has its own, and only the nodes
+    that work under the open graph's trigger.
+  - **Missing data:** "Has role?" says no where the event carries no roles (a member who
+    left, a removed reaction). A reaction's user name is fetched, since the event carries
+    only the ID.
+  - **Generated code:** each event graph is `generated/src/events/<name>.rs`, registered
+    with `client.on(Events::…)`. "Ready" adds a handler next to the bot's own. A failed
+    moderation action logs `WARN <graph>: <error>`.
+  - **Bots:** with "Also messages from bots" on, the bot still skips itself by comparing
+    the author with its application ID, which is the bot's user ID.
 ---
 
 ## Open questions (to ask the owner when relevant)

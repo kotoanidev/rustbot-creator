@@ -10,6 +10,7 @@ use rustbot_core::{Graph, GraphFile, NodeId, PinRef, Registry};
 use serde_json::Value;
 
 use crate::Error;
+use crate::event::Event;
 
 /// The module for a validated command graph.
 pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStream, Error> {
@@ -52,6 +53,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         quiet: false,
         interaction: false,
         command: name,
+        event: None,
         path: Vec::new(),
     };
     let body = code.after(trigger, "then")?;
@@ -73,17 +75,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         .any(|path| path.starts_with("user."))
         .then(|| quote!(let author = interaction.author().ok_or("the command has no user")?;));
     // With @everyone allowed in a message, the same text from users must not trigger it.
-    let quiet = needs_quiet.then(|| {
-        quote! {
-            /// Text from users, unable to form `@everyone` or `@here`, for messages whose
-            /// author allowed them (C-016). A zero-width space follows every `@` and leads
-            /// the value, so it cannot join the text around it into a mention either.
-            fn quiet(text: &dyn std::fmt::Display) -> String {
-                let text = text.to_string().replace('@', "@\u{200b}");
-                format!("\u{200b}{text}")
-            }
-        }
-    });
+    let quiet = needs_quiet.then(quiet_fn);
     let doc = format!(
         " The `/{name}` command, from `graphs/commands/{}.json`.",
         file.name
@@ -136,8 +128,22 @@ fn gate(graph: &Graph, registry: &Registry) -> Option<TokenStream> {
     })
 }
 
-/// The command's body, built from its trigger along the flow wires.
-struct Body<'a> {
+/// `quiet()`, for messages with `@everyone` typed in: text from users that cannot form
+/// `@everyone` or `@here` (C-016).
+pub(crate) fn quiet_fn() -> TokenStream {
+    quote! {
+        /// Text from users, unable to form `@everyone` or `@here`, for messages whose
+        /// author allowed them (C-016). A zero-width space follows every `@` and leads
+        /// the value, so it cannot join the text around it into a mention either.
+        fn quiet(text: &dyn std::fmt::Display) -> String {
+            let text = text.to_string().replace('@', "@\u{200b}");
+            format!("\u{200b}{text}")
+        }
+    }
+}
+
+/// A graph's body, built from its trigger along the flow wires.
+pub(crate) struct Body<'a> {
     file: &'a GraphFile,
     /// More than one "Reply": each checks `replied` to reply or follow up.
     follow_ups: bool,
@@ -150,13 +156,35 @@ struct Body<'a> {
     interaction: bool,
     /// The command's name, for Logs.
     command: &'a str,
+    /// The event an event graph starts from; `None` in a command (D-091).
+    event: Option<Event>,
     /// The nodes from the trigger to here, to find loops.
     path: Vec<NodeId>,
 }
 
-impl Body<'_> {
+impl<'a> Body<'a> {
+    /// The body of an event graph (D-091).
+    pub(crate) fn for_event(file: &'a GraphFile, event: Event) -> Self {
+        Body {
+            follow_ups: false,
+            file,
+            options: &[],
+            vars: BTreeSet::new(),
+            quiet: false,
+            interaction: false,
+            command: &file.name,
+            event: Some(event),
+            path: Vec::new(),
+        }
+    }
+
+    /// The variables the code uses and whether it needs `quiet()`.
+    pub(crate) fn finish(self) -> (BTreeSet<String>, bool) {
+        (self.vars, self.quiet)
+    }
+
     /// The code of the nodes wired to `pin` of `id`, one after another in edge order.
-    fn after(&mut self, id: &NodeId, pin: &str) -> Result<TokenStream, Error> {
+    pub(crate) fn after(&mut self, id: &NodeId, pin: &str) -> Result<TokenStream, Error> {
         let mut code = TokenStream::new();
         for next in self.next(id, pin) {
             self.chain(&next, &mut code)?;
@@ -208,6 +236,11 @@ impl Body<'_> {
         let graph = &self.file.graph;
         let code = match graph.nodes[id].kind.as_str() {
             "core.reply" => (self.reply(id), true),
+            // Validation allows it only after "New message" (D-094).
+            "core.delete_message" => (
+                quote!(ctx.messages(event.channel_id).delete(event.id).await?;),
+                true,
+            ),
             "core.send_message" => {
                 let channel = self.channel(text(graph, id, "channel"));
                 let message = self.message(id);
@@ -257,6 +290,14 @@ impl Body<'_> {
     fn reply(&mut self, id: &NodeId) -> TokenStream {
         let graph = &self.file.graph;
         let mut message = self.message(id);
+        if self.event.is_some() {
+            // In "New message", a reply to that message (D-094).
+            return quote! {
+                event
+                    .reply(&ctx, djs_rs::model::rest::CreateMessage::default() #message)
+                    .await?;
+            };
+        }
         // Only the author sees it (D-086).
         if graph.nodes[id].props.get("private") == Some(&Value::Bool(true)) {
             message.extend(quote!(.ephemeral()));
@@ -298,8 +339,10 @@ impl Body<'_> {
         let then = self.after(id, "then")?;
         Ok((
             {
+                // A command is `/ban`, an event graph its file name.
+                let slash = if self.event.is_some() { "" } else { "/" };
                 let log = format!(
-                    "WARN /{}: {{error}}",
+                    "WARN {slash}{}: {{error}}",
                     command.replace('{', "{{").replace('}', "}}")
                 );
                 let log = quote!(eprintln!(#log););
@@ -342,9 +385,9 @@ impl Body<'_> {
                 }
             }
             "core.has_role" => {
-                let member = self.member(text(graph, id, "user"));
+                let roles = self.roles(text(graph, id, "user"));
                 let role = self.role(text(graph, id, "role"));
-                quote!(#member.zip(#role).is_some_and(|(member, role)| member.member.roles.contains(&role)))
+                quote!(#roles.zip(#role).is_some_and(|(roles, role)| roles.contains(&role)))
             }
             "core.compare" => {
                 let left =
@@ -393,6 +436,7 @@ impl Body<'_> {
     fn action(&mut self, id: &NodeId) -> TokenStream {
         let graph = &self.file.graph;
         let user = match text(graph, id, "user") {
+            "user" if self.event.is_some() => self.event.expect("checked").user_id(),
             "user" => quote!(
                 interaction
                     .author()
@@ -472,10 +516,21 @@ impl Body<'_> {
             }
             other => unreachable!("{other} is not a moderation action"),
         };
+        let guild = self.event.map_or_else(
+            || {
+                quote!(
+                    interaction
+                        .guild_id
+                        .ok_or("the command was not used on a server")?
+                )
+            },
+            |event| {
+                let guild = event.guild_id();
+                quote!(#guild.ok_or("the event did not come from a server")?)
+            },
+        );
         quote! {
-            let members = ctx.members(
-                interaction.guild_id.ok_or("the command was not used on a server")?,
-            );
+            let members = ctx.members(#guild);
             let user = #user;
             #call.await?;
         }
@@ -491,7 +546,9 @@ impl Body<'_> {
             let everyone = mentions_everyone(template);
             self.quiet |= everyone;
             let content = template_expr(template, self.options, everyone, &mut self.vars);
-            let mentions = allowed_mentions(template, self.options, everyone);
+            let event = self.event;
+            let author = || event.map_or_else(|| quote!(author.id), Event::user_id);
+            let mentions = allowed_mentions(template, self.options, everyone, &author);
             message.extend(quote!(.content(#content).allowed_mentions(#mentions)));
         }
         message.extend(self.embed(id));
@@ -562,6 +619,9 @@ impl Body<'_> {
 
     /// A channel field's channel, a `ChannelId`: the command's, an option, or an ID (D-088).
     fn channel(&mut self, channel: &str) -> TokenStream {
+        if let (Some(event), "channel") = (self.event, channel) {
+            return event.channel_id();
+        }
         if channel == "channel" {
             self.interaction = true;
             return quote!(interaction.channel_id.ok_or("the command has no channel")?);
@@ -590,6 +650,27 @@ impl Body<'_> {
                 } else {
                     quote!(Some(#reason).as_deref())
                 }
+            }
+        }
+    }
+
+    /// A user field's roles, an `Option<&Vec<RoleId>>`.
+    fn roles(&mut self, user: &str) -> TokenStream {
+        match (self.event, user) {
+            (Some(event), _) => event.roles(),
+            (None, "user") => {
+                self.interaction = true;
+                quote!(
+                    interaction
+                        .member
+                        .as_ref()
+                        .map(|member| &member.member.roles)
+                )
+            }
+            (None, option) => {
+                let (_, option, _) = option_path(option, self.options).expect("validated variable");
+                let name = &option.name;
+                quote!(cmd.get_member(#name).map(|(_, member)| &member.member.roles))
             }
         }
     }
@@ -663,14 +744,20 @@ fn template_expr(
 /// notifies its user or role, and `@everyone`/`@here` work only typed into the template. Text
 /// from users, such as a text option or a nickname, never notifies anyone, so
 /// `/ban reason:@everyone` cannot ping the server.
-fn allowed_mentions(template: &str, options: &[CommandOption], everyone: bool) -> TokenStream {
+fn allowed_mentions(
+    template: &str,
+    options: &[CommandOption],
+    everyone: bool,
+    author: &dyn Fn() -> TokenStream,
+) -> TokenStream {
     let segments = template::parse(template).expect("validated templates parse");
     let mut add = Vec::new();
     for segment in &segments {
         match segment {
             Segment::Text(_) => {}
             Segment::Var(path) if path.join(".") == "user.mention" => {
-                add.push(quote!(mentions.users.push(author.id);));
+                let author = author();
+                add.push(quote!(mentions.users.push(#author);));
             }
             Segment::Var(path) => {
                 let path = path.join(".");

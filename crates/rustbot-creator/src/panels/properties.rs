@@ -5,6 +5,7 @@
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::link::Link;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{ActiveTheme as _, IndexPath, Sizable as _, h_flex, v_flex};
@@ -1024,10 +1025,35 @@ impl Render for Properties {
                 let node_id = kind.replace('.', "-");
                 let variables = variables(file, &state.registry);
                 let this = cx.entity().downgrade();
+                // Privileged intents are switched on by hand in the portal (D-095).
+                let intents = state
+                    .registry
+                    .get(kind)
+                    .map_or_else(Vec::new, |t| t.intents.clone());
+                let notes: Vec<_> = [
+                    ("GUILD_MEMBERS", "intent-note-members"),
+                    ("MESSAGE_CONTENT", "intent-note-content"),
+                ]
+                .into_iter()
+                .filter(|(intent, _)| intents.iter().any(|i| i == intent))
+                .map(|(_, note)| {
+                    v_flex()
+                        .gap(px(2.))
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t(note))
+                        .child(
+                            Link::new(("intent-portal", note.len()))
+                                .href("https://discord.com/developers/applications")
+                                .child(t("intent-note-link")),
+                        )
+                })
+                .collect();
                 v_flex()
                     .gap(px(6.))
                     .child(div().text_sm().child(super::editor::node_name(kind)))
                     .children(self.rows(file, node, &node_id, &variables, &this, cx))
+                    .children(notes)
                     .into_any_element()
             }
             _ => match &self.bot {

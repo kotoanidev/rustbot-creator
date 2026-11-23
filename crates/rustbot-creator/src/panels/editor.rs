@@ -250,11 +250,23 @@ impl Editor {
             return Vec::new();
         };
         let query = picker.query.read(cx).value().to_lowercase();
-        let mut found: Vec<(String, String)> = self
-            .state
-            .read(cx)
+        let state = self.state.read(cx);
+        // The graph's trigger: a graph has one, and some nodes work under some only (D-094).
+        let trigger = state.open_file().and_then(|file| {
+            file.graph.nodes.values().find_map(|node| {
+                let kind = state.registry.get(&node.kind)?;
+                (kind.category == Category::Trigger).then_some(kind.id.as_str())
+            })
+        });
+        let mut found: Vec<(String, String)> = state
             .registry
             .iter()
+            .filter(|node| {
+                node.category != Category::Trigger
+                    && trigger.is_none_or(|trigger| {
+                        node.triggers.is_empty() || node.triggers.iter().any(|t| t == trigger)
+                    })
+            })
             .filter(|node| {
                 picker
                     .wire
@@ -844,11 +856,12 @@ mod tests {
             window.pointer_up(at, MouseButton::Right, cx);
             window.render_frame(cx);
         });
-        cx.update(|window, cx| window.input("slash", cx));
+        // Triggers are not offered: a graph has its own (D-091).
+        cx.update(|window, cx| window.input("compare", cx));
         cx.update(|window, cx| window.press("enter", cx));
         cx.read(|cx| {
             let file = state.read(cx).open_file().unwrap();
-            assert_eq!(file.graph.nodes[&id("n3")].kind, "core.slash_command");
+            assert_eq!(file.graph.nodes[&id("n3")].kind, "core.compare");
             assert_eq!(file.graph.edges.len(), 1);
         });
     }

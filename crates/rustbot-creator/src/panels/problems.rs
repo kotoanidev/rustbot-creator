@@ -126,6 +126,18 @@ pub(crate) fn describe(problem: &Problem) -> String {
             t_with("problem-variable-type", &[("prop", prop), ("path", path)])
         }
         ProblemKind::NoReply => t("problem-no-reply"),
+        // "Reply" in an event: say what to use instead (D-094).
+        ProblemKind::WrongTrigger { allowed } if allowed.iter().any(|a| a == "core.message") => {
+            t("problem-reply-in-event")
+        }
+        ProblemKind::WrongTrigger { allowed } => {
+            let names: Vec<String> = allowed
+                .iter()
+                .map(|a| super::editor::node_name(a))
+                .collect();
+            t_with("problem-wrong-trigger", &[("allowed", &names.join(", "))])
+        }
+        ProblemKind::PrivateOutsideCommand => t("problem-private-outside-command"),
         ProblemKind::EmptyMessage => t("problem-empty-message"),
         ProblemKind::BadColor(prop) => t_with("problem-bad-color", &[("prop", prop)]),
         ProblemKind::NoPermissionCheck { permission } => t_with(

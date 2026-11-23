@@ -89,13 +89,11 @@ pub(crate) fn register(client: &Client) {
                     } else {
                         if cmd
                             .get_member("cel")
-                            .map(|(_, member)| member)
+                            .map(|(_, member)| &member.member.roles)
                             .zip(
                                 Some(djs_rs::model::id::RoleId::new(123456789012345678u64)),
                             )
-                            .is_some_and(|(member, role)| {
-                                member.member.roles.contains(&role)
-                            })
+                            .is_some_and(|(roles, role)| roles.contains(&role))
                         {
                             if replied.replace(true) {
                                 cmd.follow_up(
@@ -146,8 +144,9 @@ pub(crate) fn register(client: &Client) {
                 if !(interaction
                     .member
                     .as_ref()
+                    .map(|member| &member.member.roles)
                     .zip(cmd.get_role("rola").map(|role| role.id))
-                    .is_some_and(|(member, role)| member.member.roles.contains(&role)))
+                    .is_some_and(|(roles, role)| roles.contains(&role)))
                 {
                     if option_2
                         .to_string()

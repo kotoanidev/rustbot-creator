@@ -7,8 +7,23 @@ use crate::registry::{
 pub(crate) fn all() -> Vec<NodeType> {
     vec![
         slash_command(),
+        event("core.member_join", &["user", "server"], &["GUILD_MEMBERS"]),
+        event("core.member_leave", &["user", "server"], &["GUILD_MEMBERS"]),
+        message_event(),
+        event("core.ready", &[], &[]),
+        event(
+            "core.reaction_add",
+            &["user", "channel", "server", "emoji"],
+            &["GUILD_MESSAGE_REACTIONS"],
+        ),
+        event(
+            "core.reaction_remove",
+            &["user", "channel", "server", "emoji"],
+            &["GUILD_MESSAGE_REACTIONS"],
+        ),
         reply(),
         send_message(),
+        delete_message(),
         has_permission(),
         has_role(),
         compare(),
@@ -38,6 +53,60 @@ fn slash_command() -> NodeType {
         // Interactions arrive whatever the intents are.
         intents: Vec::new(),
         permission: None,
+        triggers: Vec::new(),
+    }
+}
+
+/// An event trigger (D-091): its graph runs when the event comes, with `provides` filled
+/// in from it. `emoji` and `message` are text; the others have the usual fields.
+fn event(id: &str, provides: &[&str], intents: &[&str]) -> NodeType {
+    let provides = provides
+        .iter()
+        .map(|&name| {
+            let ty = match name {
+                "user" => DataType::User,
+                "channel" => DataType::Channel,
+                "server" => DataType::Server,
+                _ => DataType::Text,
+            };
+            var(name, ty)
+        })
+        .collect();
+    NodeType {
+        id: id.to_owned(),
+        category: Category::Trigger,
+        pins: vec![flow("then", Direction::Out)],
+        props: Vec::new(),
+        provides,
+        intents: intents.iter().map(|&i| i.to_owned()).collect(),
+        permission: None,
+        triggers: Vec::new(),
+    }
+}
+
+/// "New message": skips bots unless "Also messages from bots" is on, and always the bot
+/// itself (D-093). Reading the text needs the Message Content intent (D-095).
+fn message_event() -> NodeType {
+    let mut node = event(
+        "core.message",
+        &["user", "channel", "server", "message"],
+        &["GUILD_MESSAGES", "MESSAGE_CONTENT"],
+    );
+    node.props = vec![prop("include_bots", PropKind::Bool, false)];
+    node
+}
+
+/// Deletes the message of a "New message" graph (D-094).
+fn delete_message() -> NodeType {
+    NodeType {
+        id: "core.delete_message".to_owned(),
+        category: Category::Action,
+        pins: vec![flow("run", Direction::In), flow("then", Direction::Out)],
+        props: Vec::new(),
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+        triggers: vec!["core.message".to_owned()],
     }
 }
 
@@ -50,6 +119,8 @@ fn reply() -> NodeType {
         provides: Vec::new(),
         intents: Vec::new(),
         permission: None,
+        // A command's reply, or a reply to the message (D-094).
+        triggers: vec!["core.slash_command".to_owned(), "core.message".to_owned()],
     }
 }
 
@@ -65,6 +136,7 @@ fn send_message() -> NodeType {
         provides: Vec::new(),
         intents: Vec::new(),
         permission: None,
+        triggers: Vec::new(),
     }
 }
 
@@ -98,17 +170,21 @@ fn condition(id: &str, props: Vec<Prop>) -> NodeType {
         provides: Vec::new(),
         intents: Vec::new(),
         permission: None,
+        triggers: Vec::new(),
     }
 }
 
 fn has_permission() -> NodeType {
-    condition(
+    let mut node = condition(
         "core.has_permission",
         vec![
             prop("user", PropKind::Variable(DataType::User), true),
             prop("permission", PropKind::Choice(Choices::Permission), true),
         ],
-    )
+    );
+    // Discord sends a member's permissions with commands only.
+    node.triggers = vec!["core.slash_command".to_owned()];
+    node
 }
 
 fn has_role() -> NodeType {
@@ -149,6 +225,7 @@ fn moderation(id: &str, permission: &str, mut props: Vec<Prop>) -> NodeType {
         provides: Vec::new(),
         intents: Vec::new(),
         permission: Some(permission.to_owned()),
+        triggers: Vec::new(),
     }
 }
 

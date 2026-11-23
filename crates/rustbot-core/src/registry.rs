@@ -33,6 +33,10 @@ pub struct NodeType {
     /// to someone else, as a [`Choices::Permission`] value, e.g. `ban_members` (D-085).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission: Option<String>,
+    /// The triggers whose graphs it works in, e.g. only `core.slash_command`; empty for all
+    /// (D-094).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub triggers: Vec<String>,
 }
 
 /// Where a node type is shown in the palette.
@@ -372,6 +376,13 @@ pub enum ProblemKind {
     /// A warning: a path through the command can end without "Reply", so Discord shows
     /// "The application did not respond" (D-089).
     NoReply,
+    /// The node does not work under this graph's trigger; it works under `allowed` (D-094).
+    WrongTrigger {
+        /// The trigger node types it works under.
+        allowed: Vec<String>,
+    },
+    /// "Only the command author sees it" outside a command (D-086).
+    PrivateOutsideCommand,
     /// A message has no text and no embed title or description (D-087).
     EmptyMessage,
     /// A colour field holds something other than `#RRGGBB`.
@@ -419,6 +430,12 @@ impl fmt::Display for Problem {
             }
             ProblemKind::NoReply => write!(f, "the command may end without a reply"),
             ProblemKind::EmptyMessage => write!(f, "the message has no text and no embed"),
+            ProblemKind::WrongTrigger { allowed } => {
+                write!(f, "the node works only under {}", allowed.join(", "))
+            }
+            ProblemKind::PrivateOutsideCommand => {
+                write!(f, "only a command's reply can be seen by its author alone")
+            }
             ProblemKind::BadColor(prop) => write!(f, "{prop:?} is not a colour like #5865F2"),
             ProblemKind::NoPermissionCheck { permission } => {
                 write!(
@@ -630,11 +647,32 @@ impl Registry {
         let scope = self.scope(graph);
         let scope = scope.as_slice();
 
+        let trigger = graph.nodes.values().find(|node| {
+            self.get(&node.kind)
+                .is_some_and(|t| t.category == Category::Trigger)
+        });
+        let trigger = trigger.map(|node| node.kind.as_str());
         for (id, node) in &graph.nodes {
             let Some(node_type) = self.get(&node.kind) else {
                 report(Some(id), ProblemKind::UnknownNodeType(node.kind.clone()));
                 continue;
             };
+            if let Some(trigger) = trigger
+                && !node_type.triggers.is_empty()
+                && !node_type.triggers.iter().any(|t| t == trigger)
+            {
+                report(
+                    Some(id),
+                    ProblemKind::WrongTrigger {
+                        allowed: node_type.triggers.clone(),
+                    },
+                );
+            }
+            if node.props.get("private") == Some(&serde_json::Value::Bool(true))
+                && trigger.is_some_and(|t| t != "core.slash_command")
+            {
+                report(Some(id), ProblemKind::PrivateOutsideCommand);
+            }
             for prop in &node_type.props {
                 for kind in check_prop(prop, node.props.get(&prop.name), scope) {
                     report(Some(id), kind);
