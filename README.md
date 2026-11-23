@@ -3,32 +3,62 @@
 **Build Discord bots on your desktop, with no coding or with full control over the code.**
 
 RustBot Creator is a desktop application written in pure Rust for creating Discord bots on
-top of [djs-rs](https://github.com/kotoanidev/djs-rs). It is in **planning**. There is no
-code yet, and everything below describes what the project is going to be.
+top of [djs-rs](https://github.com/kotoanidev/djs-rs).
 
-## What it will do
+> **Pre-alpha.** It works, and you can build and run real bots with it, but it has not been
+> released yet. There are no packages, and the interface will still change.
 
-- **Two modes.** An easy creator in which someone who has never programmed can build a
-  complete bot with no artificial limits, and an advanced creator with control over every
-  feature, plus a built-in file editor.
-- **A familiar workspace.** A professional interface in the style of VS Code, with support
-  for community plugins and themes.
-- **Nothing to set up.** The application installs whatever it needs by itself.
-- **Your bot, your way.** Download the bot as source code or as a ready-to-run build, host
-  it on your own PC from inside the app, or deploy it to Cloudflare and other compatible
-  hosts.
-- **Integrated.** GitHub integration built in, with more services to come.
+## What works today
 
-## Platforms
+- **Bots from templates or from scratch.** A new project starts from a template: empty,
+  moderation with warnings, welcome, roles from a menu, reports by form, or levels.
+- **A node-graph editor.** Each slash command and event is a graph of nodes, edited in a
+  workspace in the style of VS Code, with a project tree, properties, problems and a
+  console.
+- **The nodes:**
+  - triggers: slash commands with options, members joining and leaving, new messages,
+    the bot starting, and reactions;
+  - messages: replies (also ones only the author sees), messages to a channel, DMs,
+    embeds, buttons, select menus and forms, plus editing, reacting and pinning;
+  - moderation: ban, kick, timeout, roles and nicknames;
+  - the server: creating and deleting channels and roles, and threads;
+  - logic: permission and role checks, comparisons, and waiting;
+  - memory: variables that last, kept for the bot, per server, per user or per member,
+    and rankings.
+- **Checks while you build.** Empty fields, wrong variables and missing permission checks
+  are shown on the graph before the bot runs.
+- **Build and run inside the app.** The graphs become readable Rust in the project's
+  `generated/` folder. The first build installs a private Rust toolchain for your bots, in
+  the app's data folder. The bot token is kept in the system keyring, and the bot runs with
+  its logs in the app.
+- **English and Polish.** Fully local: no account and no telemetry.
 
-Linux comes first: Fedora, then the other major distributions. Windows follows, and macOS
-may come later.
+## Coming next
+
+A first-run wizard that also guides you through the Discord Developer Portal, light and
+dark themes, exporting the bot as source code or a ready build, hosting it on your PC, and
+a public release for Fedora and Ubuntu, then Windows. After that come an advanced mode
+with a code editor, and GitHub and Cloudflare integrations. The plan is in
+[`ROADMAP.md`](ROADMAP.md).
+
+## Building from source
+
+On Fedora or Ubuntu, with Rust from [rustup](https://rustup.rs):
+
+```bash
+git clone https://github.com/kotoanidev/rustbot-creator
+cd rustbot-creator
+pkexec scripts/install-build-deps.sh   # once: the system libraries of the UI (dnf or apt)
+cargo run --release -p rustbot-creator
+```
+
+To run a bot, you need a Discord application and its bot token from the
+[Discord Developer Portal](https://discord.com/developers/applications).
 
 ## Status
 
-Planning. Progress lives in [`PROGRESS.md`](PROGRESS.md), the plan in
-[`ROADMAP.md`](ROADMAP.md), and every decision with its reasons in
-[`docs/DECISIONS.md`](docs/DECISIONS.md).
+Pre-alpha. Progress is in [`PROGRESS.md`](PROGRESS.md), and every decision with its
+reasons is in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## License
 

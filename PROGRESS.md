@@ -8,7 +8,12 @@
 **Phase 1 — Detailed planning: ✅ done 2026-11-17** for everything Phase 2 needs (D-011 to
 D-046). Later phases are planned in detail when each one starts (D-043).
 **Phase 2 — Vertical slice: ✅ done 2026-11-23.** The owner ran `/ping` live on a test server.
-**Phase 3 — Easy mode: in progress.** Planned 2026-11-23 (D-073–D-075). Step 1, the console (D-075, C-014), is ✅ done: lines select and copy with Ctrl+C, errors are red and warnings yellow, build output is muted, and "Clear" sits in the panel's toolbar. Step 1 (workspace skeleton + CI) is ✅ done.
+**Phase 3 — Easy mode: ✅ done in code 2026-11-23; the owner's live test is pending.**
+**Next: phase 5, first run + themes.** The phase order changed after phase 3 to follow the
+incubation timeline (D-123–D-125): 5 → 6 → 7 → a public Linux release → Windows →
+RustBot Cloud pilot → 4 → 8 → 9. The README describes the pre-alpha honestly now.
+
+Phase 3 was planned 2026-11-23 (D-073–D-075). Step 1, the console (D-075, C-014), is ✅ done: lines select and copy with Ctrl+C, errors are red and warnings yellow, build output is muted, and "Clear" sits in the panel's toolbar. Step 1 (workspace skeleton + CI) is ✅ done.
 The six crates of D-036 and the lints of D-046 are in place, and `cargo run -p
 rustbot-creator` opens an empty "RustBot Creator" window (gpui-kit 0.10.0). The first CI
 run was green: rustfmt 15 s, Ubuntu 280 s, Fedora 44 297 s.
@@ -208,6 +213,8 @@ What a node creates is a variable after its "then": `{created_channel.mention}`,
 "Created channel" in the channel lists. Building the test bots found an older bug: an
 action on "the last message" with "error" wired did not build. It is fixed (C-029).
 
+A security review then tightened which of them need a permission check (C-030).
+
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
 test, and `template_bots_compile` for the templates). Memory, forms, templates and the
 new nodes have not run live yet. Next:
@@ -215,8 +222,14 @@ new nodes have not run live yet. Next:
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
    the channel filled in, or "Levels") and the new nodes (e.g. a private ticket channel)
    on the test server; fix what they find.
-2. What comes next: ask the owner. Phase 3 has only live testing left; phase 4, the
-   advanced mode, is next on the roadmap.
+2. Measure the memory (RSS) of generated template bots (moderation, levels) connected to
+   Discord, idle and on a few servers, and how many fit in 4 GB. Record it in
+   `docs/PERFORMANCE.md`, and tell the owner if it is far from about 7 MB per idle bot.
+   The owner starts the bot in the app; measuring its process needs no token.
+3. Plan phase 5 with the owner (D-043): JSON themes, the first-run wizard, its guide
+   through the Discord Developer Portal, and Settings.
+4. The README still needs a screenshot labelled pre-alpha. Take it only of the app's own
+   window: `spectacle -a` once caught another window when the app was not focused.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

@@ -14,8 +14,9 @@ ship a bot. The full brief is D-010 in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 - License: `MIT OR Apache-2.0`
 - Local directory: `discord-bot-rust-app` (not renamed to match the repository)
 
-**State: Phase 2, the vertical slice (see `ROADMAP.md`).** The workspace skeleton and CI
-exist. The app opens an empty window.
+**State: pre-alpha. Phases 2 and 3 are done in code (see `ROADMAP.md`).** The app makes
+bots from templates or by hand, with a node-graph editor, and builds and runs them. Next
+is phase 5, the first run and themes (D-123).
 
 ## Commands
 
@@ -66,8 +67,9 @@ rustbot-secrets    bot/GitHub/Cloudflare tokens in the OS keyring (D-020)
 
 Invariants that span crates:
 - Fully local, no accounts (D-060). Network access only for installing packages,
-  hosting/deploys, external integrations and the running bot. Never add sign-in,
-  telemetry, a cloud backend or downloads of anything the app could ship itself.
+  hosting/deploys, external integrations and the running bot. Never add telemetry, or
+  downloads of anything the app could ship itself. An account and a backend exist only
+  inside the optional RustBot Cloud (D-125); never add a sign-in anywhere else.
 - The graph and forms are the source of truth. `generated/` is never edited by hand, and
   the user's own code lives in `src/` and is called through a "custom code" node (D-015).
 - Built-in nodes and panels are registered the same way plugins will register theirs
@@ -84,7 +86,10 @@ Invariants that span crates:
 1. Read [`PROGRESS.md`](PROGRESS.md) for the current state and the **exact next step**.
 2. Read [`docs/DECISIONS.md`](docs/DECISIONS.md). Every decision in it is binding.
 3. Skim [`ROADMAP.md`](ROADMAP.md) to see where the next step fits.
-4. Run `git status` and `git log --oneline -10`. Uncommitted work comes from an interrupted
+4. If `docs/BUSINESS.md` exists, read it: the product direction. It is kept only on the
+   owner's machine (D-126), so never commit it or quote its prices and forecasts in the
+   repository.
+5. Run `git status` and `git log --oneline -10`. Uncommitted work comes from an interrupted
    session: inspect it, then finish or discard it **after asking the owner**.
 
 ## Hard rules
@@ -129,11 +134,12 @@ code, comments, docs, commit messages, issues, PRs, and anything you file in oth
 repositories (e.g. djs-rs). The **only exception** is the Polish UI translation files
 (D-024).
 
-## Platform priority (D-009)
+## Platform priority (D-009, D-124)
 
 Fedora (the owner's machine, Fedora 44 KDE) is the priority platform and the test
-environment. Then come all major Linux distributions, then Windows. macOS is only a
-prospect, but never rule it out.
+environment. Ubuntu ships with it in the public Linux release, and Windows comes right
+after. Then the other major Linux distributions. macOS is only a prospect, but never rule
+it out.
 
 ## djs-rs quick reference
 

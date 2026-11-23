@@ -73,6 +73,7 @@ alternatives that were considered, and why.
 - **Decision:** Fedora is the priority platform and the test environment. Linux support then
   extends to all major distributions. Windows comes after Linux is finished. macOS is only a
   future prospect, but nothing should rule it out.
+- **Amended by D-124:** Windows comes right after the public Linux release.
 
 ### D-010 — Product scope (owner's brief)
 - **Date:** 2026-11-17 · **Decided by:** Owner
@@ -293,6 +294,8 @@ alternatives that were considered, and why.
   - GitHub integration (device flow sign-in, creating a repository, pushing the project);
   - deploying to Cloudflare Containers (D-013);
   - JSON themes, with built-in dark and light themes (D-034).
+- **Amended by D-123:** the first public release, on Fedora and Ubuntu, comes before
+  the advanced mode, GitHub and Cloudflare Containers, which come in later releases.
 
 ### D-034 — Themes in the first release, WASM plugins after it
 - **Date:** 2026-11-17 · **Decided by:** Owner
@@ -311,6 +314,7 @@ alternatives that were considered, and why.
   in `ROADMAP.md`.
 - **Alternatives:** the whole no-code path first, advanced mode last; interleaved, with
   local shipping early and the external services after the advanced mode.
+- **Amended by D-123:** the order after phase 3 follows the incubation timeline.
 
 ### D-036 — Crates are created when their phase starts
 - **Date:** 2026-11-17 · **Decided by:** Owner
@@ -574,6 +578,7 @@ alternatives that were considered, and why.
   later ones), and running the bot itself, which talks to Discord. Each of these is
   optional and started by the user. Templates, node types, themes, translations and docs
   ship with the app.
+- **Amended by D-125:** an account exists only inside the optional RustBot Cloud.
 
 ### D-061 — App id `io.github.kotoanidev.RustBotCreator`
 - **Date:** 2026-11-22 · **Decided by:** Owner
@@ -1076,6 +1081,48 @@ alternatives that were considered, and why.
 - **Decision:** After "Ranking", `{ranking}` holds ready lines such as "1. @who — 120":
   the top 1–25, with mentions that notify nobody. It goes into any message or embed.
 - **Alternatives:** a node that replies with a ready embed itself.
+
+### D-123 — The phase order follows the incubation timeline (amends D-035)
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** After phase 3, the app ships to users before the advanced mode, as the
+  incubation application promises an MVP in about 6 months. The order is:
+  1. 5 first run + themes;
+  2. 6 export;
+  3. 7 hosting on the PC;
+  4. a public Linux release (RPM on Copr and .deb);
+  5. Windows;
+  6. a pilot of RustBot Cloud;
+  7. 4 advanced mode;
+  8. 8 GitHub.
+
+  The phases keep their numbers as names. Cloudflare Containers (phase 9) was not placed
+  by the proposal and stays after GitHub, as before. So the first public release (D-033)
+  no longer waits for the advanced mode, GitHub and Cloudflare: they come in later
+  releases.
+- **Alternatives:** keep D-035 (the advanced mode next).
+
+### D-124 — Windows right after the public Linux release (amends D-009)
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Windows comes right after the public release on Fedora and Ubuntu, before
+  the RustBot Cloud pilot and the advanced mode (months 4–6 of the timeline). Fedora stays
+  the priority platform and the test environment.
+- **Alternatives:** D-009 unchanged: Windows after everything on Linux.
+
+### D-125 — An account only inside RustBot Cloud (amends D-060)
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The app stays 100% usable with no account. An account exists only inside
+  the optional RustBot Cloud feature, which the user starts, the same way GitHub and
+  Cloudflare sign-ins work. The app still has no telemetry. Product metrics (sign-ups,
+  deploys, subscriptions, churn) come only from the Cloud service's own side.
+- **Alternatives:** D-060 unchanged until the Cloud pilot.
+
+### D-126 — The business notes stay out of the public repository
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** `docs/BUSINESS.md`, the product direction with prices, forecasts and the
+  incubation application, is kept only on the owner's machine. It is listed in
+  `.git/info/exclude`, so it is never committed. Sessions on that machine read it.
+- **Alternatives:** commit it as it is; commit a shortened version without prices,
+  forecasts and the application.
 
 ---
 
@@ -1611,3 +1658,16 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
   releases, Actions) and the OAuth scopes they need.
 - **Community files:** CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, and when
   to add them.
+- **RustBot Cloud** (D-125), before its pilot:
+  - where the service code lives (a separate private repository?) and under which
+    licence;
+  - what it runs on: the company's own servers, or Cloudflare Containers (D-013 stays the
+    "bring your own Cloudflare account" path);
+  - payments, and VAT invoicing.
+- **Paid templates and a marketplace:** templates are compiled into the app (C-028). Paid
+  ones need a package format installed later, tied to plugin distribution and signing.
+  Generated code stays MIT-0 (D-023), even from a paid template.
+- **Name and trademark:** "RustBot" contains "Rust". Check the Rust Foundation's trademark
+  policy before the brand, domain and logo are fixed.
+- **Templates for a paid shelf:** economy and collecting (gacha), tickets and verification.
+  Build them now as free templates, or keep them for paid ones?

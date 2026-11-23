@@ -1,7 +1,9 @@
 # Roadmap
 
 The phased plan for RustBot Creator. Checkboxes are updated as work lands on `main`. Scope
-decisions are in [`docs/DECISIONS.md`](docs/DECISIONS.md). The phase order is D-035.
+decisions are in [`docs/DECISIONS.md`](docs/DECISIONS.md). The phase order is D-035,
+changed by D-123 after phase 3: the phases are listed in the order they are done, and keep
+their numbers as names.
 
 Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 
@@ -21,7 +23,7 @@ measured (D-026, D-038).
 
 ---
 
-# Release 1 — Fedora (D-033)
+# Release 1 — Fedora and Ubuntu (D-033, D-123)
 
 ## Phase 2 — Vertical slice (D-031) ✅
 Goal: a `/ping` command made in the graph runs as a real bot, end to end through every
@@ -66,15 +68,11 @@ layer, before the scope widens.
 - [x] Bot templates: empty, moderation, welcome, roles from a menu, reports, levels
       (D-115–D-119)
 
-## Phase 4 — Advanced mode (D-015, D-030)
-- [ ] gpui-kit code editor for the user's own modules in `src/`
-- [ ] rust-analyzer (LSP) from the private toolchain
-- [ ] "Custom code" node calling the user's functions
-- [ ] Read-only view of the generated code
-
 ## Phase 5 — Themes + first run (D-034, D-017)
 - [ ] JSON themes, built-in dark and light, theme switching
 - [ ] First-run wizard: toolchain installation, system packages with consent
+- [ ] The wizard guides a non-programmer through the Discord Developer Portal: the
+      application, the token and the invite
 - [ ] Settings
 
 ## Phase 6 — Export
@@ -84,6 +82,29 @@ layer, before the scope widens.
 ## Phase 7 — Hosting on the PC (D-022)
 - [ ] `systemd --user` service with autostart and restarts; status and logs in the app
 
+## Phase 10 — Public Linux release (D-025, D-123)
+- [ ] RPM on Copr, testing on Fedora
+- [ ] .deb for Ubuntu
+- [ ] Release; public screenshots say "pre-alpha"
+
+---
+
+# After release 1 (D-123)
+
+## Phase 11 — Windows (D-009, D-124)
+- [ ] The app, the toolchain installation and hosting on Windows, and an installer
+
+## Phase 12 — RustBot Cloud pilot (D-125)
+- [ ] "Publish" deploys the bot to the company's hosting, with monitoring, restarts,
+      memory backups and online logs. The account lives only here. Its architecture,
+      payments and invoicing are still open questions.
+
+## Phase 4 — Advanced mode (D-015, D-030)
+- [ ] gpui-kit code editor for the user's own modules in `src/`
+- [ ] rust-analyzer (LSP) from the private toolchain
+- [ ] "Custom code" node calling the user's functions
+- [ ] Read-only view of the generated code
+
 ## Phase 8 — GitHub (D-021)
 - [ ] Device flow sign-in (OAuth App `Ov23liQbIFt9vqboIA0x`), create a repository, push
       the project
@@ -91,15 +112,11 @@ layer, before the scope widens.
 ## Phase 9 — Cloudflare Containers (D-013)
 - [ ] One-click deploy of the export's build as a kept-alive container
 
-## Phase 10 — Release 1 (D-025)
-- [ ] RPM on Copr, testing on Fedora, release
-
 ---
 
-# After release 1 (order still to be decided)
-- WASM plugins (D-016, D-034)
-- Other Linux distributions and packages: .deb, AUR, openSUSE, tarball (D-009, D-025)
-- Windows (D-009)
+# Later (order still to be decided)
+- WASM plugins (D-016, D-034), and a marketplace of templates, plugins and themes
+- Other Linux distributions and packages: AUR, openSUSE, tarball (D-009, D-025)
 - Cloudflare Workers (D-013), on djs-rs 0.1.0-alpha.2's `http-interactions` and wasm32
   support ([djs-rs#3](https://github.com/kotoanidev/djs-rs/issues/3), fixed)
 - macOS is a prospect only (D-009)
