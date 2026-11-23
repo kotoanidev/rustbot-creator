@@ -65,6 +65,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             shutdown.shutdown();
         }
     });
-    client.login().await?;
+    if let Err(error) = client.login().await {
+        let refused = matches!(
+            & error, djs_rs::Error::Gateway(gateway) if matches!(gateway.kind(),
+            djs_rs::gateway::ReceiveErrorKind::FatallyClosed { code :
+            djs_rs::model::gateway::CloseCode::DisallowedIntents, .. })
+        );
+        if refused {
+            eprintln!(
+                "Discord refused the bot's intents. Switch on the privileged intents \
+                 its events need (Server Members, Message Content) in the Developer \
+                 Portal: your application, Bot, Privileged Gateway Intents."
+            );
+            eprintln!("https://discord.com/developers/applications");
+        }
+        return Err(error.into());
+    }
     Ok(())
 }

@@ -55,6 +55,9 @@ layer, before the scope widens.
   - [x] Moderation: ban, kick, timeout, add/remove a role
   - [x] Messages: send to a channel, a reply only the author sees, a basic embed (D-079)
 - [ ] Full node catalog and forms over what djs-rs covers: events, components, and so on
+  - [x] Events: member joined/left, new message, bot ready, reactions (D-091–D-095)
+  - [x] Adding commands and events from the project tree, deleting graphs (D-092)
+  - [ ] Buttons and menus, more actions
 - [x] Validation and errors shown on the graph
 - [ ] Bot templates
 

@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use gpui_kit::{Context, Task};
-use rustbot_core::{GraphFile, NodeId, Project, Registry};
+use rustbot_core::{Graph, GraphFile, GraphKind, Layout, NodeId, Project, Registry};
 
 use crate::i18n::t_with;
 
@@ -231,6 +231,84 @@ impl AppState {
 
     /// Writes every graph changed since the last save. A failure goes to the logs and the
     /// graph stays unsaved, so the next change tries again.
+    /// Adds a graph of `kind` called `name`, started by a `trigger` node, and opens it
+    /// (D-092). A command's name is also the command's.
+    pub(crate) fn add_graph(
+        &mut self,
+        kind: GraphKind,
+        name: &str,
+        trigger: &str,
+        cx: &mut Context<'_, Self>,
+    ) -> Result<(), rustbot_core::Error> {
+        let mut file = GraphFile {
+            kind,
+            name: name.to_owned(),
+            graph: Graph::default(),
+            layout: Layout::default(),
+        };
+        let id = crate::canvas::add_node(&mut file, &self.registry, trigger, [80., 80.]);
+        if kind == GraphKind::Command
+            && let Some(node) = file.graph.nodes.get_mut(&id)
+        {
+            node.props.insert("name".to_owned(), name.into());
+        }
+        self.project.save_graph(&file)?;
+        self.project.graphs.push(file);
+        self.open_graph = Some(self.project.graphs.len() - 1);
+        self.selected_node = None;
+        cx.notify();
+        Ok(())
+    }
+
+    /// `base` if no graph of `kind` has that name, else `base_2`, `base_3`, …
+    pub(crate) fn free_name(&self, kind: GraphKind, base: &str) -> String {
+        let taken = |name: &str| {
+            self.project
+                .graphs
+                .iter()
+                .any(|file| file.kind == kind && file.name == name)
+        };
+        (1..=self.project.graphs.len() + 1)
+            .map(|n| {
+                if n == 1 {
+                    base.to_owned()
+                } else {
+                    format!("{base}_{n}")
+                }
+            })
+            .find(|name| !taken(name))
+            .unwrap_or_else(|| base.to_owned())
+    }
+
+    /// Deletes graph `ix` and its files (D-092). Its undo steps go, and the others follow
+    /// the graphs' new places.
+    pub(crate) fn delete_graph(&mut self, ix: usize, cx: &mut Context<'_, Self>) {
+        self.save_now();
+        if let Err(e) = self.project.delete_graph(ix) {
+            self.log_error(e.to_string());
+            cx.notify();
+            return;
+        }
+        let shift = |i: usize| (i != ix).then(|| if i > ix { i - 1 } else { i });
+        for steps in [&mut self.undo, &mut self.redo] {
+            *steps = std::mem::take(steps)
+                .into_iter()
+                .filter_map(|(i, file)| Some((shift(i)?, file)))
+                .collect();
+        }
+        self.unsaved = std::mem::take(&mut self.unsaved)
+            .into_iter()
+            .filter_map(shift)
+            .collect();
+        self.open_graph = match self.open_graph.map(shift) {
+            Some(Some(open)) => Some(open),
+            // The open graph went: open the first one left.
+            _ => (!self.project.graphs.is_empty()).then_some(0),
+        };
+        self.selected_node = None;
+        cx.notify();
+    }
+
     pub(crate) fn save_now(&mut self) {
         for ix in std::mem::take(&mut self.unsaved) {
             let Some(file) = self.project.graphs.get(ix) else {

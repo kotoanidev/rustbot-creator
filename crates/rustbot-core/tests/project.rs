@@ -259,3 +259,25 @@ fn other_files_stay_inside_the_project() {
         assert!(matches!(err, Error::InvalidPath(_)), "{bad}: {err}");
     }
 }
+
+#[test]
+fn a_deleted_graph_leaves_no_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = Project::create(dir.path().join("bot"), Manifest::new("Bot")).unwrap();
+    for name in ["ban", "ping"] {
+        let file = GraphFile {
+            kind: GraphKind::Command,
+            name: name.to_owned(),
+            graph: Graph::default(),
+            layout: Layout::default(),
+        };
+        project.save_graph(&file).unwrap();
+        project.graphs.push(file);
+    }
+    let removed = project.delete_graph(0).unwrap();
+    assert_eq!(removed.name, "ban");
+    let commands = project.root.join("graphs/commands");
+    assert!(!commands.join("ban.json").exists() && !commands.join("ban.layout.json").exists());
+    assert!(commands.join("ping.json").exists());
+    assert_eq!(Project::open(&project.root).unwrap(), project);
+}

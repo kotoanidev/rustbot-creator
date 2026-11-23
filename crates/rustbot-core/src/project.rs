@@ -212,6 +212,23 @@ impl Project {
     }
 }
 
+impl Project {
+    /// Deletes graph `index`: its file and its layout (D-092). The other graphs move up.
+    ///
+    /// # Errors
+    /// [`Error::InvalidPath`], [`Error::Symlink`] or an I/O error; the graph is then kept.
+    ///
+    /// # Panics
+    /// If `index` is not a graph's.
+    pub fn delete_graph(&mut self, index: usize) -> Result<GraphFile, Error> {
+        let file = &self.graphs[index];
+        let dir = Path::new("graphs").join(file.kind.dir());
+        self.remove_file(&dir.join(format!("{}.json", file.name)))?;
+        self.remove_file(&dir.join(format!("{}{LAYOUT_SUFFIX}", file.name)))?;
+        Ok(self.graphs.remove(index))
+    }
+}
+
 /// Other files of the project, such as `generated/`. Paths are relative to the project folder,
 /// and symbolic links are refused on the way, as for every other project file.
 impl Project {

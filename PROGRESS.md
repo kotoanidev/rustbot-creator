@@ -105,7 +105,7 @@ The owner finds the console hard to read and wants it improved later. Colour cod
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Phase 3: the owner's live test of the `/ban` example, then the next Phase 3 item.**
+**Phase 3: the owner's live test of `/ban` and the events, then the next catalog part.**
 Step 2 (the `/ban` example of D-014, D-073) is ✅ done in code:
 - 2a, the command options (D-076);
 - 2b, the variable picker: {x} and typed pickers, with "Role with ID…" (D-078, D-080);
@@ -123,13 +123,28 @@ Step 3, problems on the graph (D-090, C-021), is ✅ done. Nodes with a problem 
 red border, and those with a warning a yellow one. Clicking a line in Problems opens the
 graph, selects the node and centres it.
 
+Step 4, the first part of the node catalog, the events (D-091–D-095, C-022, C-023), is ✅
+done in code:
+- six event triggers ("Member joined", "Member left", "New message", "Bot is ready",
+  "Reaction added", "Reaction removed"), each a graph in `graphs/events/` and a module in
+  `generated/src/events/`, with their variables and intents;
+- "New message" skips bots unless "Also messages from bots" is on, and never answers
+  itself; "Reply" answers the message; a new "Delete message" node;
+- nodes that do not work under a trigger are a problem ("Reply" outside commands and
+  messages, "Has permission?" outside commands), and the palette offers only those that
+  work, without triggers;
+- forms of events that need privileged intents explain how to switch them on, and a bot
+  Discord refuses for them says so in Logs;
+- "+" by Commands and Events in the project tree adds a graph; right-click → "Delete"
+  removes one after asking.
+
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
-test), but nothing from step 2 has run live yet. Next:
-1. The owner builds `/ban` in the app and tries it on the test server: a user option,
-   "Has permission?", "Ban" with "error" wired, and a private reply. Fix what they find.
-   They asked to continue without their tests for now, so this waits for them.
-2. The full node catalog comes next (D-090). Ask the owner which part first, e.g. events
-   (`graphs/events/`, a welcome message, D-049 intents) or buttons and menus.
+test), but nothing from steps 2 and 4 has run live yet. Next:
+1. The owner tries `/ban` and an event (e.g. a welcome message in "Member joined") on the
+   test server; fix what they find. They asked to continue without their tests for now,
+   so this waits for them.
+2. The next part of the catalog: ask the owner which first, e.g. buttons and menus, more
+   actions (edit/pin a message, nicknames, channels), or bot templates.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

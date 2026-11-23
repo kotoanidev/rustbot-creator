@@ -1176,6 +1176,22 @@ alternatives that were considered, and why.
     moderation action logs `WARN <graph>: <error>`.
   - **Bots:** with "Also messages from bots" on, the bot still skips itself by comparing
     the author with its application ID, which is the bot's user ID.
+
+### C-023 — Adding and deleting graphs in the project tree
+- **Date:** 2026-11-23
+- **Choice:**
+  - "+" by "Commands" opens a name field above the tree. Enter adds the command if the
+    name follows Discord's rule (1–32 lower-case letters, digits, `-`, `_`) and is free;
+    otherwise the field says why. Leaving an empty field closes it. The new graph holds
+    the "Slash command" trigger with that name.
+  - "+" by "Events" lists the event triggers. The graph is named after the event
+    (`member_join`), then `member_join_2` and so on, since one event may have several
+    graphs.
+  - New graphs are saved at once and opened.
+  - Right-click on a graph → "Delete" asks first, in a system dialog. Pending changes are
+    saved, both files go, and the undo steps of the other graphs are kept.
+  - A bot refused for privileged intents (close code 4014) prints a plain line and the
+    portal link on its own line, which the Logs open (D-095, as in D-072).
 ---
 
 ## Open questions (to ask the owner when relevant)

@@ -238,7 +238,36 @@ fn module_name(graph: &str) -> String {
     name
 }
 
+/// Logs in and runs; a refusal of the intents is explained in plain words (D-095).
+fn login() -> TokenStream {
+    quote! {
+    if let Err(error) = client.login().await {
+        // Discord refuses privileged intents the portal has not switched on (D-095).
+        let refused = matches!(
+            &error,
+            djs_rs::Error::Gateway(gateway) if matches!(
+                gateway.kind(),
+                djs_rs::gateway::ReceiveErrorKind::FatallyClosed {
+                    code: djs_rs::model::gateway::CloseCode::DisallowedIntents,
+                    ..
+                }
+            )
+        );
+        if refused {
+            eprintln!(
+                "Discord refused the bot's intents. Switch on the privileged intents \
+                 its events need (Server Members, Message Content) in the Developer \
+                 Portal: your application, Bot, Privileged Gateway Intents."
+            );
+            eprintln!("https://discord.com/developers/applications");
+        }
+        return Err(error.into());
+    }
+    }
+}
+
 fn main_rs(intents: &BTreeSet<&str>, has_events: bool) -> TokenStream {
+    let login = login();
     let (events_mod, events_register) = if has_events {
         (
             quote!(
@@ -327,7 +356,7 @@ fn main_rs(intents: &BTreeSet<&str>, has_events: bool) -> TokenStream {
                     shutdown.shutdown();
                 }
             });
-            client.login().await?;
+            #login
             Ok(())
         }
     }

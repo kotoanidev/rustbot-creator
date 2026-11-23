@@ -928,6 +928,12 @@ fn check_options(options: &[CommandOption]) -> Vec<ProblemKind> {
     problems
 }
 
+/// Whether `name` can be a slash command's name: the same rule as an option's (D-092).
+#[must_use]
+pub fn valid_command_name(name: &str) -> bool {
+    valid_option_name(name)
+}
+
 /// 1-32 lower-case letters (or letters without case), digits, `-` or `_`, as Discord asks.
 fn valid_option_name(name: &str) -> bool {
     (1..=32).contains(&name.chars().count())
