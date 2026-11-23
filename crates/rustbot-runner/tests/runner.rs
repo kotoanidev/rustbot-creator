@@ -36,14 +36,14 @@ fn start_log_and_stop() {
         dir.path(),
         "polite",
         r#"trap 'echo bye; exit 0' INT
-echo "token=$DISCORD_TOKEN guild=${DISCORD_TEST_GUILD_ID:-none} dir=$(pwd)"
+echo "token=$DISCORD_TOKEN guild=${DISCORD_TEST_GUILD_ID:-none} no_color=$NO_COLOR dir=$(pwd)"
 echo oops >&2
 echo ready
 while :; do sleep 0.05; done"#,
     );
     let mut running = Bot::start(&bot, " t0k3n \n", Some(" 123456789012345678 "), &tx).unwrap();
     let env = format!(
-        "token=t0k3n guild=123456789012345678 dir={}",
+        "token=t0k3n guild=123456789012345678 no_color=1 dir={}",
         std::fs::canonicalize(dir.path()).unwrap().display()
     );
     wait_for(

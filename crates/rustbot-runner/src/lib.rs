@@ -79,6 +79,8 @@ impl Bot {
         let mut command = Command::new(binary);
         command
             .env("DISCORD_TOKEN", token.trim())
+            // The Logs panel shows plain text: no colour codes (https://no-color.org).
+            .env("NO_COLOR", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
