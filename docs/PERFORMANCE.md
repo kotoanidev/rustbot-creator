@@ -6,6 +6,8 @@ Xe, Fedora 44 KDE on Wayland) unless noted.
 | Date | Path | Budget | Measured | How |
 |---|---|---|---|---|
 | 2026-11-22 | Code generation, 501 nodes | ≤ 100 ms | 7.6 ms per run | `cargo test -p rustbot-codegen --release -- --ignored budget --nocapture` |
+| 2026-11-23 | Code generation, 501 nodes, after branching codegen (C-017) | ≤ 100 ms | 62 ms, then 18.5 ms after the fix | same test |
+| 2026-11-23 | Validation and warnings, 501 nodes (the editor runs them as it draws, D-090) | within a frame | 0.69 ms per run | same test |
 | 2026-11-22 | Installing the private toolchain (rustup + Rust 1.100.0, minimal) | — | 29.2 s | `cargo test -p rustbot-toolchain -- --ignored install --nocapture` |
 | 2026-11-22 | First build of `/ping` (djs-rs and all crates, debug) | — | 41.8 s | same test |
 | 2026-11-22 | Rebuild after a small change | ≤ 10 s | 1.1 s | same test |
@@ -35,3 +37,7 @@ Xe, Fedora 44 KDE on Wayland) unless noted.
     drew all 500 nodes and took 31–36 ms.
 - **Cold start.** The first start after a build reads the binary and fonts from disk and
   prepares the GPU pipeline, so it is slower (1.09 s once). A normal start is 150–280 ms.
+- **Branching codegen (2026-11-23):** after C-017, each node nested the rest of its chain
+  inside its own tokens, so a chain of 500 copied its tail 500 times (62 ms). Nodes that
+  follow one another are now appended to one stream. The remaining gap to 7.6 ms is the
+  test graph itself: its 500 replies each carry a reply and a follow-up branch (C-020).

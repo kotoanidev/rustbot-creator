@@ -157,30 +157,31 @@ struct Body<'a> {
 impl Body<'_> {
     /// The code of the nodes wired to `pin` of `id`, one after another in edge order.
     fn after(&mut self, id: &NodeId, pin: &str) -> Result<TokenStream, Error> {
+        let mut code = TokenStream::new();
+        for next in self.next(id, pin) {
+            self.chain(&next, &mut code)?;
+        }
+        Ok(code)
+    }
+
+    /// The nodes wired to `pin` of `id`, in edge order.
+    fn next(&self, id: &NodeId, pin: &str) -> Vec<NodeId> {
         let from = PinRef {
             node: id.clone(),
             pin: pin.to_owned(),
         };
-        let next: Vec<NodeId> = self
-            .file
+        self.file
             .graph
             .edges
             .iter()
             .filter(|edge| edge.from == from)
             .map(|edge| edge.to.node.clone())
-            .collect();
-        let mut code = TokenStream::new();
-        for id in next {
-            code.extend(self.node(&id)?);
-        }
-        Ok(code)
+            .collect()
     }
 
-    /// A node and everything after it. A node that two branches lead to is generated in
-    /// each of them.
-    // shortcut: joins are copied, which grows with nested joins; share them as local
-    // functions if graphs get big.
-    fn node(&mut self, id: &NodeId) -> Result<TokenStream, Error> {
+    /// Appends `id`'s code and then what follows its "then", one after another, so a long
+    /// chain is not nested, and copied, once per node.
+    fn chain(&mut self, id: &NodeId, code: &mut TokenStream) -> Result<(), Error> {
         if self.path.contains(id) {
             return Err(Error::Cycle {
                 graph: self.file.name.clone(),
@@ -188,25 +189,40 @@ impl Body<'_> {
             });
         }
         self.path.push(id.clone());
+        let (own, then) = self.node(id)?;
+        code.extend(own);
+        if then {
+            for next in self.next(id, "then") {
+                self.chain(&next, code)?;
+            }
+        }
+        self.path.pop();
+        Ok(())
+    }
+
+    /// A node's code, its branches included, and whether its "then" follows it in the same
+    /// block. A node that two branches lead to is generated in each of them.
+    // shortcut: joins are copied, which grows with nested joins; share them as local
+    // functions if graphs get big.
+    fn node(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
         let graph = &self.file.graph;
         let code = match graph.nodes[id].kind.as_str() {
-            "core.reply" => self.reply(id)?,
+            "core.reply" => (self.reply(id), true),
             "core.send_message" => {
                 let channel = self.channel(text(graph, id, "channel"));
                 let message = self.message(id);
-                let then = self.after(id, "then")?;
-                quote! {
+                let send = quote! {
                     ctx.messages(#channel)
                         .send(djs_rs::model::rest::CreateMessage::default() #message)
                         .await?;
-                    #then
-                }
+                };
+                (send, true)
             }
             "core.has_permission" | "core.has_role" | "core.compare" => {
                 let yes = self.after(id, "yes")?;
                 let no = self.after(id, "no")?;
                 // A condition with nothing after it does nothing.
-                match (yes.is_empty(), no.is_empty()) {
+                let code = match (yes.is_empty(), no.is_empty()) {
                     (true, true) => TokenStream::new(),
                     (false, true) => {
                         let condition = self.condition(id);
@@ -220,7 +236,8 @@ impl Body<'_> {
                         let condition = self.condition(id);
                         quote!(if #condition { #yes } else { #no })
                     }
-                }
+                };
+                (code, false)
             }
             "core.ban" | "core.kick" | "core.timeout" | "core.add_role" | "core.remove_role" => {
                 self.moderate(id)?
@@ -233,19 +250,17 @@ impl Body<'_> {
                 });
             }
         };
-        self.path.pop();
         Ok(code)
     }
 
     /// A reply, or a follow-up if the command replied already (D-086).
-    fn reply(&mut self, id: &NodeId) -> Result<TokenStream, Error> {
+    fn reply(&mut self, id: &NodeId) -> TokenStream {
         let graph = &self.file.graph;
         let mut message = self.message(id);
         // Only the author sees it (D-086).
         if graph.nodes[id].props.get("private") == Some(&Value::Bool(true)) {
             message.extend(quote!(.ephemeral()));
         }
-        let then = self.after(id, "then")?;
         let reply = quote! {
             cmd.reply(
                 &ctx,
@@ -253,7 +268,7 @@ impl Body<'_> {
             )
             .await?;
         };
-        let reply = if self.follow_ups {
+        if self.follow_ups {
             quote! {
                 if replied.replace(true) {
                     cmd.follow_up(
@@ -267,48 +282,48 @@ impl Body<'_> {
             }
         } else {
             reply
-        };
-        Ok(quote!(#reply #then))
+        }
     }
 
     /// A moderation action, then "then" or, on failure, "error" (D-082).
-    fn moderate(&mut self, id: &NodeId) -> Result<TokenStream, Error> {
+    fn moderate(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
         self.interaction = true;
         let action = self.action(id);
-        let then = self.after(id, "then")?;
         let error = self.after(id, "error")?;
         let command = self.command;
-        Ok(if error.is_empty() {
+        if error.is_empty() {
             // A failure ends the command, and djs-rs logs it (D-082).
-            quote! {
-                { #action }
-                #then
-            }
-        } else {
-            let log = format!(
-                "WARN /{}: {{error}}",
-                command.replace('{', "{{").replace('}', "}}")
-            );
-            let log = quote!(eprintln!(#log););
-            let handle = if then.is_empty() {
-                quote!(if let Err(error) = result { #log #error })
-            } else {
-                quote! {
-                    match result {
-                        Ok(()) => { #then }
-                        Err(error) => { #log #error }
+            return Ok((quote!({ #action }), true));
+        }
+        let then = self.after(id, "then")?;
+        Ok((
+            {
+                let log = format!(
+                    "WARN /{}: {{error}}",
+                    command.replace('{', "{{").replace('}', "}}")
+                );
+                let log = quote!(eprintln!(#log););
+                let handle = if then.is_empty() {
+                    quote!(if let Err(error) = result { #log #error })
+                } else {
+                    quote! {
+                        match result {
+                            Ok(()) => { #then }
+                            Err(error) => { #log #error }
+                        }
                     }
+                };
+                quote! {
+                    let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                        #action
+                        Ok(())
+                    }
+                    .await;
+                    #handle
                 }
-            };
-            quote! {
-                let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
-                    #action
-                    Ok(())
-                }
-                .await;
-                #handle
-            }
-        })
+            },
+            false,
+        ))
     }
 
     /// A condition node's test, a `bool` (D-077).

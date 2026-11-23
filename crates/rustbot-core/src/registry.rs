@@ -520,7 +520,7 @@ impl Registry {
             return warnings;
         };
         if graph.nodes[trigger].kind == "core.slash_command"
-            && !self.always_replies(graph, trigger, &mut Vec::new())
+            && !self.always_replies(graph, trigger, &mut Vec::new(), &mut BTreeMap::new())
         {
             warnings.push(Problem {
                 node: Some(trigger.clone()),
@@ -559,7 +559,17 @@ impl Registry {
     /// pin run one after another, so one that always replies is enough; each output pin of
     /// a node is a branch, and all of them must reply. An unwired "error" ends the command
     /// with a failure in Logs (D-082) and is left out.
-    fn always_replies(&self, graph: &Graph, id: &NodeId, path: &mut Vec<NodeId>) -> bool {
+    fn always_replies(
+        &self,
+        graph: &Graph,
+        id: &NodeId,
+        path: &mut Vec<NodeId>,
+        known: &mut BTreeMap<NodeId, bool>,
+    ) -> bool {
+        // Joins reach a node many ways; its answer is the same each time.
+        if let Some(&replies) = known.get(id) {
+            return replies;
+        }
         let Some(node) = graph.nodes.get(id) else {
             return false;
         };
@@ -588,9 +598,10 @@ impl Registry {
                 (pin.name == "error" && next.is_empty())
                     || next
                         .iter()
-                        .any(|next| self.always_replies(graph, next, path))
+                        .any(|next| self.always_replies(graph, next, path, known))
             });
         path.pop();
+        known.insert(id.clone(), replies);
         replies
     }
 

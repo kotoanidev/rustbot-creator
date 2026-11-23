@@ -807,6 +807,14 @@ alternatives that were considered, and why.
   through a command can end without "Reply".
 - **Alternatives:** the bot sends a private "✅" itself; nothing.
 
+### D-090 — Problems are shown on the graph next
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The next Phase 3 item is showing problems on the graph. A node with a
+  problem gets a red border, and one with a warning a yellow one. Clicking a problem in
+  the Problems panel selects its node and shows its form. The full node catalog comes
+  after this.
+- **Alternatives:** events first; buttons and menus first; bot templates first.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

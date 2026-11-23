@@ -576,3 +576,41 @@ fn messages_need_text_or_an_embed_and_colours_are_hex() {
         }]
     );
 }
+
+/// 40 conditions whose "yes" and "no" both lead to the next reach the last one 2^40 ways;
+/// the warnings still come at once, as the editor draws them (D-090).
+#[test]
+fn warnings_are_quick_on_many_joins() {
+    let mut nodes = serde_json::Map::new();
+    let mut edges = vec![serde_json::json!({ "from": "n1.then", "to": "n2.run" })];
+    nodes.insert(
+        "n1".to_owned(),
+        serde_json::json!({ "type": "core.slash_command",
+        "props": { "name": "deep", "description": "Deep" } }),
+    );
+    for i in 2..42 {
+        nodes.insert(
+            format!("n{i}"),
+            serde_json::json!({ "type": "core.compare",
+            "props": { "left": "a", "operator": "equals", "right": "b" } }),
+        );
+        for pin in ["yes", "no"] {
+            edges.push(serde_json::json!({ "from": format!("n{i}.{pin}"), "to": format!("n{}.run", i + 1) }));
+        }
+    }
+    nodes.insert(
+        "n42".to_owned(),
+        serde_json::json!({ "type": "core.reply",
+        "props": { "content": "Deep" } }),
+    );
+    let graph: Graph =
+        serde_json::from_value(serde_json::json!({ "schema": 1, "nodes": nodes, "edges": edges }))
+            .unwrap();
+    let started = std::time::Instant::now();
+    assert_eq!(Registry::with_core().warnings(&graph), Vec::new());
+    assert!(
+        started.elapsed().as_millis() < 100,
+        "{:?}",
+        started.elapsed()
+    );
+}

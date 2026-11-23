@@ -562,6 +562,18 @@ fn budget_500_nodes() {
     let each = started.elapsed() / runs;
     println!("generate, 501 nodes: {each:?} per run");
     assert!(each.as_millis() <= 100, "{each:?}");
+
+    // The editor marks problem nodes, so it checks the graph as it draws (D-090).
+    let graph = &p.graphs[0].graph;
+    let started = Instant::now();
+    for _ in 0..runs {
+        assert_eq!(
+            registry.validate(graph).len() + registry.warnings(graph).len(),
+            0
+        );
+    }
+    let each = started.elapsed() / runs;
+    println!("validate and warnings, 501 nodes: {each:?} per run");
 }
 
 /// Files a cloned project hides in `generated/` would run at build time; they are removed.
