@@ -85,6 +85,8 @@ pub(crate) struct AppState {
     pub(crate) open_graph: Option<usize>,
     /// The node whose form the properties panel shows.
     pub(crate) selected_node: Option<NodeId>,
+    /// Requests for the editor to bring the selected node into view, counted (D-090).
+    pub(crate) reveal: u64,
     /// What the app, the build and the bot printed, oldest first.
     pub(crate) logs: Vec<Line>,
     /// The private toolchain, or `None` when the home folder is unknown.
@@ -114,6 +116,7 @@ impl AppState {
             registry: Registry::with_core(),
             open_graph,
             selected_node: None,
+            reveal: 0,
             logs: Vec::new(),
             toolchain: rustbot_toolchain::Toolchain::locate().ok(),
             run: crate::run::Run::Stopped,
@@ -148,6 +151,19 @@ impl AppState {
             level: Level::Error,
             text,
         });
+    }
+
+    /// Opens graph `graph` with `node` selected, and has the editor show it (D-090).
+    pub(crate) fn show_node(
+        &mut self,
+        graph: usize,
+        node: Option<NodeId>,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.open_graph = Some(graph);
+        self.selected_node = node;
+        self.reveal += 1;
+        cx.notify();
     }
 
     /// The graph in the editor.

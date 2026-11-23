@@ -119,12 +119,17 @@ Step 2 (the `/ban` example of D-014, D-073) is ✅ done in code:
   channel" with "Channel with ID…" (D-088), the folding "Embed" section (D-079, D-087),
   follow-ups for later replies, and a warning when a command may not reply (D-089, C-020).
 
+Step 3, problems on the graph (D-090, C-021), is ✅ done. Nodes with a problem have a
+red border, and those with a warning a yellow one. Clicking a line in Problems opens the
+graph, selects the node and centres it.
+
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
 test), but nothing from step 2 has run live yet. Next:
-1. Ask the owner to build `/ban` in the app and try it on the test server: a user option,
+1. The owner builds `/ban` in the app and tries it on the test server: a user option,
    "Has permission?", "Ban" with "error" wired, and a private reply. Fix what they find.
-2. Then ask which Phase 3 item comes next: the full node catalog, problems shown on the
-   graph, or bot templates.
+   They asked to continue without their tests for now, so this waits for them.
+2. The full node catalog comes next (D-090). Ask the owner which part first, e.g. events
+   (`graphs/events/`, a welcome message, D-049 intents) or buttons and menus.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

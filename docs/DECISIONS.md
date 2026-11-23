@@ -1096,6 +1096,19 @@ alternatives that were considered, and why.
     wired to one pin run in turn, so one that always replies is enough. A node's output
     pins are branches, and each one must reply. An unwired "error" does not count, since
     the command fails there anyway.
+
+### C-021 — How problems show on the graph
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Border colour:** red for a node with a problem, yellow for a warning, and a problem
+    wins. A selected node keeps that colour with a thicker border; otherwise selection
+    keeps its usual ring colour.
+  - **Clicking a problem:** a click on a line in Problems opens its graph, selects its
+    node, and centres the node in the editor, waiting for the canvas's size if needed. A
+    problem of the whole graph, such as "no trigger", only opens the graph.
+  - **Cost:** the editor checks the open graph as it draws (0.7 ms for 500 nodes, frames
+    within D-038, `docs/PERFORMANCE.md`). Keeping the result per change is the noted
+    upgrade.
 ---
 
 ## Open questions (to ask the owner when relevant)

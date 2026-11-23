@@ -3,6 +3,7 @@
 //! Ctrl+Shift+Z undo and redo, and every change is autosaved (D-068).
 
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use gpui_kit::component::ActiveTheme as _;
@@ -10,14 +11,15 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::list::ListItem;
 use gpui_kit::component::v_flex;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Bounds, Context, Entity, FocusHandle, Hsla, InteractiveElement as _,
     IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement as _, PathBuilder, Pixels, Point, Render, ScrollEvent, Styled as _, Subscription,
+    ParentElement as _, PathBuilder, Pixels, Point, Render, ScrollEvent, Styled, Subscription,
     Window, canvas, div, point, px,
 };
 use rustbot_core::registry::{Category, DataType, Direction, Pin, PinKind};
-use rustbot_core::{GraphFile, NodeId, PinRef, Registry};
+use rustbot_core::{Graph, GraphFile, NodeId, PinRef, Registry};
 
 use crate::canvas::{self, Hit};
 use crate::i18n::{t, t_or};
@@ -28,6 +30,8 @@ pub(crate) struct Editor {
     state: Entity<AppState>,
     /// How far the view is scrolled: graph `[0, 0]` is drawn at the canvas origin + `pan`.
     pan: Point<Pixels>,
+    /// The last of `AppState::reveal` handled.
+    revealed: u64,
     /// Where the canvas is in the window, from the last frame.
     view: Rc<Cell<Bounds<Pixels>>>,
     drag: Drag,
@@ -71,6 +75,7 @@ impl Editor {
             focus: cx.focus_handle(),
             state,
             pan: Point::default(),
+            revealed: 0,
             view: Rc::default(),
             drag: Drag::None,
             picker: None,
@@ -333,11 +338,13 @@ impl Editor {
         cx.stop_propagation();
     }
 
+    /// Node `id`; `mark` is `Some(true)` for a problem and `Some(false)` for a warning.
     fn render_node(
         &self,
         file: &GraphFile,
         registry: &Registry,
         id: &NodeId,
+        mark: Option<bool>,
         cx: &Context<'_, Self>,
     ) -> impl IntoElement + use<> {
         let theme = cx.theme();
@@ -393,8 +400,15 @@ impl Editor {
             .w(px(w))
             .h(px(h))
             .rounded(px(6.))
-            .border_1()
-            .border_color(if selected { theme.ring } else { theme.border })
+            // A problem's colour wins; a selected node's border is thicker instead.
+            .when(!selected, Styled::border_1)
+            .when(selected, Styled::border_2)
+            .border_color(match mark {
+                Some(true) => theme.danger,
+                Some(false) => theme.warning,
+                None if selected => theme.ring,
+                None => theme.border,
+            })
             .bg(theme.popover)
             .child(
                 div()
@@ -562,6 +576,25 @@ impl Render for Editor {
         };
         let wire_layer = self.render_wires(file, &state.registry, cx);
 
+        // A problem clicked in Problems: centre its node (D-090). It waits for the canvas's
+        // size.
+        if state.reveal != self.revealed && self.visible().is_some() {
+            self.revealed = state.reveal;
+            if let Some(id) = state.selected_node.as_ref()
+                && let Some(node) = file.graph.nodes.get(id)
+            {
+                let [x, y] = canvas::position(file, id);
+                let [w, h] = canvas::size(state.registry.get(&node.kind));
+                let size = self.view.get().size;
+                self.pan = point(
+                    size.width / 2. - px(x + w / 2.),
+                    size.height / 2. - px(y + h / 2.),
+                );
+            }
+        }
+        // shortcut: checks the graph every frame (0.7 ms for 500 nodes); keep the result in
+        // AppState per change if graphs grow or frames get slow.
+        let marks = marks(&state.registry, &file.graph);
         let visible = self.visible();
         if visible.is_none() {
             // The first frame only learns the canvas's size; the next one draws.
@@ -583,7 +616,7 @@ impl Render for Editor {
             .map(|id| {
                 let state = self.state.read(cx);
                 let file = state.open_file().expect("checked above");
-                self.render_node(file, &state.registry, id, cx)
+                self.render_node(file, &state.registry, id, marks.get(id).copied(), cx)
                     .into_any_element()
             })
             .collect();
@@ -638,6 +671,17 @@ impl Render for Editor {
     }
 }
 
+/// The nodes Problems lists, as the editor marks them: `true` for a problem, which blocks
+/// Run, and `false` for a warning only (D-090).
+fn marks(registry: &Registry, graph: &Graph) -> BTreeMap<NodeId, bool> {
+    let warnings = registry.warnings(graph).into_iter();
+    let problems = registry.validate(graph).into_iter();
+    let warnings = warnings.filter_map(|warning| Some((warning.node?, false)));
+    warnings
+        .chain(problems.filter_map(|problem| Some((problem.node?, true))))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use gpui_kit::test::{TestEventExt as _, TestWindowExt as _};
@@ -669,6 +713,57 @@ mod tests {
 
     fn id(id: &str) -> NodeId {
         NodeId(id.to_owned())
+    }
+
+    /// A problem marks its node red, a warning yellow, and a problem wins (D-090).
+    #[test]
+    fn problems_and_warnings_mark_their_nodes() {
+        let graph: rustbot_core::Graph = serde_json::from_value(serde_json::json!({
+            "schema": 1,
+            "nodes": {
+                "n1": { "type": "core.slash_command", "props": {
+                    "name": "ban", "description": "Bans", "options": [
+                        { "name": "cel", "type": "user", "description": "Who" } ] } },
+                "n2": { "type": "core.ban", "props": {
+                    "user": "option.cel", "delete_messages": "none" } },
+                "n3": { "type": "core.kick", "props": { "user": "option.cel", "reason": "{nope}" } }
+            },
+            "edges": [
+                { "from": "n1.then", "to": "n2.run" },
+                { "from": "n2.then", "to": "n3.run" }
+            ]
+        }))
+        .unwrap();
+        let marks = super::marks(&rustbot_core::Registry::with_core(), &graph);
+        // n1 may not reply, n2 has no permission check, n3 has both and a bad variable.
+        assert_eq!(
+            marks.into_iter().collect::<Vec<_>>(),
+            [(id("n1"), false), (id("n2"), false), (id("n3"), true)]
+        );
+    }
+
+    /// Showing a node from Problems centres it, so a click in the middle hits it (D-090).
+    #[gpui_kit::test]
+    fn a_shown_node_is_centred(cx: &mut TestAppContext) {
+        let (state, cx, _dir) = editor(cx);
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.show_node(0, Some(id("n1")), cx));
+            window.render_frame(cx);
+            let size = window.viewport_size();
+            let middle = point(size.width / 2., size.height / 2.);
+            window.drag(middle, middle, cx);
+        });
+        cx.read(|cx| assert_eq!(state.read(cx).selected_node, Some(id("n1"))));
+        // Without a request, clicking the middle again hits empty canvas only if it moved.
+        cx.update(|window, cx| {
+            let size = window.viewport_size();
+            window.drag(
+                point(px(5.), size.height - px(5.)),
+                point(px(5.), size.height - px(5.)),
+                cx,
+            );
+        });
+        cx.read(|cx| assert_eq!(state.read(cx).selected_node, None));
     }
 
     #[gpui_kit::test]

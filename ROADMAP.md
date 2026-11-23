@@ -55,7 +55,7 @@ layer, before the scope widens.
   - [x] Moderation: ban, kick, timeout, add/remove a role
   - [x] Messages: send to a channel, a reply only the author sees, a basic embed (D-079)
 - [ ] Full node catalog and forms over what djs-rs covers: events, components, and so on
-- [ ] Validation and errors shown on the graph
+- [x] Validation and errors shown on the graph
 - [ ] Bot templates
 
 ## Phase 4 — Advanced mode (D-015, D-030)

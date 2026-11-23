@@ -8,6 +8,7 @@ Xe, Fedora 44 KDE on Wayland) unless noted.
 | 2026-11-22 | Code generation, 501 nodes | ≤ 100 ms | 7.6 ms per run | `cargo test -p rustbot-codegen --release -- --ignored budget --nocapture` |
 | 2026-11-23 | Code generation, 501 nodes, after branching codegen (C-017) | ≤ 100 ms | 62 ms, then 18.5 ms after the fix | same test |
 | 2026-11-23 | Validation and warnings, 501 nodes (the editor runs them as it draws, D-090) | within a frame | 0.69 ms per run | same test |
+| 2026-11-23 | Frame time, 500 nodes, with problem marks (D-090), 600 frames × 3 runs | ≤ 16.6 ms p99 | p50 5.7 ms, p99 8.7–9.7 ms, max 11.5–13.9 ms | `RUSTBOT_MEASURE=frames target/release/rustbot-creator <project>` |
 | 2026-11-22 | Installing the private toolchain (rustup + Rust 1.100.0, minimal) | — | 29.2 s | `cargo test -p rustbot-toolchain -- --ignored install --nocapture` |
 | 2026-11-22 | First build of `/ping` (djs-rs and all crates, debug) | — | 41.8 s | same test |
 | 2026-11-22 | Rebuild after a small change | ≤ 10 s | 1.1 s | same test |
