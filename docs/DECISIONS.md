@@ -958,6 +958,22 @@ alternatives that were considered, and why.
   "Compare" read a variable as `{memory.name}`.
 - **Alternatives:** also a "Ranking" node: the top 10 users by a number variable.
 
+### D-109 — Memory variables are made in the node
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** This replaces the "+" and the separate form of D-106, which the owner found
+  bad and unused.
+  - A memory node's "Variable" list ends with "New variable…", which asks for a name.
+    Enter makes the variable and picks it.
+  - The type, scope and starting value of the picked variable are edited in that node's
+    form, and the change applies to every node that uses it.
+  - The tree's "Memory" branch lists the variables, each with the nodes that use it, and
+    clicking a node opens it there.
+  - Right-clicking a variable renames it, which also fixes every node and template that
+    uses it, or deletes it.
+- **Alternatives:**
+  - a "Memory" panel in the dock with a table of the variables;
+  - removing memory from the app until a better design.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
