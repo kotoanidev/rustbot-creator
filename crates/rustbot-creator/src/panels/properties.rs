@@ -5,6 +5,7 @@
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{ActiveTheme as _, IndexPath, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
@@ -382,6 +383,25 @@ impl Properties {
             )
     }
 
+    /// Inserts `variable`, e.g. `{user.name}`, at the cursor of text field `ix` (D-078), as
+    /// an undo step of its own.
+    fn insert_variable(
+        &mut self,
+        ix: usize,
+        variable: &str,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let Some(field) = self.fields.get(ix) else {
+            return;
+        };
+        let input = field.input.clone();
+        self.fresh = true;
+        input.update(cx, |input, cx| {
+            input.insert(variable.to_owned(), window, cx);
+        });
+    }
+
     /// Writes a field into the graph; the first change after focusing is one undo step.
     fn write(&mut self, prop: &str, value: String, cx: &mut Context<'_, Self>) {
         let Some((_, node)) = self.shown.clone() else {
@@ -586,13 +606,13 @@ fn type_index(ty: DataType) -> Option<usize> {
 
 impl Render for Properties {
     fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let theme = cx.theme();
         let state = self.state.read(cx);
         let body = match (&self.shown, state.open_file()) {
             (Some((_, node)), Some(file)) => {
                 let kind = &file.graph.nodes[node].kind;
                 let node_id = kind.replace('.', "-");
-                let hint = variables(file, &state.registry).join(" ");
+                let variables = variables(file, &state.registry);
+                let this = cx.entity().downgrade();
                 let options = self.options_prop.as_ref().map(|prop| {
                     let name = t_or(&format!("prop-{node_id}-{prop}"), prop);
                     self.render_options(name, cx)
@@ -600,18 +620,40 @@ impl Render for Properties {
                 v_flex()
                     .gap(px(6.))
                     .child(div().text_sm().child(super::editor::node_name(kind)))
-                    .children(self.fields.iter().map(|field| {
+                    .children(self.fields.iter().enumerate().map(|(ix, field)| {
                         let name = t_or(&format!("prop-{node_id}-{}", field.prop), &field.prop);
+                        // {x} lists the variables and inserts one at the cursor (D-078).
+                        let picker = (field.templates && !variables.is_empty()).then(|| {
+                            let (variables, this) = (variables.clone(), this.clone());
+                            Button::new(("insert-variable", ix))
+                                .ghost()
+                                .xsmall()
+                                .label("{x}")
+                                .dropdown_menu(move |mut menu, _, _| {
+                                    for variable in &variables {
+                                        let (this, variable) = (this.clone(), variable.clone());
+                                        let item = PopupMenuItem::new(variable.clone()).on_click(
+                                            move |_, window, cx| {
+                                                let _ = this.update(cx, |this, cx| {
+                                                    this.insert_variable(ix, &variable, window, cx);
+                                                });
+                                            },
+                                        );
+                                        menu = menu.item(item);
+                                    }
+                                    menu
+                                })
+                        });
                         v_flex()
                             .gap(px(4.))
-                            .child(label(name))
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .items_end()
+                                    .child(label(name))
+                                    .children(picker),
+                            )
                             .child(Input::new(&field.input))
-                            .children((field.templates && !hint.is_empty()).then(|| {
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(t_with("props-variables", &[("list", &hint)]))
-                            }))
                     }))
                     .children(options)
                     .into_any_element()
@@ -699,6 +741,47 @@ mod tests {
         });
         assert_eq!(options(cx), Vec::new());
         assert_eq!(cx.read(|cx| properties.read(cx).options.len()), 0);
+    }
+
+    /// {x} inserts the chosen variable at the cursor, as one undo step (D-078).
+    #[gpui_kit::test]
+    fn a_variable_goes_in_at_the_cursor(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (properties, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, _| {
+                app.selected_node = Some(NodeId("n2".to_owned()));
+            });
+            state = Some(app.clone());
+            Properties::new(app, window, cx)
+        });
+        let state = state.unwrap();
+        cx.update(|window, cx| {
+            let field = properties.read(cx).fields[0].input.clone();
+            field.update(cx, |input, cx| input.focus(window, cx));
+            window.render_frame(cx);
+        });
+        cx.update(|window, cx| window.press("home", cx));
+        cx.update(|window, cx| {
+            properties.update(cx, |this, cx| {
+                this.insert_variable(0, "{user.mention} ", window, cx);
+            });
+        });
+        let content = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.read(|cx| {
+                let file = state.read(cx).open_file().unwrap();
+                file.graph.nodes[&NodeId("n2".to_owned())].props["content"].clone()
+            })
+        };
+        assert_eq!(content(cx), "{user.mention} Pong, {user.name}!");
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.undo(false, cx));
+            window.render_frame(cx);
+        });
+        assert_eq!(content(cx), "Pong, {user.name}!");
     }
 
     /// Typing into the reply's field changes the graph; Ctrl+Z in the canvas puts the old

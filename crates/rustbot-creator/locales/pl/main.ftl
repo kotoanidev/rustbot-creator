@@ -76,7 +76,6 @@ type-role = Rola
 type-server = Serwer
 
 ## Panel właściwości i ustawienia bota.
-props-variables = Zmienne: { $list }
 bot-settings = Ustawienia bota
 bot-token = Token bota
 bot-token-placeholder = Wklej token z Discord Developer Portal
