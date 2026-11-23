@@ -17,6 +17,7 @@ tree-events = Zdarzenia
 properties-empty = Zaznacz węzeł na płótnie, aby go edytować.
 editor-empty = Otwórz komendę albo zdarzenie z drzewa projektu.
 logs-empty = Tu pojawi się wyjście bota, gdy go uruchomisz.
+logs-clear = Wyczyść
 problems-empty = Brak problemów.
 
 ## Pasek stanu.

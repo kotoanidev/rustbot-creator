@@ -280,7 +280,10 @@ mod tests {
             let (state, _) = workspace.read(cx).open.as_ref().unwrap();
             let state = state.read(cx);
             assert!(matches!(state.run, crate::run::Run::Stopped));
-            assert_eq!(state.logs.last().unwrap(), &crate::i18n::t("run-cancelled"));
+            assert_eq!(
+                state.logs.last().unwrap().text,
+                crate::i18n::t("run-cancelled")
+            );
         });
         assert!(!root.join("generated").exists());
     }

@@ -854,6 +854,19 @@ alternatives that were considered, and why.
   codes even into a pipe, and the Logs panel shows plain text. A log line that is only an
   `https://` address is drawn as gpui-component's `Link`, which opens it in the browser.
   This covers the invite link of D-072. Links inside longer lines stay plain text.
+
+### C-014 — How the console step works (D-075)
+- **Date:** 2026-11-23
+- **Choice:** each log line is its own gpui-base `SelectableText`, in document order. The
+  window's selection spans them, and `Root` copies the selection on Ctrl+C. One shared
+  handle for all lines keeps only the last line in this gpui-base version.
+  - **Focus:** the panel takes focus on click, so Ctrl+C reaches the window.
+  - **Lines:** each line knows its source (app, build, bot) and its level. The level is
+    read from cargo's `error:`/`warning:` and tracing's `ERROR`/`WARN`; any other bot
+    stderr counts as an error.
+  - **Colours:** errors are red, warnings yellow, build output muted, and the app's own
+    step messages semibold.
+  - **Clear:** "Clear" sits in the panel's tab-bar toolbar, like VS Code's panel actions.
 ---
 
 ## Open questions (to ask the owner when relevant)

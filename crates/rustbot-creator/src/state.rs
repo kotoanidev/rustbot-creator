@@ -16,6 +16,68 @@ const UNDO_LIMIT: usize = 200;
 /// How many log lines are kept; older ones are dropped.
 const LOG_LIMIT: usize = 5000;
 
+/// Where a line in the Logs panel comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// The app itself: steps, results and errors.
+    App,
+    /// The output of installing the toolchain or building the bot.
+    Build,
+    /// What the running bot prints.
+    Bot,
+}
+
+/// How serious a line is, which sets its colour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Level {
+    Info,
+    Warn,
+    Error,
+}
+
+/// A line in the Logs panel.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Line {
+    pub(crate) source: Source,
+    pub(crate) level: Level,
+    pub(crate) text: String,
+}
+
+impl Line {
+    /// A line of the build's or the bot's output. Its level is read from the text: cargo's
+    /// `error:`/`warning:` and tracing's `ERROR`/`WARN`. Anything else the bot writes to
+    /// stderr is an error: a panic, or the error it exits with.
+    pub(crate) fn output(source: Source, text: String, stderr: bool) -> Self {
+        let level = level_of(&text).unwrap_or(if stderr && source == Source::Bot {
+            Level::Error
+        } else {
+            Level::Info
+        });
+        Self {
+            source,
+            level,
+            text,
+        }
+    }
+}
+
+fn level_of(text: &str) -> Option<Level> {
+    let start = text.trim_start();
+    if start.starts_with("error:") || start.starts_with("error[") {
+        return Some(Level::Error);
+    }
+    if start.starts_with("warning:") {
+        return Some(Level::Warn);
+    }
+    // tracing: "2026-11-23T10:00:00.000000Z  WARN target: message"
+    text.split_whitespace().take(2).find_map(|word| match word {
+        "ERROR" => Some(Level::Error),
+        "WARN" => Some(Level::Warn),
+        "INFO" | "DEBUG" | "TRACE" => Some(Level::Info),
+        _ => None,
+    })
+}
+
 pub(crate) struct AppState {
     pub(crate) project: Project,
     pub(crate) registry: Registry,
@@ -23,8 +85,8 @@ pub(crate) struct AppState {
     pub(crate) open_graph: Option<usize>,
     /// The node whose form the properties panel shows.
     pub(crate) selected_node: Option<NodeId>,
-    /// What the bot and its build printed, oldest first.
-    pub(crate) logs: Vec<String>,
+    /// What the app, the build and the bot printed, oldest first.
+    pub(crate) logs: Vec<Line>,
     /// The private toolchain, or `None` when the home folder is unknown.
     pub(crate) toolchain: Option<rustbot_toolchain::Toolchain>,
     /// What the bot is doing (D-071).
@@ -63,11 +125,29 @@ impl AppState {
     }
 
     /// Adds a line to the Logs panel.
-    pub(crate) fn log(&mut self, line: String) {
+    pub(crate) fn push(&mut self, line: Line) {
         if self.logs.len() >= LOG_LIMIT {
             self.logs.drain(..LOG_LIMIT / 10);
         }
         self.logs.push(line);
+    }
+
+    /// Adds a message of the app to the Logs panel.
+    pub(crate) fn log(&mut self, text: String) {
+        self.push(Line {
+            source: Source::App,
+            level: Level::Info,
+            text,
+        });
+    }
+
+    /// Adds an error of the app to the Logs panel.
+    pub(crate) fn log_error(&mut self, text: String) {
+        self.push(Line {
+            source: Source::App,
+            level: Level::Error,
+            text,
+        });
     }
 
     /// The graph in the editor.
@@ -142,12 +222,43 @@ impl AppState {
             };
             if let Err(e) = self.project.save_graph(file) {
                 let error = e.to_string();
-                self.logs.push(t_with(
-                    "error-save",
-                    &[("file", &file.name), ("error", &error)],
-                ));
+                let text = t_with("error-save", &[("file", &file.name), ("error", &error)]);
+                self.log_error(text);
                 self.unsaved.insert(ix);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Level, Line, Source};
+
+    fn level(source: Source, text: &str, stderr: bool) -> Level {
+        Line::output(source, text.to_owned(), stderr).level
+    }
+
+    #[test]
+    fn levels_come_from_cargo_tracing_and_stderr() {
+        let build = |text| level(Source::Build, text, true);
+        assert_eq!(build("error[E0425]: cannot find value `x`"), Level::Error);
+        assert_eq!(build("warning: unused variable: `y`"), Level::Warn);
+        assert_eq!(build("   Compiling djs-rs v0.1.0-alpha.2"), Level::Info);
+        let bot = |text, stderr| level(Source::Bot, text, stderr);
+        assert_eq!(
+            bot("2026-11-23T10:00:00.1Z  WARN djs_rs: slow", false),
+            Level::Warn
+        );
+        assert_eq!(
+            bot("2026-11-23T10:00:00.1Z ERROR djs_rs: failed", false),
+            Level::Error
+        );
+        assert_eq!(
+            bot("2026-11-23T10:00:00.1Z  INFO djs_rs: ready", true),
+            Level::Info
+        );
+        assert_eq!(bot("Ready as bot#0001", false), Level::Info);
+        assert_eq!(bot("Error: Rest(...)", true), Level::Error);
+        assert_eq!(bot("errors are fine here", false), Level::Info);
     }
 }

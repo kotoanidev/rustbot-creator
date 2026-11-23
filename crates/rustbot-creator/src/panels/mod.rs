@@ -16,7 +16,8 @@ pub(crate) use properties::Properties;
 /// The dock traits of a panel with a `focus` field, named `$name` in saved layouts and
 /// `$tab` (a Fluent id) on its tab. Panels cannot be closed yet: nothing reopens them.
 macro_rules! dock_panel {
-    ($panel:ty, $name:literal, $tab:literal) => {
+    // Extra items, such as `toolbar_buttons`, go into the `Panel` impl.
+    ($panel:ty, $name:literal, $tab:literal $(, $($panel_item:item)*)?) => {
         impl gpui_kit::component::dock::BasePanel for $panel {
             fn panel_name(&self) -> &'static str {
                 $name
@@ -40,6 +41,8 @@ macro_rules! dock_panel {
             ) -> impl gpui_kit::IntoElement {
                 gpui_kit::SharedString::from(crate::i18n::t($tab))
             }
+
+            $($($panel_item)*)?
         }
 
         impl gpui_kit::EventEmitter<gpui_kit::component::dock::PanelEvent> for $panel {}

@@ -17,6 +17,7 @@ tree-events = Events
 properties-empty = Select a node on the canvas to edit it.
 editor-empty = Open a command or event from the project tree.
 logs-empty = The bot's output appears here when it runs.
+logs-clear = Clear
 problems-empty = No problems.
 
 ## The status bar.

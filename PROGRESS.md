@@ -8,7 +8,7 @@
 **Phase 1 — Detailed planning: ✅ done 2026-11-17** for everything Phase 2 needs (D-011 to
 D-046). Later phases are planned in detail when each one starts (D-043).
 **Phase 2 — Vertical slice: ✅ done 2026-11-23.** The owner ran `/ping` live on a test server.
-**Phase 3 — Easy mode: planned 2026-11-23 (D-073–D-075), step 1 next.** Step 1 (workspace skeleton + CI) is ✅ done.
+**Phase 3 — Easy mode: in progress.** Planned 2026-11-23 (D-073–D-075). Step 1, the console (D-075, C-014), is ✅ done: lines select and copy with Ctrl+C, errors are red and warnings yellow, build output is muted, and "Clear" sits in the panel's toolbar. Step 1 (workspace skeleton + CI) is ✅ done.
 The six crates of D-036 and the lints of D-046 are in place, and `cargo run -p
 rustbot-creator` opens an empty "RustBot Creator" window (gpui-kit 0.10.0). The first CI
 run was green: rustfmt 15 s, Ubuntu 280 s, Fedora 44 297 s.
@@ -105,10 +105,14 @@ The owner finds the console hard to read and wants it improved later. Colour cod
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Phase 3, step 1: the console step (D-075).** In the Logs panel: selecting and copying
-text, level colours (ERROR red, WARN yellow), a "Clear" button, and build lines told apart
-from the bot's. Then step 2, the `/ban` example (D-073, D-074): the node list and form
-details are asked of the owner when that step starts.
+**Phase 3, step 2: the `/ban` example (D-073, D-074).** Start by asking the owner for the
+details:
+- the exact node list (which command option types, conditions, moderation actions and
+  message nodes);
+- how the variable picker looks in a form field;
+- how a yes/no condition shows its two branches on the graph.
+
+Then extend the registry, the codegen (with snapshot and `compiles` tests) and the forms.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

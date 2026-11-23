@@ -9,7 +9,7 @@ use gpui_kit::{App, AppContext as _, AsyncWindowContext, Entity, PromptLevel, Wi
 use rustbot_runner::Bot;
 
 use crate::i18n::{t, t_with};
-use crate::state::AppState;
+use crate::state::{AppState, Line, Source};
 use crate::trust;
 
 /// How often the bot's and the build's output is moved into the Logs panel.
@@ -32,7 +32,7 @@ pub(crate) fn start(state: Entity<AppState>, window: &mut Window, cx: &mut App) 
         .spawn(cx, async move |cx| {
             if let Err(message) = run(&state, cx).await {
                 state.update(cx, |state, cx| {
-                    state.log(message);
+                    state.log_error(message);
                     state.run = Run::Stopped;
                     cx.notify();
                 });
@@ -118,7 +118,7 @@ async fn logged<R: Send + 'static>(
         let batch: Vec<String> = lines.try_iter().collect();
         state.update(cx, |state, cx| {
             for line in batch {
-                state.log(line);
+                state.push(Line::output(Source::Build, line, true));
             }
             cx.notify();
         });
@@ -258,10 +258,11 @@ async fn follow(
 ) {
     loop {
         cx.background_executor().timer(LOG_TICK).await;
-        let batch: Vec<String> = lines.try_iter().map(|line| line.text).collect();
+        let batch: Vec<_> = lines.try_iter().collect();
         let done = state.update(cx, |state, cx| {
             for line in batch {
-                state.log(line);
+                let stderr = line.stream == rustbot_runner::Stream::Stderr;
+                state.push(Line::output(Source::Bot, line.text, stderr));
             }
             cx.notify();
             let Run::Running(bot) = &mut state.run else {
@@ -275,7 +276,7 @@ async fn follow(
                     true
                 }
                 Err(e) => {
-                    state.log(e.to_string());
+                    state.log_error(e.to_string());
                     true
                 }
             }

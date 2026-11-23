@@ -46,7 +46,7 @@ layer, before the scope widens.
       2026-11-23 (`/ping` answered on the test server)
 
 ## Phase 3 — Easy mode (D-014, D-032) — in progress
-- [ ] Console step (D-075): select and copy, level colours, Clear, build lines apart from
+- [x] Console step (D-075): select and copy, level colours, Clear, build lines apart from
       the bot's
 - [ ] The `/ban` example of D-014 (D-073): command options, a yes/no condition,
       moderation (ban, kick, timeout, roles), messages (to a channel, only for the author,
