@@ -57,7 +57,8 @@ layer, before the scope widens.
 - [ ] Full node catalog and forms over what djs-rs covers: events, components, and so on
   - [x] Events: member joined/left, new message, bot ready, reactions (D-091–D-095)
   - [x] Adding commands and events from the project tree, deleting graphs (D-092)
-  - [ ] Buttons and menus, more actions
+  - [x] Buttons and select menus: clicks that always work or are waited for (D-096–D-100)
+  - [ ] More actions
 - [x] Validation and errors shown on the graph
 - [ ] Bot templates
 

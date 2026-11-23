@@ -138,13 +138,24 @@ done in code:
 - "+" by Commands and Events in the project tree adds a graph; right-click → "Delete"
   removes one after asking.
 
+Step 5, buttons and select menus (D-096–D-100, C-024), is ✅ done in code:
+- "Reply" and "Send to a channel" have a folding "Buttons and menu" section: up to 5
+  buttons (a colour, or a link) and a menu of up to 25 options. Each button and option
+  is an output of the node, drawn on the canvas with its label.
+- Clicks always work by default, through djs-rs component routes, also after a restart;
+  after such a click, `user` is the clicker. With "Wait for a click (minutes)" the bot
+  waits in the same handler, every variable stays, and "time ran out" follows if nobody
+  clicks.
+- "Only the user who started it can click" limits clicks, and others get a private
+  answer.
+
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
-test), but nothing from steps 2 and 4 has run live yet. Next:
-1. The owner tries `/ban` and an event (e.g. a welcome message in "Member joined") on the
-   test server; fix what they find. They asked to continue without their tests for now,
-   so this waits for them.
-2. The next part of the catalog: ask the owner which first, e.g. buttons and menus, more
-   actions (edit/pin a message, nicknames, channels), or bot templates.
+test), but nothing from steps 2, 4 and 5 has run live yet. Next:
+1. The owner tries `/ban`, an event (e.g. a welcome message in "Member joined") and a
+   button (e.g. `/confirm` with "Wait for a click") on the test server; fix what they
+   find. They asked to continue without their tests for now, so this waits for them.
+2. The next part of the catalog: ask the owner which first, e.g. more actions (edit or
+   pin a message, nicknames, channels), modals, or bot templates.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

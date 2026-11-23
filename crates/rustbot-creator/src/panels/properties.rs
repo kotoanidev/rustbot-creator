@@ -8,12 +8,14 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::link::Link;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
-use gpui_kit::component::{ActiveTheme as _, IndexPath, Sizable as _, h_flex, v_flex};
+use gpui_kit::component::{
+    ActiveTheme as _, Disableable as _, IndexPath, Sizable as _, h_flex, v_flex,
+};
 use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Subscription, Window, div, px,
 };
-use rustbot_core::registry::{CommandOption, DataType, PropKind, is_id};
+use rustbot_core::registry::{ButtonStyle, CommandOption, DataType, MenuOption, PropKind, is_id};
 use rustbot_core::{GraphFile, NodeId, Registry};
 
 use crate::i18n::{t, t_or, t_with};
@@ -30,6 +32,11 @@ pub(crate) struct Properties {
     checks: Vec<String>,
     /// Whether the "Embed" section is open (D-087).
     embed_open: bool,
+    /// Whether the "Buttons and menu" section is open (D-098).
+    clicks_open: bool,
+    /// The shown message's buttons and menu options (D-098, D-099).
+    buttons: Vec<ItemRow>,
+    menu: Vec<ItemRow>,
     /// The form's fields in the node type's order.
     layout: Vec<Slot>,
     /// The prop holding the shown node's command options, if it has one (D-076).
@@ -56,6 +63,27 @@ enum Slot {
     Pick(usize),
     Check(usize),
     Options,
+    Buttons,
+    Menu,
+}
+
+/// The fields of the "Buttons and menu" section, in the node type's order (D-097–D-100).
+const CLICK_PROPS: [&str; 6] = [
+    "buttons",
+    "menu",
+    "menu_placeholder",
+    "wait",
+    "only_author",
+    "not_yours",
+];
+
+/// The editable parts of one button or menu option (D-098, D-099). A button also has a
+/// colour and, for a link, an address.
+struct ItemRow {
+    label: Entity<InputState>,
+    style: Option<Entity<SelectState<Vec<SharedString>>>>,
+    url: Option<Entity<InputState>>,
+    _changes: Vec<Subscription>,
 }
 
 /// A field picked from a list: a variable of a type (D-078), or one value of a fixed list.
@@ -104,6 +132,9 @@ impl Properties {
             pickers: Vec::new(),
             checks: Vec::new(),
             embed_open: false,
+            clicks_open: false,
+            buttons: Vec::new(),
+            menu: Vec::new(),
             layout: Vec::new(),
             options_prop: None,
             options: Vec::new(),
@@ -129,6 +160,7 @@ impl Properties {
         if target != self.shown {
             self.shown = target;
             self.embed_open = false;
+            self.clicks_open = false;
             self.build_fields(window, cx);
         } else if let (Some((_, node)), Some(file)) = (&self.shown, state.open_file()) {
             let values: Vec<String> = self
@@ -147,6 +179,7 @@ impl Properties {
                 self.build_fields(window, cx);
             }
             self.sync_options(window, cx);
+            self.sync_items(window, cx);
         }
         if self.shown.is_none() && self.bot.is_none() {
             self.bot = Some(self.build_bot_form(window, cx));
@@ -161,6 +194,8 @@ impl Properties {
         self.layout.clear();
         self.options_prop = None;
         self.options.clear();
+        self.buttons.clear();
+        self.menu.clear();
         let Some((_, node)) = self.shown.clone() else {
             return;
         };
@@ -185,6 +220,8 @@ impl Properties {
         for (prop, kind, value) in props {
             // A filled-in embed shows its section (D-087).
             self.embed_open |= prop.starts_with("embed_") && !value.is_empty();
+            self.clicks_open |= CLICK_PROPS.contains(&prop.as_str())
+                && !matches!(value.as_str(), "" | "[]" | "false");
             match kind {
                 PropKind::Bool => {
                     self.layout.push(Slot::Check(self.checks.len()));
@@ -206,9 +243,194 @@ impl Properties {
                     self.layout.push(Slot::Options);
                     self.options_prop = Some(prop);
                 }
+                PropKind::Buttons => self.layout.push(Slot::Buttons),
+                PropKind::MenuOptions => self.layout.push(Slot::Menu),
             }
         }
         self.build_options(window, cx);
+        self.buttons = self.item_rows("buttons", window, cx);
+        self.menu = self.item_rows("menu", window, cx);
+    }
+
+    /// The shown node's buttons or menu options, as the graph has them.
+    fn current_items(&self, prop: &str, cx: &gpui_kit::App) -> Vec<serde_json::Value> {
+        let Some((_, node)) = &self.shown else {
+            return Vec::new();
+        };
+        let state = self.state.read(cx);
+        match state
+            .open_file()
+            .and_then(|file| file.graph.nodes.get(node))
+            .and_then(|node| node.props.get(prop))
+        {
+            Some(serde_json::Value::Array(items)) => items.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn item_rows(
+        &self,
+        prop: &'static str,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) -> Vec<ItemRow> {
+        self.current_items(prop, cx)
+            .into_iter()
+            .enumerate()
+            .map(|(ix, item)| {
+                let text = |key: &str| {
+                    item.get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                let label = cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .default_value(text("label"))
+                        .placeholder(t("item-label-placeholder"))
+                });
+                let mut changes = vec![item_typing(prop, ix, "label", &label, window, cx)];
+                let (style, url) = if prop == "buttons" {
+                    let selected = style_index(&text("style")).map(IndexPath::new);
+                    let style = cx.new(|cx| SelectState::new(style_names(), selected, window, cx));
+                    changes.push(
+                        cx.subscribe_in(&style, window, move |this, _, event, _, cx| {
+                            let SelectEvent::Confirm(Some(chosen)) = event else {
+                                return;
+                            };
+                            let Some(style) = style_names().iter().position(|name| name == chosen)
+                            else {
+                                return;
+                            };
+                            this.edit_items("buttons", true, cx, |items| {
+                                set_key(items, ix, "style", style_value(ButtonStyle::ALL[style]));
+                            });
+                        }),
+                    );
+                    let url = cx.new(|cx| {
+                        InputState::new(window, cx)
+                            .default_value(text("url"))
+                            .placeholder("https://…")
+                    });
+                    changes.push(item_typing(prop, ix, "url", &url, window, cx));
+                    (Some(style), Some(url))
+                } else {
+                    (None, None)
+                };
+                ItemRow {
+                    label,
+                    style,
+                    url,
+                    _changes: changes,
+                }
+            })
+            .collect()
+    }
+
+    /// Rebuilds the buttons' and options' rows when some were added or removed, and
+    /// otherwise brings their text and colour up to date.
+    fn sync_items(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
+        for prop in ["buttons", "menu"] {
+            let items = self.current_items(prop, cx);
+            let rows = if prop == "buttons" {
+                &self.buttons
+            } else {
+                &self.menu
+            };
+            if items.len() != rows.len() {
+                let rows = self.item_rows(prop, window, cx);
+                if prop == "buttons" {
+                    self.buttons = rows;
+                } else {
+                    self.menu = rows;
+                }
+                continue;
+            }
+            for (row, item) in rows.iter().zip(&items) {
+                let text = |key: &str| {
+                    item.get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                for (input, key) in [(Some(&row.label), "label"), (row.url.as_ref(), "url")] {
+                    let Some(input) = input else { continue };
+                    let value = text(key);
+                    if input.read(cx).value() != value.as_str() {
+                        input.update(cx, |input, cx| input.set_value(value, window, cx));
+                    }
+                }
+                if let Some(style) = &row.style {
+                    let selected = style_index(&text("style")).map(IndexPath::new);
+                    if style.read(cx).selected_index(cx) != selected {
+                        style.update(cx, |select, cx| {
+                            select.set_selected_index(selected, window, cx);
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Changes the shown node's buttons or menu options with `change`. The wires from the
+    /// outputs of removed ones go too.
+    fn edit_items(
+        &mut self,
+        prop: &str,
+        undoable: bool,
+        cx: &mut Context<'_, Self>,
+        change: impl FnOnce(&mut Vec<serde_json::Value>),
+    ) {
+        let Some((_, node)) = self.shown.clone() else {
+            return;
+        };
+        let prop = prop.to_owned();
+        self.state.update(cx, |state, cx| {
+            state.edit(undoable, cx, |file, registry| {
+                let Some(shown) = file.graph.nodes.get_mut(&node) else {
+                    return;
+                };
+                let mut items = match shown.props.get(&prop) {
+                    Some(serde_json::Value::Array(items)) => items.clone(),
+                    _ => Vec::new(),
+                };
+                change(&mut items);
+                shown.props.insert(prop, serde_json::Value::Array(items));
+                prune_wires(file, registry, &node);
+            });
+        });
+    }
+
+    /// Adds a button or menu option with the next free id, `b3` or `o3`, and a label such
+    /// as "Button 3" in the app's language.
+    fn add_item(&mut self, prop: &'static str, cx: &mut Context<'_, Self>) {
+        let (prefix, base) = if prop == "buttons" {
+            ('b', t("button-default"))
+        } else {
+            ('o', t("menu-option-default"))
+        };
+        self.edit_items(prop, true, cx, |items| {
+            let next = items
+                .iter()
+                .filter_map(|item| {
+                    item.get("id")?
+                        .as_str()?
+                        .strip_prefix(prefix)?
+                        .parse::<u32>()
+                        .ok()
+                })
+                .max()
+                .unwrap_or(0)
+                + 1;
+            let mut item = serde_json::json!({
+                "id": format!("{prefix}{next}"),
+                "label": format!("{base} {next}"),
+            });
+            if prop == "buttons" {
+                item["style"] = style_value(ButtonStyle::Primary).into();
+            }
+            items.push(item);
+        });
     }
 
     fn text_field(
@@ -245,22 +467,29 @@ impl Properties {
         let values: Vec<String> = match kind {
             PropKind::Variable(ty) => {
                 let state = self.state.read(cx);
-                state.open_file().map_or_else(Vec::new, |file| {
-                    state
-                        .registry
-                        .scope(&file.graph)
-                        .into_iter()
-                        .filter(|var| var.ty == ty)
-                        .map(|var| var.name)
-                        .collect()
-                })
+                let node = self.shown.as_ref().map(|(_, node)| node);
+                state
+                    .open_file()
+                    .zip(node)
+                    .map_or_else(Vec::new, |(file, node)| {
+                        // After a click that always works, only the click's variables (D-097).
+                        state
+                            .registry
+                            .scope_at(&file.graph, node)
+                            .into_iter()
+                            .filter(|var| var.ty == ty)
+                            .map(|var| var.name)
+                            .collect()
+                    })
             }
             PropKind::Choice(choices) => choices.values().iter().map(|&v| v.to_owned()).collect(),
             PropKind::Text { .. }
             | PropKind::Options
             | PropKind::Number { .. }
             | PropKind::Bool
-            | PropKind::Color => Vec::new(),
+            | PropKind::Color
+            | PropKind::Buttons
+            | PropKind::MenuOptions => Vec::new(),
         };
         let mut labels: Vec<SharedString> = values
             .iter()
@@ -271,7 +500,9 @@ impl Properties {
                 | PropKind::Options
                 | PropKind::Number { .. }
                 | PropKind::Bool
-                | PropKind::Color => value.clone().into(),
+                | PropKind::Color
+                | PropKind::Buttons
+                | PropKind::MenuOptions => value.clone().into(),
             })
             .collect();
         match kind {
@@ -588,53 +819,68 @@ impl Properties {
     ) -> Vec<gpui_kit::AnyElement> {
         let mut rows = Vec::new();
         let mut header = false;
+        let mut clicks_header = false;
+        let props = &file.graph.nodes[node].props;
         for slot in &self.layout {
             let prop = match *slot {
                 Slot::Text(ix) => &self.fields[ix].prop,
                 Slot::Pick(ix) => &self.pickers[ix].prop,
                 Slot::Check(ix) => &self.checks[ix],
                 Slot::Options => "",
+                Slot::Buttons => "buttons",
+                Slot::Menu => "menu",
             };
+            if CLICK_PROPS.contains(&prop) {
+                if !clicks_header {
+                    clicks_header = true;
+                    rows.push(section("clicks-section", self.clicks_open, cx, |this| {
+                        this.clicks_open = !this.clicks_open;
+                    }));
+                }
+                let hidden = match prop {
+                    "menu_placeholder" => MenuOption::list(props.get("menu")).is_empty(),
+                    "not_yours" => props.get("only_author") != Some(&serde_json::Value::Bool(true)),
+                    _ => false,
+                };
+                if !self.clicks_open || hidden {
+                    continue;
+                }
+            }
             if prop.starts_with("embed_") {
                 if !header {
                     header = true;
-                    let arrow = if self.embed_open { "▾" } else { "▸" };
-                    rows.push(
-                        Button::new("embed-section")
-                            .ghost()
-                            .small()
-                            .label(format!("{arrow} {}", t("embed-section")))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.embed_open = !this.embed_open;
-                                cx.notify();
-                            }))
-                            .into_any_element(),
-                    );
+                    rows.push(section("embed-section", self.embed_open, cx, |this| {
+                        this.embed_open = !this.embed_open;
+                    }));
                 }
                 if !self.embed_open {
                     continue;
                 }
             }
             rows.push(match *slot {
+                Slot::Text(ix) if self.fields[ix].prop == "wait" => v_flex()
+                    .gap(px(2.))
+                    .child(self.render_text_field(ix, node_id, variables, this))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(t("wait-hint")),
+                    )
+                    .into_any_element(),
                 Slot::Text(ix) => self
                     .render_text_field(ix, node_id, variables, this)
                     .into_any_element(),
-                Slot::Pick(ix) => {
-                    let picker = &self.pickers[ix];
-                    let name = t_or(&format!("prop-{node_id}-{}", picker.prop), &picker.prop);
-                    v_flex()
-                        .gap(px(4.))
-                        .child(label(name))
-                        .child(Select::new(&picker.select).small())
-                        .children(
-                            picker
-                                .id
-                                .as_ref()
-                                .filter(|_| picker.id_chosen)
-                                .map(|id| Input::new(id).small()),
-                        )
-                        .into_any_element()
+                Slot::Buttons | Slot::Menu => {
+                    let prop = if matches!(*slot, Slot::Buttons) {
+                        "buttons"
+                    } else {
+                        "menu"
+                    };
+                    let name = t_or(&format!("prop-{node_id}-{prop}"), prop);
+                    self.render_items(prop, name, cx).into_any_element()
                 }
+                Slot::Pick(ix) => self.render_picker(ix, node_id).into_any_element(),
                 Slot::Check(ix) => {
                     let prop = self.checks[ix].clone();
                     let checked = file.graph.nodes[node].props.get(&prop)
@@ -646,6 +892,13 @@ impl Properties {
                         .on_click(cx.listener(move |this, checked: &bool, _, cx| {
                             this.fresh = true;
                             this.write(&prop, *checked, cx);
+                            // Others get a private answer, in the app's language (D-100).
+                            if prop == "only_author"
+                                && *checked
+                                && this.text("not_yours", cx).is_empty()
+                            {
+                                this.write("not_yours", t("not-yours-default"), cx);
+                            }
                         }))
                         .into_any_element()
                 }
@@ -657,6 +910,23 @@ impl Properties {
             });
         }
         rows
+    }
+
+    /// Picker `ix` with its label and, after "Role with ID…", the ID's field (D-080).
+    fn render_picker(&self, ix: usize, node_id: &str) -> impl IntoElement + use<> {
+        let picker = &self.pickers[ix];
+        let name = t_or(&format!("prop-{node_id}-{}", picker.prop), &picker.prop);
+        v_flex()
+            .gap(px(4.))
+            .child(label(name))
+            .child(Select::new(&picker.select).small())
+            .children(
+                picker
+                    .id
+                    .as_ref()
+                    .filter(|_| picker.id_chosen)
+                    .map(|id| Input::new(id).small()),
+            )
     }
 
     /// Text field `ix` with its label and, for templates, the {x} variable menu (D-078).
@@ -799,12 +1069,91 @@ impl Properties {
         };
         let undoable = std::mem::take(&mut self.fresh);
         self.state.update(cx, |state, cx| {
-            state.edit(undoable, cx, |file, _| {
-                if let Some(node) = file.graph.nodes.get_mut(&node) {
-                    node.props.insert(prop.to_owned(), value.into());
+            state.edit(undoable, cx, |file, registry| {
+                if let Some(shown) = file.graph.nodes.get_mut(&node) {
+                    shown.props.insert(prop.to_owned(), value.into());
                 }
+                // Clearing "wait" removes "timeout" (D-097).
+                prune_wires(file, registry, &node);
             });
         });
+    }
+
+    /// The shown node's field `prop` as text.
+    fn text(&self, prop: &str, cx: &gpui_kit::App) -> String {
+        let state = self.state.read(cx);
+        match (&self.shown, state.open_file()) {
+            (Some((_, node)), Some(file)) => prop_text(file, node, prop),
+            _ => String::new(),
+        }
+    }
+
+    /// The buttons' or menu options' rows, with "Add" (D-098, D-099).
+    fn render_items(
+        &self,
+        prop: &'static str,
+        label_text: String,
+        cx: &Context<'_, Self>,
+    ) -> impl IntoElement + use<> {
+        let theme = cx.theme();
+        let items = self.current_items(prop, cx);
+        let (rows, most, add, remove) = if prop == "buttons" {
+            (&self.buttons, 5, "button-add", "button-remove")
+        } else {
+            (&self.menu, 25, "menu-option-add", "menu-option-remove")
+        };
+        v_flex()
+            .gap(px(6.))
+            .child(label(label_text))
+            .children(
+                rows.iter()
+                    .zip(&items)
+                    .enumerate()
+                    .map(|(ix, (row, item))| {
+                        let link =
+                            item.get("style").and_then(serde_json::Value::as_str) == Some("link");
+                        v_flex()
+                            .gap(px(4.))
+                            .p(px(6.))
+                            .border_1()
+                            .border_color(theme.border)
+                            .rounded(px(4.))
+                            .child(
+                                h_flex()
+                                    .gap(px(4.))
+                                    .child(div().flex_1().child(Input::new(&row.label).small()))
+                                    .children(row.style.as_ref().map(|style| {
+                                        div().w(px(104.)).child(Select::new(style).small())
+                                    }))
+                                    .child(
+                                        Button::new((remove, ix))
+                                            .ghost()
+                                            .xsmall()
+                                            .label(t("option-remove"))
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.edit_items(prop, true, cx, |items| {
+                                                    if ix < items.len() {
+                                                        items.remove(ix);
+                                                    }
+                                                });
+                                            })),
+                                    ),
+                            )
+                            .children(
+                                row.url
+                                    .as_ref()
+                                    .filter(|_| link)
+                                    .map(|url| Input::new(url).small()),
+                            )
+                    }),
+            )
+            .child(
+                Button::new(add)
+                    .xsmall()
+                    .label(t(add))
+                    .disabled(items.len() >= most)
+                    .on_click(cx.listener(move |this, _, _, cx| this.add_item(prop, cx))),
+            )
     }
 
     fn build_bot_form(&self, window: &mut Window, cx: &mut Context<'_, Self>) -> BotForm {
@@ -928,6 +1277,26 @@ impl Properties {
     }
 }
 
+/// A header that opens and closes a section of the form, titled by the Fluent message
+/// `id` (D-087, D-098).
+fn section(
+    id: &'static str,
+    open: bool,
+    cx: &Context<'_, Properties>,
+    toggle: fn(&mut Properties),
+) -> gpui_kit::AnyElement {
+    let arrow = if open { "▾" } else { "▸" };
+    Button::new(id)
+        .ghost()
+        .small()
+        .label(format!("{arrow} {}", t(id)))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            toggle(this);
+            cx.notify();
+        }))
+        .into_any_element()
+}
+
 fn token_status(found: Result<bool, rustbot_secrets::Error>) -> (String, bool) {
     match found {
         Ok(true) => (t("bot-token-saved"), false),
@@ -954,10 +1323,10 @@ fn prop_text(file: &GraphFile, node: &NodeId, prop: &str) -> String {
     }
 }
 
-/// The variables a template in `file` can use, e.g. `{user.name}` or `{option.reason}`.
-fn variables(file: &GraphFile, registry: &Registry) -> Vec<String> {
+/// The variables a template of `node` can use, e.g. `{user.name}` or `{option.reason}`.
+fn variables(file: &GraphFile, registry: &Registry, node: &NodeId) -> Vec<String> {
     let mut found = Vec::new();
-    for variable in registry.scope(&file.graph) {
+    for variable in registry.scope_at(&file.graph, node) {
         let fields = variable.ty.fields();
         if fields.is_empty() {
             found.push(format!("{{{}}}", variable.name));
@@ -1012,6 +1381,83 @@ fn type_names() -> Vec<SharedString> {
         .collect()
 }
 
+/// The subscription that writes `key` of item `ix` of `prop` as `input` is typed in.
+fn item_typing(
+    prop: &'static str,
+    ix: usize,
+    key: &'static str,
+    input: &Entity<InputState>,
+    window: &mut Window,
+    cx: &mut Context<'_, Properties>,
+) -> Subscription {
+    cx.subscribe_in(
+        input,
+        window,
+        move |this, input, event, _, cx| match event {
+            InputEvent::Focus => this.fresh = true,
+            InputEvent::Change => {
+                let value = input.read(cx).value().to_string();
+                let undoable = std::mem::take(&mut this.fresh);
+                this.edit_items(prop, undoable, cx, |items| set_key(items, ix, key, value));
+            }
+            _ => {}
+        },
+    )
+}
+
+/// Sets `key` of item `ix`; an item that is not an object, from a hand-edited file, is
+/// left alone, and Problems reports it.
+fn set_key(
+    items: &mut [serde_json::Value],
+    ix: usize,
+    key: &str,
+    value: impl Into<serde_json::Value>,
+) {
+    if let Some(item) = items.get_mut(ix).and_then(serde_json::Value::as_object_mut) {
+        item.insert(key.to_owned(), value.into());
+    }
+}
+
+/// Drops the wires from outputs `node` no longer has, e.g. a removed button's.
+fn prune_wires(file: &mut GraphFile, registry: &Registry, node: &NodeId) {
+    let Some(shown) = file.graph.nodes.get(node) else {
+        return;
+    };
+    let pins: Vec<String> = registry
+        .pins(shown)
+        .into_iter()
+        .map(|pin| pin.name)
+        .collect();
+    file.graph
+        .edges
+        .retain(|edge| &edge.from.node != node || pins.contains(&edge.from.pin));
+}
+
+/// A button style as the graph file has it, e.g. `success`.
+fn style_value(style: ButtonStyle) -> &'static str {
+    match style {
+        ButtonStyle::Primary => "primary",
+        ButtonStyle::Secondary => "secondary",
+        ButtonStyle::Success => "success",
+        ButtonStyle::Danger => "danger",
+        ButtonStyle::Link => "link",
+    }
+}
+
+fn style_index(value: &str) -> Option<usize> {
+    ButtonStyle::ALL
+        .iter()
+        .position(|style| style_value(*style) == value)
+}
+
+/// The button styles' names, in the order of [`ButtonStyle::ALL`].
+fn style_names() -> Vec<SharedString> {
+    ButtonStyle::ALL
+        .iter()
+        .map(|style| t(&format!("button-style-{}", style_value(*style))).into())
+        .collect()
+}
+
 fn type_index(ty: DataType) -> Option<usize> {
     CommandOption::TYPES.iter().position(|t| *t == ty)
 }
@@ -1023,7 +1469,7 @@ impl Render for Properties {
             (Some((_, node)), Some(file)) => {
                 let kind = &file.graph.nodes[node].kind;
                 let node_id = kind.replace('.', "-");
-                let variables = variables(file, &state.registry);
+                let variables = variables(file, &state.registry, node);
                 let this = cx.entity().downgrade();
                 // Privileged intents are switched on by hand in the portal (D-095).
                 let intents = state
@@ -1279,10 +1725,10 @@ mod tests {
                 })
             })
         };
-        // Message, the switch and the folded "Embed" header.
-        assert_eq!(shown(cx), 3);
+        // Message, the switch and the folded "Embed" and "Buttons and menu" headers.
+        assert_eq!(shown(cx), 4);
         cx.update(|window, cx| window.click("embed-section", cx));
-        assert_eq!(shown(cx), 8);
+        assert_eq!(shown(cx), 9);
 
         cx.update(|window, cx| {
             properties.update(cx, |this, cx| {
@@ -1306,6 +1752,91 @@ mod tests {
             window.render_frame(cx);
         });
         assert_eq!(private(cx), None);
+    }
+
+    /// "Buttons and menu" adds buttons, each an output of the node; removing one takes its
+    /// wire along, and "only the author" fills in the answer for others (D-098, D-100).
+    #[gpui_kit::test]
+    fn buttons_add_outputs_and_take_their_wires_along(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (_properties, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, _| {
+                app.selected_node = Some(NodeId("n2".to_owned()));
+            });
+            state = Some(app.clone());
+            Properties::new(app, window, cx)
+        });
+        let state = state.unwrap();
+        let n2 = NodeId("n2".to_owned());
+        cx.update(gpui_kit::test::TestWindowExt::render_frame);
+        cx.update(|window, cx| window.click("clicks-section", cx));
+        for _ in 0..2 {
+            cx.update(|window, cx| window.click("button-add", cx));
+        }
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                let node = &state.open_file().unwrap().graph.nodes[&n2];
+                let pins: Vec<String> = state
+                    .registry
+                    .pins(node)
+                    .into_iter()
+                    .map(|pin| pin.name)
+                    .collect();
+                assert_eq!(pins, ["run", "then", "b1", "b2"]);
+                state.edit(true, cx, |file, registry| {
+                    let n3 = crate::canvas::add_node(file, registry, "core.reply", [0., 0.]);
+                    file.graph.edges.push(rustbot_core::Edge {
+                        from: rustbot_core::PinRef {
+                            node: n2.clone(),
+                            pin: "b2".to_owned(),
+                        },
+                        to: rustbot_core::PinRef {
+                            node: n3,
+                            pin: "run".to_owned(),
+                        },
+                    });
+                });
+            });
+        });
+        let graph = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.read(|cx| state.read(cx).open_file().unwrap().graph.clone())
+        };
+        assert_eq!(graph(cx).edges.len(), 2);
+        cx.update(gpui_kit::test::TestWindowExt::render_frame);
+        cx.update(|window, cx| window.click(("button-remove", 1_usize), cx));
+        let after = graph(cx);
+        assert_eq!(
+            after.nodes[&n2].props["buttons"].as_array().unwrap().len(),
+            1
+        );
+        assert_eq!(after.edges.len(), 1, "the wire from b2 went with it");
+
+        // "private" is the first switch, "only_author" the second.
+        cx.update(gpui_kit::test::TestWindowExt::render_frame);
+        cx.update(|window, cx| window.click(("prop-check", 1_usize), cx));
+        let props = graph(cx).nodes[&n2].props.clone();
+        assert_eq!(props["only_author"], serde_json::Value::Bool(true));
+        assert_eq!(props["not_yours"], crate::i18n::t("not-yours-default"));
+
+        // One undo for the switch and its answer, one for the removal.
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.undo(false, cx);
+                state.undo(false, cx);
+            });
+            window.render_frame(cx);
+        });
+        let back = graph(cx);
+        assert_eq!(back.nodes[&n2].props.get("only_author"), None);
+        assert_eq!(
+            back.nodes[&n2].props["buttons"].as_array().unwrap().len(),
+            2
+        );
+        assert_eq!(back.edges.len(), 2);
     }
 
     #[gpui_kit::test]

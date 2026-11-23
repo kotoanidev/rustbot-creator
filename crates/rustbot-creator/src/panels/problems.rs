@@ -5,7 +5,7 @@ use gpui_kit::{
     Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render,
     StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window, div, px,
 };
-use rustbot_core::registry::{OptionProblem, Problem, ProblemKind};
+use rustbot_core::registry::{ComponentProblem, OptionProblem, Problem, ProblemKind};
 use rustbot_core::template::TemplateError;
 
 use crate::i18n::{t, t_with};
@@ -151,6 +151,22 @@ pub(crate) fn describe(problem: &Problem) -> String {
             "problem-bad-number",
             &[("prop", prop), ("max", &max.to_string())],
         ),
+        ProblemKind::BadComponent {
+            prop,
+            item,
+            problem,
+        } => {
+            let id = match (prop.as_str(), problem) {
+                (_, ComponentProblem::TooMany) => "problem-component-too-many",
+                ("buttons", ComponentProblem::Label) => "problem-button-label",
+                ("buttons", ComponentProblem::Url) => "problem-button-url",
+                ("buttons", ComponentProblem::Id) => "problem-button-id",
+                (_, ComponentProblem::Label) => "problem-menu-label",
+                (_, _) => "problem-menu-id",
+            };
+            t_with(id, &[("item", &(item + 1).to_string())])
+        }
+        ProblemKind::OnlyAuthorWithoutUser => t("problem-only-author-without-user"),
         ProblemKind::BadOption { option, problem } => {
             let id = match problem {
                 OptionProblem::Name => "problem-option-name",

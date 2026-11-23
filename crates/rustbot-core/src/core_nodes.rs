@@ -119,8 +119,12 @@ fn reply() -> NodeType {
         provides: Vec::new(),
         intents: Vec::new(),
         permission: None,
-        // A command's reply, or a reply to the message (D-094).
-        triggers: vec!["core.slash_command".to_owned(), "core.message".to_owned()],
+        // A command's reply, a reply to the message (D-094), or to a click (D-097).
+        triggers: vec![
+            "core.slash_command".to_owned(),
+            "core.message".to_owned(),
+            "core.click".to_owned(),
+        ],
     }
 }
 
@@ -140,8 +144,9 @@ fn send_message() -> NodeType {
     }
 }
 
-/// A message's fields: its text, `extra`, then the embed (D-079, D-087). The form groups
-/// the `embed_…` fields into a section, and the message needs text or an embed.
+/// A message's fields: its text, `extra`, the embed (D-079, D-087), then its buttons and
+/// select menu (D-097–D-100). The form groups the `embed_…` fields and the click fields into
+/// sections, and the message needs text or an embed.
 fn message(extra: Vec<Prop>) -> Vec<Prop> {
     let template = |name| prop(name, PropKind::Text { templates: true }, false);
     let mut props = vec![template("content")];
@@ -152,6 +157,17 @@ fn message(extra: Vec<Prop>) -> Vec<Prop> {
         prop("embed_color", PropKind::Color, false),
         template("embed_image"),
         template("embed_footer"),
+        prop("buttons", PropKind::Buttons, false),
+        prop("menu", PropKind::MenuOptions, false),
+        prop(
+            "menu_placeholder",
+            PropKind::Text { templates: false },
+            false,
+        ),
+        // A day at most: the handler waits that long.
+        prop("wait", PropKind::Number { max: 1440 }, false),
+        prop("only_author", PropKind::Bool, false),
+        prop("not_yours", PropKind::Text { templates: false }, false),
     ]);
     props
 }
@@ -182,8 +198,8 @@ fn has_permission() -> NodeType {
             prop("permission", PropKind::Choice(Choices::Permission), true),
         ],
     );
-    // Discord sends a member's permissions with commands only.
-    node.triggers = vec!["core.slash_command".to_owned()];
+    // Discord sends a member's permissions with interactions only: commands and clicks.
+    node.triggers = vec!["core.slash_command".to_owned(), "core.click".to_owned()];
     node
 }
 

@@ -258,13 +258,24 @@ impl Editor {
                 (kind.category == Category::Trigger).then_some(kind.id.as_str())
             })
         });
+        // With buttons or a menu, nodes that work after a click are offered too (D-097).
+        let clicks = state.open_file().is_some_and(|file| {
+            file.graph
+                .nodes
+                .values()
+                .any(|node| !rustbot_core::registry::click_items(node).is_empty())
+        });
         let mut found: Vec<(String, String)> = state
             .registry
             .iter()
             .filter(|node| {
                 node.category != Category::Trigger
                     && trigger.is_none_or(|trigger| {
-                        node.triggers.is_empty() || node.triggers.iter().any(|t| t == trigger)
+                        node.triggers.is_empty()
+                            || node
+                                .triggers
+                                .iter()
+                                .any(|t| t == trigger || (clicks && t == "core.click"))
                     })
             })
             .filter(|node| {
@@ -362,8 +373,9 @@ impl Editor {
         let theme = cx.theme();
         let node = &file.graph.nodes[id];
         let kind = registry.get(&node.kind);
+        let all = registry.pins(node);
         let [x, y] = canvas::position(file, id);
-        let [w, h] = canvas::size(kind);
+        let [w, h] = canvas::size(&all);
         let selected = self.state.read(cx).selected_node.as_ref() == Some(id);
         let accent = match kind.map(|kind| kind.category) {
             Some(Category::Trigger) => theme.blue,
@@ -376,18 +388,24 @@ impl Editor {
         let pins = [Direction::In, Direction::Out]
             .into_iter()
             .flat_map(|direction| {
-                canvas::pins(kind, direction)
+                canvas::pins(&all, direction)
                     .into_iter()
                     .map(move |(pin, [px_x, px_y])| (pin.clone(), direction, px_x, px_y))
             });
+        let clicks = click_labels(node);
         let pins: Vec<_> = pins
             .map(|(pin, direction, pin_x, pin_y)| {
+                // A button's or menu option's output is named by its label (D-098, D-099).
+                let name = clicks
+                    .get(&pin.name)
+                    .cloned()
+                    .unwrap_or_else(|| t_or(&format!("pin-{}", pin.name), &pin.name));
                 let label = div()
                     .absolute()
                     .top(px(pin_y - 8.))
                     .text_xs()
                     .text_color(theme.muted_foreground)
-                    .child(t_or(&format!("pin-{}", pin.name), &pin.name));
+                    .child(name);
                 let label = if direction == Direction::In {
                     label.left(px(12.))
                 } else {
@@ -452,9 +470,8 @@ impl Editor {
                 let from = canvas::pin_position(file, registry, &edge.from)?;
                 let to = canvas::pin_position(file, registry, &edge.to)?;
                 let kind = registry
-                    .get(&file.graph.nodes.get(&edge.from.node)?.kind)?
-                    .pins
-                    .iter()
+                    .pins(file.graph.nodes.get(&edge.from.node)?)
+                    .into_iter()
                     .find(|pin| pin.name == edge.from.pin)?
                     .kind;
                 Some((from, to, pin_color(kind, cx).opacity(0.8)))
@@ -596,7 +613,7 @@ impl Render for Editor {
                 && let Some(node) = file.graph.nodes.get(id)
             {
                 let [x, y] = canvas::position(file, id);
-                let [w, h] = canvas::size(state.registry.get(&node.kind));
+                let [w, h] = canvas::size(&state.registry.pins(node));
                 let size = self.view.get().size;
                 self.pan = point(
                     size.width / 2. - px(x + w / 2.),
@@ -618,7 +635,7 @@ impl Render for Editor {
             .iter()
             .filter(|(id, node)| {
                 let [x, y] = canvas::position(file, id);
-                let [w, h] = canvas::size(state.registry.get(&node.kind));
+                let [w, h] = canvas::size(&state.registry.pins(node));
                 visible.is_some_and(|visible| canvas::in_view(visible, [x, y], [x + w, y + h]))
             })
             .map(|(id, _)| id.clone())
@@ -692,6 +709,26 @@ fn marks(registry: &Registry, graph: &Graph) -> BTreeMap<NodeId, bool> {
     warnings
         .chain(problems.filter_map(|problem| Some((problem.node?, true))))
         .collect()
+}
+
+/// The outputs of a message's buttons and menu options, by pin name, as their labels
+/// shortened to fit the node.
+fn click_labels(node: &rustbot_core::Node) -> std::collections::BTreeMap<String, String> {
+    use rustbot_core::registry::{Button, MenuOption};
+    let short = |label: &str| {
+        let mut text: String = label.chars().take(18).collect();
+        if label.chars().count() > 18 {
+            text.push('…');
+        }
+        text
+    };
+    let buttons = Button::list(node.props.get("buttons"))
+        .into_iter()
+        .map(|button| (button.id, short(&button.label)));
+    let options = MenuOption::list(node.props.get("menu"))
+        .into_iter()
+        .map(|option| (option.id, short(&option.label)));
+    buttons.chain(options).collect()
 }
 
 #[cfg(test)]

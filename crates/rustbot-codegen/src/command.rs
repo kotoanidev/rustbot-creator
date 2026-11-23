@@ -4,9 +4,11 @@ use std::collections::BTreeSet;
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use rustbot_core::registry::{CommandOption, DataType, is_id};
+use rustbot_core::registry::{
+    Button, ButtonStyle, CommandOption, DataType, MenuOption, click_items, is_id, waits_for_click,
+};
 use rustbot_core::template::{self, Segment};
-use rustbot_core::{Graph, GraphFile, NodeId, PinRef, Registry};
+use rustbot_core::{Graph, GraphFile, GraphKind, NodeId, PinRef, Registry};
 use serde_json::Value;
 
 use crate::Error;
@@ -55,27 +57,26 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         command: name,
         event: None,
         path: Vec::new(),
+        clicked: false,
+        routes: Vec::new(),
     };
     let body = code.after(trigger, "then")?;
     let Body {
         vars,
         quiet: needs_quiet,
         interaction: needs_interaction,
+        routes,
         ..
     } = code;
-
-    let bindings = vars.iter().map(|path| binding(path, &options));
-    // The guild, channel and member are on the interaction; `cmd` itself is the command data,
-    // which holds the options.
-    let interaction = (needs_interaction || vars.iter().any(|path| !path.starts_with("option.")))
-        .then(|| quote!(let interaction = cmd.interaction();));
-    let replied = follow_ups.then(|| quote!(let replied = std::cell::Cell::new(false);));
-    let author = vars
-        .iter()
-        .any(|path| path.starts_with("user."))
-        .then(|| quote!(let author = interaction.author().ok_or("the command has no user")?;));
+    let prologue = prologue(
+        &vars,
+        &options,
+        needs_interaction,
+        follow_ups && uses(&body, "replied"),
+    );
+    let (handlers, routes_quiet) = route_handlers(file, routes)?;
     // With @everyone allowed in a message, the same text from users must not trigger it.
-    let quiet = needs_quiet.then(quiet_fn);
+    let quiet = (needs_quiet || routes_quiet).then(quiet_fn);
     let doc = format!(
         " The `/{name}` command, from `graphs/commands/{}.json`.",
         file.name
@@ -101,15 +102,114 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
 
         pub(crate) fn register(client: &Client) {
             client.command(#name, |ctx, cmd| async move {
-                #interaction
-                #author
-                #replied
-                #(#bindings)*
+                #prologue
                 #body
                 Ok(())
             });
+            #(#handlers)*
         }
     })
+}
+
+/// What a command's or a click's handler computes first: the interaction, its author, the
+/// `replied` flag and the template variables.
+fn prologue(
+    vars: &BTreeSet<String>,
+    options: &[CommandOption],
+    needs_interaction: bool,
+    replied: bool,
+) -> TokenStream {
+    let bindings = vars.iter().map(|path| binding(path, options));
+    // The guild, channel and member are on the interaction; `cmd` itself is the command data,
+    // which holds the options.
+    let interaction = (needs_interaction || vars.iter().any(|path| !path.starts_with("option.")))
+        .then(|| quote!(let interaction = cmd.interaction();));
+    let replied = replied.then(|| quote!(let replied = std::cell::Cell::new(false);));
+    let author = vars
+        .iter()
+        .any(|path| path.starts_with("user."))
+        .then(|| quote!(let author = interaction.author().ok_or("the command has no user")?;));
+    quote!(#interaction #author #replied #(#bindings)*)
+}
+
+/// Whether `code` mentions the identifier `name` anywhere.
+pub(crate) fn uses(code: &TokenStream, name: &str) -> bool {
+    code.clone().into_iter().any(|tree| match tree {
+        proc_macro2::TokenTree::Ident(ident) => ident == name,
+        proc_macro2::TokenTree::Group(group) => uses(&group.stream(), name),
+        _ => false,
+    })
+}
+
+/// The djs-rs route of a message whose clicks "always work" (D-097): `c.<graph>.<node>`
+/// for a command graph, `e.…` for an event graph. Its buttons' custom IDs add `:<item>`,
+/// and `:<author ID>` when only the author may click (D-100).
+// shortcut: a graph name over about 60 characters makes custom IDs longer than Discord's
+// 100; names from the app are shorter. Hash long names if hand-made ones get that long.
+fn route_name(file: &GraphFile, id: &NodeId) -> String {
+    let kind = match file.kind {
+        GraphKind::Command => "c",
+        GraphKind::Event => "e",
+    };
+    format!("{kind}.{}.{id}", file.name.replace(':', "_"))
+}
+
+/// `client.component(…)` for each message whose clicks "always work" (D-097), and whether
+/// they need `quiet()`. A click's handler works like a command's, run by the clicker.
+pub(crate) fn route_handlers(
+    file: &GraphFile,
+    mut routes: Vec<NodeId>,
+) -> Result<(Vec<TokenStream>, bool), Error> {
+    let mut done = BTreeSet::new();
+    let mut handlers = Vec::new();
+    let mut quiet = false;
+    while let Some(id) = routes.pop() {
+        if !done.insert(id.clone()) {
+            continue;
+        }
+        let mut body = Body::for_route(file);
+        let dispatch = body.dispatch(&id, &quote!(cmd))?;
+        let item = (!dispatch.is_empty())
+            .then(|| quote!(let item = cmd.args().split(':').next().unwrap_or_default();));
+        let only_author =
+            file.graph.nodes[&id].props.get("only_author") == Some(&Value::Bool(true));
+        let check = only_author.then(|| {
+            body.interaction = true;
+            let not_yours = body.not_yours(&id, &quote!(cmd));
+            quote! {
+                let allowed = cmd.args().split(':').nth(1).unwrap_or_default();
+                if interaction.author().map(|user| user.id.to_string()).as_deref() != Some(allowed) {
+                    #not_yours
+                    return Ok(());
+                }
+            }
+        });
+        let route = route_name(file, &id);
+        let Body {
+            vars,
+            quiet: needs_quiet,
+            interaction,
+            routes: more,
+            ..
+        } = body;
+        routes.extend(more);
+        quiet |= needs_quiet;
+        let prologue = prologue(&vars, &[], interaction, true);
+        handlers.push(quote! {
+            client.component(#route, |ctx, cmd| async move {
+                #prologue
+                #check
+                #item
+                #dispatch
+                // A click must be answered, or Discord says it failed.
+                if !replied.get() {
+                    cmd.defer_update(&ctx).await?;
+                }
+                Ok(())
+            });
+        });
+    }
+    Ok((handlers, quiet))
 }
 
 /// `.default_member_permissions(…)`: members without the permissions of the command's
@@ -143,6 +243,7 @@ pub(crate) fn quiet_fn() -> TokenStream {
 }
 
 /// A graph's body, built from its trigger along the flow wires.
+#[allow(clippy::struct_excessive_bools)] // independent facts gathered on the way
 pub(crate) struct Body<'a> {
     file: &'a GraphFile,
     /// More than one "Reply": each checks `replied` to reply or follow up.
@@ -160,6 +261,10 @@ pub(crate) struct Body<'a> {
     event: Option<Event>,
     /// The nodes from the trigger to here, to find loops.
     path: Vec<NodeId>,
+    /// After a click waited for: replies answer `click` (D-097).
+    clicked: bool,
+    /// Messages whose clicks "always work", which need a handler of their own (D-097).
+    routes: Vec<NodeId>,
 }
 
 impl<'a> Body<'a> {
@@ -175,12 +280,33 @@ impl<'a> Body<'a> {
             command: &file.name,
             event: Some(event),
             path: Vec::new(),
+            clicked: false,
+            routes: Vec::new(),
         }
     }
 
-    /// The variables the code uses and whether it needs `quiet()`.
-    pub(crate) fn finish(self) -> (BTreeSet<String>, bool) {
-        (self.vars, self.quiet)
+    /// The body of a click's handler (D-097): like a command's, without options. Every
+    /// reply checks `replied`, so the handler can answer the click when none did.
+    fn for_route(file: &'a GraphFile) -> Self {
+        Body {
+            follow_ups: true,
+            file,
+            options: &[],
+            vars: BTreeSet::new(),
+            quiet: false,
+            interaction: false,
+            command: &file.name,
+            event: None,
+            path: Vec::new(),
+            clicked: false,
+            routes: Vec::new(),
+        }
+    }
+
+    /// The variables the code uses, whether it needs `quiet()`, and the messages whose
+    /// clicks need a handler.
+    pub(crate) fn finish(self) -> (BTreeSet<String>, bool, Vec<NodeId>) {
+        (self.vars, self.quiet, self.routes)
     }
 
     /// The code of the nodes wired to `pin` of `id`, one after another in edge order.
@@ -235,22 +361,12 @@ impl<'a> Body<'a> {
     fn node(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
         let graph = &self.file.graph;
         let code = match graph.nodes[id].kind.as_str() {
-            "core.reply" => (self.reply(id), true),
+            "core.reply" | "core.send_message" => self.message_node(id)?,
             // Validation allows it only after "New message" (D-094).
             "core.delete_message" => (
                 quote!(ctx.messages(event.channel_id).delete(event.id).await?;),
                 true,
             ),
-            "core.send_message" => {
-                let channel = self.channel(text(graph, id, "channel"));
-                let message = self.message(id);
-                let send = quote! {
-                    ctx.messages(#channel)
-                        .send(djs_rs::model::rest::CreateMessage::default() #message)
-                        .await?;
-                };
-                (send, true)
-            }
             "core.has_permission" | "core.has_role" | "core.compare" => {
                 let yes = self.after(id, "yes")?;
                 let no = self.after(id, "no")?;
@@ -286,43 +402,298 @@ impl<'a> Body<'a> {
         Ok(code)
     }
 
-    /// A reply, or a follow-up if the command replied already (D-086).
-    fn reply(&mut self, id: &NodeId) -> TokenStream {
-        let graph = &self.file.graph;
+    /// "Reply" or "Send to a channel", with its buttons and menu (D-097–D-100). Clicks that
+    /// "always work" go to a handler of their own; a click waited for continues here.
+    fn message_node(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
+        let node = &self.file.graph.nodes[id];
+        let has_components = !Button::list(node.props.get("buttons")).is_empty()
+            || !MenuOption::list(node.props.get("menu")).is_empty();
+        let clicks = !click_items(node).is_empty();
+        let wait = clicks && waits_for_click(node);
+        let only_author = clicks && node.props.get("only_author") == Some(&Value::Bool(true));
         let mut message = self.message(id);
-        if self.event.is_some() {
-            // In "New message", a reply to that message (D-094).
+        if has_components {
+            message.extend(self.components(id, wait, only_author));
+        }
+        if !wait {
+            if clicks && !self.routes.contains(id) {
+                self.routes.push(id.clone());
+            }
+            return Ok((self.send(id, message, false), true));
+        }
+        let send = self.send(id, message, true);
+        let duration = self.duration(text(&self.file.graph, id, "wait"));
+        let wait_for = if only_author {
+            let allowed = self.author_id();
+            let not_yours = self.not_yours(id, &quote!(next));
+            quote! {
+                let allowed = #allowed;
+                let mut click = None;
+                while let Some(next) = clicks.next().await {
+                    if next.interaction().author().map(|user| user.id) != Some(allowed) {
+                        #not_yours
+                        continue;
+                    }
+                    click = Some(next);
+                    break;
+                }
+            }
+        } else {
+            quote!(let click = clicks.next().await;)
+        };
+        let was = std::mem::replace(&mut self.clicked, true);
+        let dispatch = self.dispatch(id, &quote!(click));
+        self.clicked = was;
+        let dispatch = dispatch?;
+        let item = (!dispatch.is_empty())
+            .then(|| quote!(let item = click.custom_id.strip_prefix("wait:").unwrap_or_default();));
+        let timeout = self.after(id, "timeout")?;
+        let timeout = (!timeout.is_empty()).then(|| quote!(else { #timeout }));
+        Ok((
+            quote! {
+                {
+                    let sent = #send;
+                    let mut clicks = sent.component_collector(&ctx).time(#duration).build();
+                    #wait_for
+                    // The wait is over, and the buttons would do nothing now (C-024). An
+                    // ephemeral reply cannot be edited this way, and keeps them.
+                    let _ = ctx
+                        .messages(sent.channel_id)
+                        .edit(
+                            sent.id,
+                            &djs_rs::model::rest::EditMessage::default().components([]),
+                        )
+                        .await;
+                    if let Some(click) = click {
+                        let click_replied = std::cell::Cell::new(false);
+                        #item
+                        #dispatch
+                        // A click must be answered, or Discord says it failed.
+                        if !click_replied.get() {
+                            click.defer_update(&ctx).await?;
+                        }
+                    } #timeout
+                }
+            },
+            true,
+        ))
+    }
+
+    /// The call sending a message node's message: an expression giving the sent message
+    /// if `want`, else a statement. A reply answers the click waited for, the message of
+    /// "New message" (D-094) or the command, following up if it replied already (D-086).
+    fn send(&mut self, id: &NodeId, mut message: TokenStream, want: bool) -> TokenStream {
+        let graph = &self.file.graph;
+        let end = (!want).then(|| quote!(;));
+        if graph.nodes[id].kind == "core.send_message" {
+            let channel = self.channel(text(graph, id, "channel"));
+            return quote! {
+                ctx.messages(#channel)
+                    .send(djs_rs::model::rest::CreateMessage::default() #message)
+                    .await? #end
+            };
+        }
+        let (target, replied) = if self.clicked {
+            (quote!(click), quote!(click_replied))
+        } else if self.event.is_some() {
             return quote! {
                 event
                     .reply(&ctx, djs_rs::model::rest::CreateMessage::default() #message)
-                    .await?;
+                    .await? #end
             };
-        }
+        } else {
+            (quote!(cmd), quote!(replied))
+        };
         // Only the author sees it (D-086).
         if graph.nodes[id].props.get("private") == Some(&Value::Bool(true)) {
             message.extend(quote!(.ephemeral()));
         }
         let reply = quote! {
-            cmd.reply(
+            #target.reply(
                 &ctx,
                 djs_rs::model::interaction::MessageCallbackData::default() #message,
             )
             .await?;
         };
-        if self.follow_ups {
+        let fetch = want.then(|| quote!(#target.fetch_reply(&ctx).await?));
+        if self.clicked || self.follow_ups {
             quote! {
-                if replied.replace(true) {
-                    cmd.follow_up(
+                if #replied.replace(true) {
+                    #target.follow_up(
                         &ctx,
                         djs_rs::model::rest::CreateFollowupMessage::default() #message,
                     )
-                    .await?;
+                    .await? #end
                 } else {
                     #reply
+                    #fetch
                 }
             }
+        } else if want {
+            quote!({ #reply #fetch })
         } else {
             reply
+        }
+    }
+
+    /// `.components(…)`: a row of buttons and a row with the select menu (D-098, D-099).
+    /// Waited-for clicks have the custom IDs `wait:<item>`; the others are routed (D-097).
+    fn components(&mut self, id: &NodeId, wait: bool, only_author: bool) -> TokenStream {
+        let node = &self.file.graph.nodes[id];
+        let route = route_name(self.file, id);
+        let author = (only_author && !wait).then(|| self.author_id());
+        let custom_id = |item: &str| {
+            if wait {
+                let id = format!("wait:{item}");
+                return quote!(#id);
+            }
+            let id = format!("{route}:{item}");
+            author.as_ref().map_or_else(
+                || quote!(#id),
+                |author| quote!(format!("{}:{}", #id, #author)),
+            )
+        };
+        let mut rows = Vec::new();
+        let buttons = Button::list(node.props.get("buttons"));
+        if !buttons.is_empty() {
+            let buttons = buttons.iter().map(|button| {
+                let make = match button.style {
+                    ButtonStyle::Link => {
+                        let url = button.url.trim();
+                        quote!(link(#url))
+                    }
+                    style => {
+                        let method = format_ident!(
+                            "{}",
+                            match style {
+                                ButtonStyle::Primary => "primary",
+                                ButtonStyle::Secondary => "secondary",
+                                ButtonStyle::Success => "success",
+                                _ => "danger",
+                            }
+                        );
+                        let custom_id = custom_id(&button.id);
+                        quote!(#method(#custom_id))
+                    }
+                };
+                let label = &button.label;
+                quote!(.component(djs_rs::builders::ButtonBuilder::#make.label(#label)))
+            });
+            rows.push(quote!(djs_rs::builders::ActionRowBuilder::new() #(#buttons)*));
+        }
+        let menu = MenuOption::list(node.props.get("menu"));
+        if !menu.is_empty() {
+            let custom_id = custom_id("menu");
+            let placeholder = text(&self.file.graph, id, "menu_placeholder").trim();
+            let placeholder = (!placeholder.is_empty()).then(|| quote!(.placeholder(#placeholder)));
+            let options = menu.iter().map(|option| {
+                let (label, value) = (&option.label, &option.id);
+                quote!(.option(#label, #value))
+            });
+            rows.push(quote! {
+                djs_rs::builders::ActionRowBuilder::new().component(
+                    djs_rs::builders::StringSelectMenuBuilder::new(#custom_id)
+                        #placeholder
+                        #(#options)*
+                )
+            });
+        }
+        quote!(.components([#(#rows.build()?),*]))
+    }
+
+    /// The branches of a message's clicks, by `item`, the clicked button or `menu`, and
+    /// the option `target` picked. Nothing when no click leads anywhere.
+    fn dispatch(&mut self, id: &NodeId, target: &TokenStream) -> Result<TokenStream, Error> {
+        let node = &self.file.graph.nodes[id];
+        let buttons: Vec<String> = Button::list(node.props.get("buttons"))
+            .into_iter()
+            .filter(|button| button.style != ButtonStyle::Link)
+            .map(|button| button.id)
+            .collect();
+        let options: Vec<String> = MenuOption::list(node.props.get("menu"))
+            .into_iter()
+            .map(|option| option.id)
+            .collect();
+        let mut arms = Vec::new();
+        for button in &buttons {
+            let body = self.after(id, button)?;
+            if !body.is_empty() {
+                arms.push(quote!(if item == #button { #body }));
+            }
+        }
+        for option in &options {
+            let body = self.after(id, option)?;
+            if !body.is_empty() {
+                arms.push(quote! {
+                    if item == "menu"
+                        && #target.values.first().is_some_and(|value| value.as_str() == #option)
+                    {
+                        #body
+                    }
+                });
+            }
+        }
+        let mut code = TokenStream::new();
+        for (ix, arm) in arms.into_iter().enumerate() {
+            if ix > 0 {
+                code.extend(quote!(else));
+            }
+            code.extend(arm);
+        }
+        Ok(code)
+    }
+
+    /// The answer to someone else's click when only the author may click (D-100): the
+    /// form's text, privately, or nothing visible.
+    fn not_yours(&self, id: &NodeId, target: &TokenStream) -> TokenStream {
+        let text = text(&self.file.graph, id, "not_yours").trim();
+        if text.is_empty() {
+            return quote!(#target.defer_update(&ctx).await?;);
+        }
+        quote! {
+            #target.reply(
+                &ctx,
+                djs_rs::model::interaction::MessageCallbackData::default()
+                    .content(#text)
+                    .allowed_mentions(djs_rs::model::message::AllowedMentions::default())
+                    .ephemeral(),
+            )
+            .await?;
+        }
+    }
+
+    /// The ID of the user who started this: the command's author, the event's user, or the
+    /// clicker in a click's handler; a `UserId`.
+    fn author_id(&mut self) -> TokenStream {
+        if let Some(event) = self.event {
+            return event.user_id();
+        }
+        self.interaction = true;
+        quote!(
+            interaction
+                .author()
+                .map(|user| user.id)
+                .ok_or("the command has no user")?
+        )
+    }
+
+    /// How long a message waits for a click, a `Duration` (D-097).
+    fn duration(&mut self, minutes: &str) -> TokenStream {
+        if is_literal(minutes) {
+            let minutes: f64 = minutes.trim().parse().expect("validated number");
+            return quote!(std::time::Duration::from_secs_f64(#minutes * 60.0));
+        }
+        let minutes = template_expr(minutes, self.options, false, &mut self.vars);
+        quote! {
+            std::time::Duration::from_secs_f64(
+                #minutes
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|minutes| *minutes > 0.0 && *minutes <= 1440.0)
+                    .ok_or("a wait is more than 0 and at most 1440 minutes (a day)")?
+                    * 60.0,
+            )
         }
     }
 
@@ -340,7 +711,11 @@ impl<'a> Body<'a> {
         Ok((
             {
                 // A command is `/ban`, an event graph its file name.
-                let slash = if self.event.is_some() { "" } else { "/" };
+                let slash = if self.file.kind == GraphKind::Command {
+                    "/"
+                } else {
+                    ""
+                };
                 let log = format!(
                     "WARN {slash}{}: {{error}}",
                     command.replace('{', "{{").replace('}', "}}")

@@ -193,6 +193,131 @@ fn messages() -> GraphFile {
     }
 }
 
+/// A command graph from JSON.
+fn command_graph(name: &str, graph: serde_json::Value) -> GraphFile {
+    GraphFile {
+        kind: GraphKind::Command,
+        name: name.to_owned(),
+        graph: serde_json::from_value(graph).unwrap(),
+        layout: Layout::default(),
+    }
+}
+
+/// Buttons and menus (D-097–D-100): a confirmation that waits, a role menu whose clicks
+/// always work with a nested button, and both kinds in events.
+#[allow(clippy::too_many_lines)] // the graphs, as data
+fn clicks() -> Vec<GraphFile> {
+    let id = "123456789012345678";
+    let yes_no = serde_json::json!([
+        { "id": "b1", "label": "Yes", "style": "danger" },
+        { "id": "b2", "label": "No", "style": "secondary" },
+        { "id": "b3", "label": "Rules", "style": "link", "url": "https://example.com/rules" }
+    ]);
+    vec![
+        command_graph(
+            "confirm",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "confirm", "description": "Bans after asking", "options": [
+                            { "name": "target", "type": "user", "description": "Who", "required": true } ] } },
+                    "n2": { "type": "core.reply", "props": {
+                        "content": "Ban {option.target.mention}?", "private": true, "buttons": yes_no,
+                        "wait": "5", "only_author": true, "not_yours": "Not your button." } },
+                    "n3": { "type": "core.has_permission", "props": {
+                        "user": "user", "permission": "ban_members" } },
+                    "n4": { "type": "core.ban", "props": {
+                        "user": "option.target", "delete_messages": "none" } },
+                    "n5": { "type": "core.reply", "props": { "content": "Banned {option.target.name}" } },
+                    "n6": { "type": "core.reply", "props": { "content": "Cancelled", "private": true } },
+                    "n7": { "type": "core.reply", "props": { "content": "Too slow" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.b1", "to": "n3.run" },
+                    { "from": "n3.yes", "to": "n4.run" },
+                    { "from": "n4.then", "to": "n5.run" },
+                    { "from": "n2.b2", "to": "n6.run" },
+                    { "from": "n2.timeout", "to": "n7.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "roles",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "roles", "description": "Posts the role menu" } },
+                    "n2": { "type": "core.send_message", "props": {
+                        "channel": "channel", "content": "Pick a colour",
+                        "menu": [ { "id": "o1", "label": "Red" }, { "id": "o2", "label": "Blue" } ],
+                        "menu_placeholder": "Colours",
+                        "buttons": [ { "id": "b1", "label": "Mine only", "style": "primary" } ],
+                        "only_author": true } },
+                    "n3": { "type": "core.reply", "props": { "content": "Posted", "private": true } },
+                    "n4": { "type": "core.add_role", "props": { "user": "user", "role": id } },
+                    "n5": { "type": "core.reply", "props": {
+                        "content": "{user.name} is red now in {channel.name} on {server.name}",
+                        "private": true } },
+                    "n6": { "type": "core.remove_role", "props": { "user": "user", "role": id } },
+                    "n7": { "type": "core.reply", "props": { "content": "Again?",
+                        "buttons": [ { "id": "b1", "label": "Again", "style": "success" } ] } },
+                    "n8": { "type": "core.reply", "props": { "content": "Again, {user.mention}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n2.o1", "to": "n4.run" },
+                    { "from": "n4.then", "to": "n5.run" },
+                    { "from": "n2.o2", "to": "n6.run" },
+                    { "from": "n2.b1", "to": "n7.run" },
+                    { "from": "n7.b1", "to": "n8.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "verify",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.member_join" },
+                    "n2": { "type": "core.send_message", "props": { "channel": id,
+                        "content": "Welcome {user.mention}, press to verify",
+                        "buttons": [ { "id": "b1", "label": "Verify", "style": "success" } ] } },
+                    "n3": { "type": "core.add_role", "props": { "user": "user", "role": id } },
+                    "n4": { "type": "core.reply", "props": { "content": "Verified", "private": true } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.b1", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "ask_delete",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.message" },
+                    "n2": { "type": "core.reply", "props": { "content": "Delete {message}?",
+                        "wait": "{message}", "only_author": true,
+                        "buttons": [ { "id": "b1", "label": "Delete", "style": "danger" } ] } },
+                    "n3": { "type": "core.delete_message" },
+                    "n4": { "type": "core.reply", "props": { "content": "Deleted", "private": true } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.b1", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" }
+                ]
+            }),
+        ),
+    ]
+}
+
 /// An event graph from JSON.
 fn event_graph(name: &str, graph: serde_json::Value) -> GraphFile {
     GraphFile {
@@ -489,6 +614,25 @@ fn messages_snapshot() {
 }
 
 #[test]
+fn clicks_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = project(dir.path(), Manifest::new("Click Bot"), &clicks());
+    let registry = Registry::with_core();
+    for file in &p.graphs {
+        assert_eq!(registry.validate(&file.graph), Vec::new(), "{}", file.name);
+    }
+    let output = generate(&p, &registry).unwrap();
+    for (name, path) in [
+        ("click_confirm", "commands/confirm.rs"),
+        ("click_roles", "commands/roles.rs"),
+        ("click_verify", "events/verify.rs"),
+        ("click_ask_delete", "events/ask_delete.rs"),
+    ] {
+        insta::assert_snapshot!(name, &output.files[&Path::new("generated/src").join(path)]);
+    }
+}
+
+#[test]
 fn events_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let p = project(dir.path(), Manifest::new("Event Bot"), &events());
@@ -694,6 +838,7 @@ fn generated_bot_compiles() {
     graphs.push(moderation());
     graphs.push(messages());
     graphs.extend(events());
+    graphs.extend(clicks());
     let p = project(dir.path(), Manifest::new("Ping Bot"), &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
 

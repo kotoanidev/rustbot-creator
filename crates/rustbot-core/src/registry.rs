@@ -156,6 +156,10 @@ pub enum PropKind {
     Bool,
     /// A colour as `#RRGGBB`, or a `{variable}` template that gives one when the bot runs.
     Color,
+    /// A message's buttons: a list of [`Button`] (D-098).
+    Buttons,
+    /// A message's select menu: a list of [`MenuOption`] (D-099).
+    MenuOptions,
 }
 
 impl PropKind {
@@ -163,7 +167,9 @@ impl PropKind {
     #[must_use]
     pub fn default_value(self) -> serde_json::Value {
         match self {
-            Self::Options => serde_json::Value::Array(Vec::new()),
+            Self::Options | Self::Buttons | Self::MenuOptions => {
+                serde_json::Value::Array(Vec::new())
+            }
             // Deleting nothing is the safe start (D-083).
             Self::Choice(Choices::DeleteMessages) => serde_json::Value::String("none".to_owned()),
             Self::Bool => serde_json::Value::Bool(false),
@@ -289,6 +295,139 @@ pub enum OptionProblem {
     TooMany,
 }
 
+/// A button under a message, as stored in the graph file (D-098).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Button {
+    /// Its output pin: `b1`, `b2`, …, kept when other buttons go.
+    pub id: String,
+    /// The text on it.
+    pub label: String,
+    /// Its colour, or a link.
+    pub style: ButtonStyle,
+    /// For a link: the address it opens.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub url: String,
+}
+
+impl Button {
+    /// The buttons stored in a form field, or none if it holds something else.
+    #[must_use]
+    pub fn list(value: Option<&serde_json::Value>) -> Vec<Self> {
+        value
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default()
+    }
+}
+
+/// A button's colour, as Discord names them, or a link, which has no output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ButtonStyle {
+    /// Blurple.
+    Primary,
+    /// Grey.
+    Secondary,
+    /// Green.
+    Success,
+    /// Red.
+    Danger,
+    /// Opens an address.
+    Link,
+}
+
+impl ButtonStyle {
+    /// Every style, in the order a form lists them.
+    pub const ALL: [Self; 5] = [
+        Self::Primary,
+        Self::Secondary,
+        Self::Success,
+        Self::Danger,
+        Self::Link,
+    ];
+}
+
+/// An option of a message's select menu, as stored in the graph file (D-099).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MenuOption {
+    /// Its output pin: `o1`, `o2`, …, kept when other options go.
+    pub id: String,
+    /// The text users pick.
+    pub label: String,
+}
+
+impl MenuOption {
+    /// The options stored in a form field, or none if it holds something else.
+    #[must_use]
+    pub fn list(value: Option<&serde_json::Value>) -> Vec<Self> {
+        value
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default()
+    }
+}
+
+/// What is wrong with a button or a menu option.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentProblem {
+    /// A button's label is not 1-80 characters, an option's not 1-100.
+    Label,
+    /// A link's address does not start with `https://` or `http://`.
+    Url,
+    /// Its id is not `b<number>` (a button) or `o<number>` (an option), or is taken.
+    Id,
+    /// More than 5 buttons or 25 options; reported on the first one too many.
+    TooMany,
+}
+
+/// The ids of a message node's buttons and menu options that have an output (D-098,
+/// D-099); links have none.
+#[must_use]
+pub fn click_items(node: &Node) -> Vec<String> {
+    let buttons = Button::list(node.props.get("buttons"))
+        .into_iter()
+        .filter(|button| button.style != ButtonStyle::Link)
+        .map(|button| button.id);
+    let options = MenuOption::list(node.props.get("menu"))
+        .into_iter()
+        .map(|option| option.id);
+    buttons.chain(options).collect()
+}
+
+/// Whether a message node waits for the click in the same handler (D-097).
+#[must_use]
+pub fn waits_for_click(node: &Node) -> bool {
+    node.props
+        .get("wait")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|wait| !wait.trim().is_empty())
+}
+
+/// What a click provides when it "always works" (D-097): the clicker, the channel and the
+/// server, like a command.
+fn click_scope() -> Vec<Variable> {
+    [
+        ("user", DataType::User),
+        ("channel", DataType::Channel),
+        ("server", DataType::Server),
+    ]
+    .into_iter()
+    .map(|(name, ty)| Variable {
+        name: name.to_owned(),
+        ty,
+    })
+    .collect()
+}
+
+/// Where a node runs (D-097). After a click that "always works", a new handler starts in
+/// which only [`click_scope`] is known (`routed`); after a click waited for, every variable
+/// stays, and replies answer the click (`clicked`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct Context {
+    routed: bool,
+    clicked: bool,
+}
+
 /// A variable a trigger provides to templates.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Variable {
@@ -394,6 +533,17 @@ pub enum ProblemKind {
         /// The largest number allowed.
         max: u32,
     },
+    /// A button or menu option breaks Discord's rules (D-098, D-099).
+    BadComponent {
+        /// The form field: `buttons` or `menu`.
+        prop: String,
+        /// Its position in the list, from 0.
+        item: usize,
+        /// What is wrong.
+        problem: ComponentProblem,
+    },
+    /// "Only the command author can click" where no user started the graph (D-100).
+    OnlyAuthorWithoutUser,
     /// A command option breaks Discord's rules.
     BadOption {
         /// Its position in the list, from 0.
@@ -445,6 +595,22 @@ impl fmt::Display for Problem {
             }
             ProblemKind::BadNumber { prop, max } => {
                 write!(f, "{prop:?} is not a number above 0 and at most {max}")
+            }
+            ProblemKind::BadComponent {
+                prop,
+                item,
+                problem,
+            } => {
+                let why = match problem {
+                    ComponentProblem::Label => "the label is empty or too long",
+                    ComponentProblem::Url => "a link needs an address starting with https://",
+                    ComponentProblem::Id => "its id is not unique or not like b1 or o1",
+                    ComponentProblem::TooMany => "a message has at most 5 buttons and 25 options",
+                };
+                write!(f, "{prop:?} {}: {why}", item + 1)
+            }
+            ProblemKind::OnlyAuthorWithoutUser => {
+                f.write_str("only the author can click, but no user started this")
             }
             ProblemKind::BadOption { option, problem } => {
                 let why = match problem {
@@ -529,11 +695,7 @@ impl Registry {
     #[must_use]
     pub fn warnings(&self, graph: &Graph) -> Vec<Problem> {
         let mut warnings = Vec::new();
-        let Some(trigger) = graph.nodes.iter().find_map(|(id, node)| {
-            self.get(&node.kind)
-                .is_some_and(|t| t.category == Category::Trigger)
-                .then_some(id)
-        }) else {
+        let Some(trigger) = self.trigger(graph) else {
             return warnings;
         };
         if graph.nodes[trigger].kind == "core.slash_command"
@@ -644,39 +806,35 @@ impl Registry {
             1 => {}
             _ => report(None, ProblemKind::SeveralTriggers),
         }
-        let scope = self.scope(graph);
-        let scope = scope.as_slice();
-
-        let trigger = graph.nodes.values().find(|node| {
-            self.get(&node.kind)
-                .is_some_and(|t| t.category == Category::Trigger)
-        });
-        let trigger = trigger.map(|node| node.kind.as_str());
+        let scopes = [self.scope(graph), click_scope()];
+        let trigger_id = self.trigger(graph);
+        let trigger = trigger_id.map(|id| graph.nodes[id].kind.as_str());
+        let contexts = Self::contexts(graph, trigger_id);
+        // A node no wire reaches is checked as if the trigger led to it.
+        let unreached = BTreeSet::from([Context::default()]);
         for (id, node) in &graph.nodes {
             let Some(node_type) = self.get(&node.kind) else {
                 report(Some(id), ProblemKind::UnknownNodeType(node.kind.clone()));
                 continue;
             };
-            if let Some(trigger) = trigger
-                && !node_type.triggers.is_empty()
-                && !node_type.triggers.iter().any(|t| t == trigger)
-            {
-                report(
-                    Some(id),
-                    ProblemKind::WrongTrigger {
-                        allowed: node_type.triggers.clone(),
-                    },
-                );
-            }
-            if node.props.get("private") == Some(&serde_json::Value::Bool(true))
-                && trigger.is_some_and(|t| t != "core.slash_command")
-            {
-                report(Some(id), ProblemKind::PrivateOutsideCommand);
-            }
-            for prop in &node_type.props {
-                for kind in check_prop(prop, node.props.get(&prop.name), scope) {
-                    report(Some(id), kind);
+            // A node that runs in several contexts is checked in each, and every problem
+            // is reported once.
+            let mut found: Vec<ProblemKind> = Vec::new();
+            for &context in contexts.get(id).unwrap_or(&unreached) {
+                let base = if context.routed {
+                    Some("core.click")
+                } else {
+                    trigger
+                };
+                let scope = &scopes[usize::from(context.routed)];
+                for kind in check_node(node, node_type, base, context, scope) {
+                    if !found.contains(&kind) {
+                        found.push(kind);
+                    }
                 }
+            }
+            for kind in found {
+                report(Some(id), kind);
             }
             for name in node.props.keys() {
                 if !node_type.props.iter().any(|p| &p.name == name) {
@@ -753,12 +911,95 @@ impl Registry {
     }
 
     /// The pin a reference points to, if its node and pin exist.
-    fn pin<'a>(&'a self, graph: &Graph, pin: &PinRef) -> Option<&'a Pin> {
+    fn pin(&self, graph: &Graph, pin: &PinRef) -> Option<Pin> {
         let node = graph.nodes.get(&pin.node)?;
-        self.get(&node.kind)?
-            .pins
+        self.pins(node).into_iter().find(|p| p.name == pin.pin)
+    }
+
+    /// A node's pins: its type's, an output per button and menu option of a message, and
+    /// "timeout" when it waits for the click (D-097–D-099). Empty for an unknown type.
+    #[must_use]
+    pub fn pins(&self, node: &Node) -> Vec<Pin> {
+        let Some(node_type) = self.get(&node.kind) else {
+            return Vec::new();
+        };
+        let mut pins = node_type.pins.clone();
+        let has_clicks = node_type
+            .props
             .iter()
-            .find(|p| p.name == pin.pin)
+            .any(|p| matches!(p.kind, PropKind::Buttons | PropKind::MenuOptions));
+        let clicks = if has_clicks {
+            click_items(node)
+        } else {
+            Vec::new()
+        };
+        let timeout = (!clicks.is_empty() && waits_for_click(node)).then(|| "timeout".to_owned());
+        pins.extend(clicks.into_iter().chain(timeout).map(|name| Pin {
+            name,
+            direction: Direction::Out,
+            kind: PinKind::Flow,
+        }));
+        pins
+    }
+
+    /// The graph's trigger node; with several, the first.
+    fn trigger<'a>(&self, graph: &'a Graph) -> Option<&'a NodeId> {
+        graph.nodes.iter().find_map(|(id, node)| {
+            self.get(&node.kind)
+                .is_some_and(|t| t.category == Category::Trigger)
+                .then_some(id)
+        })
+    }
+
+    /// The contexts each node the trigger leads to runs in (D-097).
+    fn contexts(graph: &Graph, trigger: Option<&NodeId>) -> BTreeMap<NodeId, BTreeSet<Context>> {
+        let mut reached: BTreeMap<NodeId, BTreeSet<Context>> = BTreeMap::new();
+        let mut next: Vec<(NodeId, Context)> = trigger
+            .map(|id| (id.clone(), Context::default()))
+            .into_iter()
+            .collect();
+        while let Some((id, context)) = next.pop() {
+            if !reached.entry(id.clone()).or_default().insert(context) {
+                continue;
+            }
+            let Some(node) = graph.nodes.get(&id) else {
+                continue;
+            };
+            let clicks = click_items(node);
+            let waits = waits_for_click(node);
+            for edge in graph.edges.iter().filter(|edge| edge.from.node == id) {
+                let after = if !clicks.contains(&edge.from.pin) {
+                    context
+                } else if waits {
+                    Context {
+                        clicked: true,
+                        ..context
+                    }
+                } else {
+                    Context {
+                        routed: true,
+                        clicked: false,
+                    }
+                };
+                next.push((edge.to.node.clone(), after));
+            }
+        }
+        reached
+    }
+
+    /// The variables `node`'s fields can use: the graph's, or after a click that "always
+    /// works", only the clicker, the channel and the server (D-097).
+    #[must_use]
+    pub fn scope_at(&self, graph: &Graph, node: &NodeId) -> Vec<Variable> {
+        let contexts = Self::contexts(graph, self.trigger(graph));
+        let routed = contexts
+            .get(node)
+            .is_some_and(|contexts| contexts.iter().any(|context| context.routed));
+        if routed {
+            click_scope()
+        } else {
+            self.scope(graph)
+        }
     }
 
     /// Whether the reference's node exists with a known type. Unknown types are reported once,
@@ -769,6 +1010,45 @@ impl Registry {
             .get(&pin.node)
             .is_none_or(|node| self.get(&node.kind).is_some())
     }
+}
+
+/// What is wrong with a node where it runs: under `base`, a trigger or `core.click` (D-097).
+fn check_node(
+    node: &Node,
+    node_type: &NodeType,
+    base: Option<&str>,
+    context: Context,
+    scope: &[Variable],
+) -> Vec<ProblemKind> {
+    let mut problems = Vec::new();
+    // After any click, "Reply" answers it.
+    let replies_to_click = context.clicked && node.kind == "core.reply";
+    if let Some(base) = base
+        && !node_type.triggers.is_empty()
+        && !node_type.triggers.iter().any(|t| t == base)
+        && !replies_to_click
+    {
+        problems.push(ProblemKind::WrongTrigger {
+            allowed: node_type.triggers.clone(),
+        });
+    }
+    let interaction = context.clicked || matches!(base, Some("core.slash_command" | "core.click"));
+    if node.props.get("private") == Some(&serde_json::Value::Bool(true))
+        && base.is_some()
+        && !interaction
+    {
+        problems.push(ProblemKind::PrivateOutsideCommand);
+    }
+    for prop in &node_type.props {
+        problems.extend(check_prop(prop, node.props.get(&prop.name), scope));
+    }
+    if node.props.get("only_author") == Some(&serde_json::Value::Bool(true))
+        && !click_items(node).is_empty()
+        && !scope.iter().any(|var| var.name == "user")
+    {
+        problems.push(ProblemKind::OnlyAuthorWithoutUser);
+    }
+    problems
 }
 
 /// What is wrong with one form field's value.
@@ -789,6 +1069,12 @@ fn check_prop(
             } else {
                 Vec::new()
             }
+        }
+        (PropKind::Buttons, Some(value)) => serde_json::from_value::<Vec<Button>>(value.clone())
+            .map_or_else(|_| wrong_type(), |buttons| check_buttons(&buttons)),
+        (PropKind::MenuOptions, Some(value)) => {
+            serde_json::from_value::<Vec<MenuOption>>(value.clone())
+                .map_or_else(|_| wrong_type(), |options| check_menu(&options))
         }
         (PropKind::Options, Some(value)) => {
             serde_json::from_value::<Vec<CommandOption>>(value.clone())
@@ -924,6 +1210,65 @@ fn check_options(options: &[CommandOption]) -> Vec<ProblemKind> {
             bad(ix, OptionProblem::RequiredAfterOptional);
         }
         optional_before |= !option.required;
+    }
+    problems
+}
+
+/// Discord's rules for a message's buttons (D-098).
+fn check_buttons(buttons: &[Button]) -> Vec<ProblemKind> {
+    let labels = buttons.iter().map(|b| (b.id.as_str(), b.label.as_str()));
+    let mut problems = check_items("buttons", 'b', labels, 5, 80);
+    for (item, button) in buttons.iter().enumerate() {
+        let url = button.url.trim();
+        let is_url = (url.starts_with("https://") || url.starts_with("http://"))
+            && url.len() <= 512
+            && !url.contains(char::is_whitespace);
+        if button.style == ButtonStyle::Link && !is_url {
+            problems.push(ProblemKind::BadComponent {
+                prop: "buttons".to_owned(),
+                item,
+                problem: ComponentProblem::Url,
+            });
+        }
+    }
+    problems
+}
+
+/// Discord's rules for a message's select menu (D-099).
+fn check_menu(options: &[MenuOption]) -> Vec<ProblemKind> {
+    let labels = options.iter().map(|o| (o.id.as_str(), o.label.as_str()));
+    check_items("menu", 'o', labels, 25, 100)
+}
+
+/// The rules buttons and menu options share: how many, their ids and their labels.
+fn check_items<'a>(
+    prop: &str,
+    prefix: char,
+    items: impl Iterator<Item = (&'a str, &'a str)>,
+    most: usize,
+    longest: usize,
+) -> Vec<ProblemKind> {
+    let mut problems = Vec::new();
+    let mut ids = BTreeSet::new();
+    for (item, (id, label)) in items.enumerate() {
+        let mut bad = |problem| {
+            problems.push(ProblemKind::BadComponent {
+                prop: prop.to_owned(),
+                item,
+                problem,
+            });
+        };
+        if item == most {
+            bad(ComponentProblem::TooMany);
+        }
+        let number = id.strip_prefix(prefix).unwrap_or_default();
+        let id_ok = !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit());
+        if !id_ok || !ids.insert(id) {
+            bad(ComponentProblem::Id);
+        }
+        if label.trim().is_empty() || label.chars().count() > longest {
+            bad(ComponentProblem::Label);
+        }
     }
     problems
 }

@@ -1236,6 +1236,38 @@ alternatives that were considered, and why.
     saved, both files go, and the undo steps of the other graphs are kept.
   - A bot refused for privileged intents (close code 4014) prints a plain line and the
     portal link on its own line, which the Logs open (D-095, as in D-072).
+
+### C-024 — How buttons and menus work
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Storage:** a message node holds `buttons` (`{id, label, style, url}`, style
+    `primary`, `secondary`, `success`, `danger` or `link`) and `menu` (`{id, label}`), plus
+    `menu_placeholder`, `wait` (minutes, up to a day), `only_author` and `not_yours`.
+  - **Outputs:** ids are `b1`, `b2`, … and `o1`, `o2`, …; each id is also its output pin, so
+    a wire stays on its button when others are removed. `Registry::pins(node)` adds them to
+    the type's pins, with "timeout" when the message waits. Removing a button in the form
+    removes its wires in the same undo step.
+  - **Rules:** at most 5 buttons (label 1–80 characters) and 25 options (1–100); a link
+    needs an `http(s)://` address.
+  - **After a click that always works:** the handler is a new run. `user` is the clicker,
+    `channel` and `server` are the click's, and nodes behave as under a command:
+    "Reply" answers the click, and "Has permission?" checks the clicker. Validation
+    tracks this per node; "Has permission?" lists `core.click` among its triggers.
+  - **After a click waited for:** every variable keeps its value, "Reply" answers the
+    click, and "then" follows when the wait is over. The buttons are removed from the
+    message when the wait ends, except on a private reply, which cannot be edited that way.
+  - **Answering clicks:** a click that no "Reply" answers is acknowledged silently, so
+    Discord does not say it failed.
+  - **Custom IDs:** `c.<graph>.<node>:<item>` for commands and `e.…` for events, with
+    `:<author ID>` when only the author may click; a waited-for click uses `wait:<item>`.
+    The menu's item is `menu`, and the option's id is its value.
+  - **Only the author:** ticking it fills "Answer to others" with a translated default;
+    an empty answer acknowledges the click without a message. "Bot is ready" has no user,
+    so it is a problem there.
+  - **Form:** the "Buttons and menu" section folds like "Embed". The menu hint shows once
+    the menu has options, and the answer to others once "only the author" is ticked.
+  - **Palette:** in a graph with buttons or a menu, it also offers nodes that work after
+    a click, such as "Reply" in an event graph.
 ---
 
 ## Open questions (to ask the owner when relevant)

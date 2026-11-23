@@ -2,12 +2,12 @@
 
 use std::collections::BTreeSet;
 
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use rustbot_core::{GraphFile, NodeId};
 
 use crate::Error;
-use crate::command::Body;
+use crate::command::{Body, uses};
 
 /// The events a graph can start from, by their trigger node types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,7 +176,8 @@ pub(crate) fn module(
     let node = &file.graph.nodes[trigger];
     let mut code = Body::for_event(file, event);
     let body = code.after(trigger, "then")?;
-    let (vars, needs_quiet) = code.finish();
+    let (vars, needs_quiet, routes) = code.finish();
+    let (handlers, routes_quiet) = crate::command::route_handlers(file, routes)?;
     // shortcut: every variable is computed first, so a name used in one branch is fetched
     // for each event; compute them where they are used if a busy server hits rate limits.
     let bindings = vars.iter().map(|path| event.binding(path));
@@ -208,7 +209,7 @@ pub(crate) fn module(
     } else {
         quote!(_event)
     };
-    let quiet = needs_quiet.then(crate::command::quiet_fn);
+    let quiet = (needs_quiet || routes_quiet).then(crate::command::quiet_fn);
     let djs = event.djs();
     let doc = format!(
         " The `{}` event graph, from `graphs/events/{}.json`.",
@@ -229,16 +230,8 @@ pub(crate) fn module(
                 #body
                 Ok(())
             });
+            #(#handlers)*
         }
-    })
-}
-
-/// Whether `code` mentions the identifier `name` anywhere.
-fn uses(code: &TokenStream, name: &str) -> bool {
-    code.clone().into_iter().any(|tree| match tree {
-        TokenTree::Ident(ident) => ident == name,
-        TokenTree::Group(group) => uses(&group.stream(), name),
-        _ => false,
     })
 }
 

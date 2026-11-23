@@ -1,8 +1,8 @@
 //! Graph validation against the node registry (D-047, D-052–D-054).
 
 use rustbot_core::registry::{
-    Category, DataType, Direction, NodeType, OptionProblem, Pin, PinKind, ProblemKind,
-    RegisterError,
+    Category, ComponentProblem, DataType, Direction, NodeType, OptionProblem, Pin, PinKind,
+    ProblemKind, PropKind, RegisterError,
 };
 use rustbot_core::{Graph, NodeId, Registry};
 
@@ -348,7 +348,10 @@ fn new_nodes_start_with_values_of_the_right_kind() {
     for node_type in Registry::with_core().iter() {
         for prop in &node_type.props {
             let value = prop.kind.default_value();
-            let expected_list = prop.kind == rustbot_core::registry::PropKind::Options;
+            let expected_list = matches!(
+                prop.kind,
+                PropKind::Options | PropKind::Buttons | PropKind::MenuOptions
+            );
             assert_eq!(
                 value.is_array(),
                 expected_list,
@@ -668,7 +671,11 @@ fn events_offer_their_variables_and_allow_their_nodes() {
     assert_eq!(event_graph("core.ready", &send("Online")), none);
 
     let commands_only = ProblemKind::WrongTrigger {
-        allowed: vec!["core.slash_command".to_owned(), "core.message".to_owned()],
+        allowed: vec![
+            "core.slash_command".to_owned(),
+            "core.message".to_owned(),
+            "core.click".to_owned(),
+        ],
     };
     assert_eq!(
         event_graph("core.member_join", &reply("Hi")),
@@ -681,7 +688,7 @@ fn events_offer_their_variables_and_allow_their_nodes() {
             "props": { "user": "user", "permission": "administrator" } })
         ),
         vec![ProblemKind::WrongTrigger {
-            allowed: vec!["core.slash_command".to_owned()]
+            allowed: vec!["core.slash_command".to_owned(), "core.click".to_owned()]
         }]
     );
     assert_eq!(
@@ -707,4 +714,153 @@ fn events_offer_their_variables_and_allow_their_nodes() {
             path: "user.name".to_owned()
         }]
     );
+}
+
+/// A command whose reply carries `buttons` and `menu`, then `after` wired as given.
+fn clicks(
+    message: &serde_json::Value,
+    after: &serde_json::Value,
+    edges: &serde_json::Value,
+) -> Graph {
+    let mut nodes = after.clone();
+    nodes["n1"] = serde_json::json!({ "type": "core.slash_command", "props": {
+        "name": "ask", "description": "Asks", "options": [
+            { "name": "target", "type": "user", "description": "Who" } ] } });
+    nodes["n2"] = message.clone();
+    let mut edges = edges.as_array().unwrap().clone();
+    edges.push(serde_json::json!({ "from": "n1.then", "to": "n2.run" }));
+    serde_json::from_value(serde_json::json!({ "schema": 1, "nodes": nodes, "edges": edges }))
+        .unwrap()
+}
+
+#[test]
+fn buttons_and_options_add_outputs() {
+    let registry = Registry::with_core();
+    let node: rustbot_core::Node = serde_json::from_value(serde_json::json!({
+        "type": "core.reply", "props": { "content": "Sure?", "buttons": [
+            { "id": "b1", "label": "Yes", "style": "success" },
+            { "id": "b3", "label": "Docs", "style": "link", "url": "https://example.com" } ],
+        "menu": [ { "id": "o2", "label": "Red" } ] } }))
+    .unwrap();
+    let outputs = |node: &rustbot_core::Node| -> Vec<String> {
+        registry
+            .pins(node)
+            .into_iter()
+            .filter(|pin| pin.direction == Direction::Out)
+            .map(|pin| pin.name)
+            .collect()
+    };
+    // A link has no output.
+    assert_eq!(outputs(&node), ["then", "b1", "o2"]);
+    let mut waiting = node.clone();
+    waiting.props.insert("wait".to_owned(), "5".into());
+    assert_eq!(outputs(&waiting), ["then", "b1", "o2", "timeout"]);
+    // Only message nodes have them.
+    let mut kick = node;
+    kick.kind = "core.kick".to_owned();
+    assert_eq!(outputs(&kick), ["then", "error"]);
+}
+
+#[test]
+fn buttons_and_options_follow_discords_rules() {
+    let bad = |prop: &str, item, problem| ProblemKind::BadComponent {
+        prop: prop.to_owned(),
+        item,
+        problem,
+    };
+    let message = serde_json::json!({ "type": "core.reply", "props": { "content": "Hi",
+        "buttons": [
+            { "id": "b1", "label": "", "style": "primary" },
+            { "id": "b1", "label": "Same", "style": "danger" },
+            { "id": "x", "label": "Odd", "style": "secondary" },
+            { "id": "b4", "label": "Docs", "style": "link", "url": "javascript:alert(1)" },
+            { "id": "b5", "label": "Ok", "style": "success" },
+            { "id": "b6", "label": "Sixth", "style": "success" } ],
+        "menu": [ { "id": "o1", "label": "x".repeat(101) } ] } });
+    let graph = clicks(&message, &serde_json::json!({}), &serde_json::json!([]));
+    assert_eq!(
+        kinds(&graph),
+        vec![
+            bad("buttons", 0, ComponentProblem::Label),
+            bad("buttons", 1, ComponentProblem::Id),
+            bad("buttons", 2, ComponentProblem::Id),
+            bad("buttons", 5, ComponentProblem::TooMany),
+            bad("buttons", 3, ComponentProblem::Url),
+            bad("menu", 0, ComponentProblem::Label),
+        ]
+    );
+}
+
+#[test]
+fn after_a_click_that_always_works_only_the_click_is_known() {
+    let ask = |wait: &str| {
+        serde_json::json!({ "type": "core.reply", "props": { "content": "Sure?", "wait": wait,
+            "buttons": [ { "id": "b1", "label": "Yes", "style": "danger" } ] } })
+    };
+    let after = serde_json::json!({
+        "n3": { "type": "core.ban", "props": { "user": "option.target",
+            "delete_messages": "none" } },
+        "n4": { "type": "core.reply", "props": { "content": "{user.mention} in {channel.mention}",
+            "private": true } },
+        "n5": { "type": "core.has_permission", "props": { "user": "user",
+            "permission": "ban_members" } }
+    });
+    let edges = serde_json::json!([
+        { "from": "n2.b1", "to": "n5.run" },
+        { "from": "n5.yes", "to": "n3.run" },
+        { "from": "n3.then", "to": "n4.run" }
+    ]);
+    // Waited for, the command's options stay (D-097).
+    assert_eq!(kinds(&clicks(&ask("5"), &after, &edges)), Vec::new());
+    // Always working, they are gone; the clicker, channel and server stay.
+    let graph = clicks(&ask(""), &after, &edges);
+    assert_eq!(
+        kinds(&graph),
+        vec![ProblemKind::UnknownVariable {
+            prop: "user".to_owned(),
+            path: "option.target".to_owned()
+        }]
+    );
+    let registry = Registry::with_core();
+    let names = |node: &str| -> Vec<String> {
+        registry
+            .scope_at(&graph, &NodeId(node.to_owned()))
+            .into_iter()
+            .map(|var| var.name)
+            .collect()
+    };
+    assert_eq!(names("n3"), ["user", "channel", "server"]);
+    assert_eq!(names("n2"), ["user", "channel", "server", "option.target"]);
+}
+
+#[test]
+fn clicks_let_events_reply_and_need_a_user_to_limit() {
+    let event = |trigger: &str, wait: &str, only_author: bool| -> Vec<ProblemKind> {
+        kinds(
+            &serde_json::from_value(serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": trigger },
+                    "n2": { "type": "core.send_message", "props": { "channel": "123456789012345678",
+                        "content": "Click", "wait": wait, "only_author": only_author,
+                        "menu": [ { "id": "o1", "label": "Me" } ] } },
+                    "n3": { "type": "core.reply", "props": { "content": "Done", "private": true } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.o1", "to": "n3.run" }
+                ]
+            }))
+            .unwrap(),
+        )
+    };
+    // "Reply" answers the click, privately too, in either mode.
+    assert_eq!(event("core.member_join", "", true), Vec::new());
+    assert_eq!(event("core.member_join", "10", true), Vec::new());
+    // "Bot is ready" has no user to limit the click to (D-100).
+    assert_eq!(
+        event("core.ready", "10", true),
+        vec![ProblemKind::OnlyAuthorWithoutUser]
+    );
+    assert_eq!(event("core.ready", "10", false), Vec::new());
 }

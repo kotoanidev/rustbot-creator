@@ -30,20 +30,16 @@ pub(crate) fn position(file: &GraphFile, id: &NodeId) -> [f32; 2] {
     })
 }
 
-fn side(node: Option<&NodeType>, direction: Direction) -> Vec<&Pin> {
-    node.map_or_else(Vec::new, |node| {
-        node.pins
-            .iter()
-            .filter(|pin| pin.direction == direction)
-            .collect()
-    })
+fn side(pins: &[Pin], direction: Direction) -> impl Iterator<Item = &Pin> {
+    pins.iter().filter(move |pin| pin.direction == direction)
 }
 
-/// A node's size: a title over as many rows as its longer side of pins.
-pub(crate) fn size(node: Option<&NodeType>) -> [f32; 2] {
-    let rows = side(node, Direction::In)
-        .len()
-        .max(side(node, Direction::Out).len())
+/// A node's size, from its pins as [`Registry::pins`] gives them: a title over as many rows
+/// as its longer side of pins.
+pub(crate) fn size(pins: &[Pin]) -> [f32; 2] {
+    let rows = side(pins, Direction::In)
+        .count()
+        .max(side(pins, Direction::Out).count())
         .max(1);
     [
         WIDTH,
@@ -52,14 +48,13 @@ pub(crate) fn size(node: Option<&NodeType>) -> [f32; 2] {
 }
 
 /// The pins on one side of a node, with their centres relative to the node.
-pub(crate) fn pins(node: Option<&NodeType>, direction: Direction) -> Vec<(&Pin, [f32; 2])> {
+pub(crate) fn pins(pins: &[Pin], direction: Direction) -> Vec<(&Pin, [f32; 2])> {
     let x = if direction == Direction::In {
         0.
     } else {
         WIDTH
     };
-    side(node, direction)
-        .into_iter()
+    side(pins, direction)
         .zip(0_u16..)
         .map(|(pin, row)| (pin, [x, HEADER + ROW * (f32::from(row) + 0.5)]))
         .collect()
@@ -73,10 +68,10 @@ pub(crate) fn pin_position(
 ) -> Option<[f32; 2]> {
     let node = file.graph.nodes.get(&pin.node)?;
     let at = position(file, &pin.node);
-    let kind = registry.get(&node.kind);
+    let all = registry.pins(node);
     [Direction::In, Direction::Out]
         .into_iter()
-        .flat_map(|direction| pins(kind, direction))
+        .flat_map(|direction| pins(&all, direction))
         .find(|(p, _)| p.name == pin.pin)
         .map(|(_, offset)| [at[0] + offset[0], at[1] + offset[1]])
 }
@@ -96,9 +91,9 @@ pub(crate) enum Hit {
 pub(crate) fn hit(file: &GraphFile, registry: &Registry, point: [f32; 2]) -> Hit {
     for (id, node) in file.graph.nodes.iter().rev() {
         let at = position(file, id);
-        let kind = registry.get(&node.kind);
+        let all = registry.pins(node);
         for direction in [Direction::In, Direction::Out] {
-            for (pin, offset) in pins(kind, direction) {
+            for (pin, offset) in pins(&all, direction) {
                 let dx = point[0] - (at[0] + offset[0]);
                 let dy = point[1] - (at[1] + offset[1]);
                 if dx * dx + dy * dy <= PIN_REACH * PIN_REACH {
@@ -110,7 +105,7 @@ pub(crate) fn hit(file: &GraphFile, registry: &Registry, point: [f32; 2]) -> Hit
                 }
             }
         }
-        let [w, h] = size(kind);
+        let [w, h] = size(&all);
         if (at[0]..=at[0] + w).contains(&point[0]) && (at[1]..=at[1] + h).contains(&point[1]) {
             return Hit::Node(id.clone());
         }
