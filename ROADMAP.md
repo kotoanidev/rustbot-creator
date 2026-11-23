@@ -23,7 +23,7 @@ measured (D-026, D-038).
 
 # Release 1 — Fedora (D-033)
 
-## Phase 2 — Vertical slice (D-031) — in progress
+## Phase 2 — Vertical slice (D-031) ✅
 Goal: a `/ping` command made in the graph runs as a real bot, end to end through every
 layer, before the scope widens.
 - [x] Cargo workspace with the six slice crates (D-036), lints, rustfmt/clippy config, CI on
@@ -42,7 +42,8 @@ layer, before the scope widens.
       the log panel itself comes with the app shell
 - [x] App shell: window, dock, project tree, minimal graph canvas, form panel, log panel,
       English + Polish text (D-024, D-037)
-- [ ] Budgets measured (D-038); live test with the owner's test bot
+- [x] Budgets measured (D-038), all met; live test with the owner's test bot passed on
+      2026-11-23 (`/ping` answered on the test server)
 
 ## Phase 3 — Easy mode (D-014, D-032)
 - [ ] Full node catalog and forms over what djs-rs covers: commands, events, messages,

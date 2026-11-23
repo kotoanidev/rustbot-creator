@@ -7,7 +7,7 @@
 **Phase 0 — Initialization: ✅ done 2026-11-17.**
 **Phase 1 — Detailed planning: ✅ done 2026-11-17** for everything Phase 2 needs (D-011 to
 D-046). Later phases are planned in detail when each one starts (D-043).
-**Phase 2 — Vertical slice: in progress.** Step 1 (workspace skeleton + CI) is ✅ done.
+**Phase 2 — Vertical slice: ✅ done 2026-11-23.** The owner ran `/ping` live on a test server. Step 1 (workspace skeleton + CI) is ✅ done.
 The six crates of D-036 and the lints of D-046 are in place, and `cargo run -p
 rustbot-creator` opens an empty "RustBot Creator" window (gpui-kit 0.10.0). The first CI
 run was green: rustfmt 15 s, Ubuntu 280 s, Fedora 44 297 s.
@@ -97,17 +97,17 @@ The fixes:
   opens such a line in the browser.
 - The runner sets `NO_COLOR=1`, so tracing's colour codes no longer clutter the Logs.
 
+After these fixes the owner's live test passed (2026-11-23): Run built the bot, and
+`/ping` answered on the test server. Step 9 and Phase 2 are ✅ done.
+
 The owner finds the console hard to read and wants it improved later. Colour codes are
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Live test with the owner, again** (the owner does it, because only they may enter the
-token): `cargo run --release -p rustbot-creator`, open `~/Pulpit/my-bot`, press "▶ Run".
-If Logs say the bot is not on the test server, check the server ID, or click the link,
-add the bot to the server, "■ Stop" and "▶ Run" again. Use `/ping` on the test server
-and expect "Pong, <name>!". If it works, mark Phase 2 done in `ROADMAP.md`, then ask the
-owner what the console should become, and plan Phase 3 (the easy mode's node catalog)
-with the owner (D-043).
+**Plan Phase 3 (easy mode, D-014, D-032) with the owner** (D-043): the first nodes of the
+catalog, how values move between nodes (data pins, variables), and where the console
+improvements fit. Record the answers as D-NNN, update `ROADMAP.md`, then build the first
+step.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.
