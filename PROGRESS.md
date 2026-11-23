@@ -113,9 +113,11 @@ gone, but selecting and copying text, levels and wrapping are still open.
   "then" and "error" outputs (D-082–D-084, C-018). The generated bot builds against
   djs-rs with clippy, but no live run has happened yet: the owner tests later.
 
+  Moderation commands are gated by Discord's default member permissions, and Problems
+  warns in yellow when an action is not behind "Has permission?" (D-085, C-019).
+
 2e covers "Send to a channel", a reply only the author sees (ephemeral) and a basic embed
-(D-079). Before starting it, ask the owner the open question "Moderation without a
-permission check" in `docs/DECISIONS.md`.
+(D-079).
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

@@ -10,7 +10,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::template::{self, Segment, TemplateError};
-use crate::{Graph, NodeId, PinRef};
+use crate::{Graph, Node, NodeId, PinRef};
 
 /// What a node type is: its pins, its form fields, and what it provides and needs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +29,10 @@ pub struct NodeType {
     /// The gateway intents it needs, as djs-rs `Intents` names, e.g. `GUILD_MESSAGES`
     /// (D-049).
     pub intents: Vec<String>,
+    /// For moderation actions: the Discord permission a member needs to have the bot do it
+    /// to someone else, as a [`Choices::Permission`] value, e.g. `ban_members` (D-085).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<String>,
 }
 
 /// Where a node type is shown in the palette.
@@ -339,6 +343,12 @@ pub enum ProblemKind {
         /// The variable, e.g. `option.reason`.
         path: String,
     },
+    /// A warning, which does not block Run: an action that needs `permission` can run
+    /// without "Has permission?" checking the command author first (D-085).
+    NoPermissionCheck {
+        /// The permission, as a [`Choices::Permission`] value.
+        permission: String,
+    },
     /// A number field holds something other than a number from above 0 to `max` (D-084).
     BadNumber {
         /// The form field.
@@ -379,6 +389,12 @@ impl fmt::Display for Problem {
             }
             ProblemKind::WrongVariableType { prop, path } => {
                 write!(f, "{prop:?}: {{{path}}} has the wrong type")
+            }
+            ProblemKind::NoPermissionCheck { permission } => {
+                write!(
+                    f,
+                    "an action needing {permission} runs without a permission check"
+                )
             }
             ProblemKind::BadNumber { prop, max } => {
                 write!(f, "{prop:?} is not a number above 0 and at most {max}")
@@ -446,6 +462,59 @@ impl Registry {
     /// Every node type, sorted by id.
     pub fn iter(&self) -> impl Iterator<Item = &NodeType> {
         self.types.values()
+    }
+
+    /// The permission `node` needs, if it is a moderation action that acts on someone
+    /// other than the command author (D-085). Acting on the author is allowed, so "/verify"
+    /// can give its user a fixed role; a role from an option needs the permission even
+    /// then, since the user could pick any role.
+    #[must_use]
+    pub fn needed_permission(&self, node: &Node) -> Option<&str> {
+        let permission = self.get(&node.kind)?.permission.as_deref()?;
+        let text = |name: &str| node.props.get(name).and_then(serde_json::Value::as_str);
+        let on_others = text("user") != Some("user") || text("role").is_some_and(|r| !is_id(r));
+        on_others.then_some(permission)
+    }
+
+    /// Warnings, which do not block Run: moderation actions that a path from the trigger
+    /// reaches without passing the "yes" of "Has permission?" for the command author
+    /// (D-085).
+    #[must_use]
+    pub fn warnings(&self, graph: &Graph) -> Vec<Problem> {
+        let mut warnings = Vec::new();
+        let Some(trigger) = graph.nodes.iter().find_map(|(id, node)| {
+            self.get(&node.kind)
+                .is_some_and(|t| t.category == Category::Trigger)
+                .then_some(id)
+        }) else {
+            return warnings;
+        };
+        // (node, guarded) pairs, so loops and joins end.
+        let mut seen = BTreeSet::new();
+        let mut next = vec![(trigger.clone(), false)];
+        while let Some((id, guarded)) = next.pop() {
+            if !seen.insert((id.clone(), guarded)) {
+                continue;
+            }
+            let Some(node) = graph.nodes.get(&id) else {
+                continue;
+            };
+            if !guarded && let Some(permission) = self.needed_permission(node) {
+                warnings.push(Problem {
+                    node: Some(id.clone()),
+                    kind: ProblemKind::NoPermissionCheck {
+                        permission: permission.to_owned(),
+                    },
+                });
+            }
+            let checks_author = node.kind == "core.has_permission"
+                && node.props.get("user").and_then(serde_json::Value::as_str) == Some("user");
+            for edge in graph.edges.iter().filter(|edge| edge.from.node == id) {
+                let guarded = guarded || (checks_author && edge.from.pin == "yes");
+                next.push((edge.to.node.clone(), guarded));
+            }
+        }
+        warnings
     }
 
     /// Everything wrong in `graph`, in node order. Empty means it can be generated.

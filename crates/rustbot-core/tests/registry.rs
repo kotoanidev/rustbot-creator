@@ -153,6 +153,7 @@ fn flow_cannot_feed_data() {
             props: vec![],
             provides: vec![],
             intents: vec![],
+            permission: None,
         })
         .unwrap();
     let mut g = ping("hi");
@@ -408,4 +409,74 @@ fn moderation_takes_a_user_a_role_and_minutes() {
             path: "option.nope".to_owned()
         }]
     );
+}
+
+/// `/ban` wired as `edges`, with `n2` the node under test and `n3` a "Has permission?".
+fn warnings_of(node: &serde_json::Value, edges: &serde_json::Value) -> Vec<ProblemKind> {
+    let graph: Graph = serde_json::from_value(serde_json::json!({
+        "schema": 1,
+        "nodes": {
+            "n1": { "type": "core.slash_command", "props": {
+                "name": "ban", "description": "Bans", "options": [
+                    { "name": "cel", "type": "user", "description": "Who" },
+                    { "name": "rola", "type": "role", "description": "Role" } ] } },
+            "n2": node,
+            "n3": { "type": "core.has_permission",
+                    "props": { "user": "user", "permission": "ban_members" } },
+            "n4": { "type": "core.has_permission",
+                    "props": { "user": "option.cel", "permission": "ban_members" } }
+        },
+        "edges": edges
+    }))
+    .unwrap();
+    let registry = Registry::with_core();
+    assert_eq!(registry.validate(&graph), Vec::new());
+    registry
+        .warnings(&graph)
+        .into_iter()
+        .map(|w| w.kind)
+        .collect()
+}
+
+#[test]
+fn actions_on_others_need_a_permission_check_on_the_author() {
+    let ban = serde_json::json!({ "type": "core.ban",
+        "props": { "user": "option.cel", "delete_messages": "none" } });
+    let unchecked = vec![ProblemKind::NoPermissionCheck {
+        permission: "ban_members".to_owned(),
+    }];
+    let direct = serde_json::json!([{ "from": "n1.then", "to": "n2.run" }]);
+    let behind = |pin: &str, check: &str| {
+        serde_json::json!([
+            { "from": "n1.then", "to": format!("{check}.run") },
+            { "from": format!("{check}.{pin}"), "to": "n2.run" }
+        ])
+    };
+    assert_eq!(warnings_of(&ban, &direct), unchecked);
+    assert_eq!(warnings_of(&ban, &behind("yes", "n3")), Vec::new());
+    assert_eq!(warnings_of(&ban, &behind("no", "n3")), unchecked);
+    // Checking the target instead of the author guards nothing.
+    assert_eq!(warnings_of(&ban, &behind("yes", "n4")), unchecked);
+    // A join: one path is checked, the other is not.
+    let join = serde_json::json!([
+        { "from": "n1.then", "to": "n3.run" },
+        { "from": "n3.yes", "to": "n2.run" },
+        { "from": "n3.no", "to": "n2.run" }
+    ]);
+    assert_eq!(warnings_of(&ban, &join), unchecked);
+
+    // The author acting on themselves needs nothing, unless they pick the role.
+    let fixed = serde_json::json!({ "type": "core.add_role",
+        "props": { "user": "user", "role": "123456789012345678" } });
+    assert_eq!(warnings_of(&fixed, &direct), Vec::new());
+    let picked = serde_json::json!({ "type": "core.add_role",
+        "props": { "user": "user", "role": "option.rola" } });
+    assert_eq!(
+        warnings_of(&picked, &direct),
+        vec![ProblemKind::NoPermissionCheck {
+            permission: "manage_roles".to_owned()
+        }]
+    );
+    let self_kick = serde_json::json!({ "type": "core.kick", "props": { "user": "user" } });
+    assert_eq!(warnings_of(&self_kick, &direct), Vec::new());
 }

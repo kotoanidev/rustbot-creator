@@ -36,6 +36,7 @@ fn slash_command() -> NodeType {
         ],
         // Interactions arrive whatever the intents are.
         intents: Vec::new(),
+        permission: None,
     }
 }
 
@@ -47,6 +48,7 @@ fn reply() -> NodeType {
         props: vec![text("content", true)],
         provides: Vec::new(),
         intents: Vec::new(),
+        permission: None,
     }
 }
 
@@ -63,6 +65,7 @@ fn condition(id: &str, props: Vec<Prop>) -> NodeType {
         props,
         provides: Vec::new(),
         intents: Vec::new(),
+        permission: None,
     }
 }
 
@@ -99,7 +102,7 @@ fn compare() -> NodeType {
 
 /// A moderation action (D-073): it continues at "then", or at "error" if Discord refused
 /// (D-082). Each takes the user it acts on and a reason for the audit log.
-fn moderation(id: &str, mut props: Vec<Prop>) -> NodeType {
+fn moderation(id: &str, permission: &str, mut props: Vec<Prop>) -> NodeType {
     props.insert(0, prop("user", PropKind::Variable(DataType::User), true));
     props.push(prop("reason", PropKind::Text { templates: true }, false));
     NodeType {
@@ -113,12 +116,14 @@ fn moderation(id: &str, mut props: Vec<Prop>) -> NodeType {
         props,
         provides: Vec::new(),
         intents: Vec::new(),
+        permission: Some(permission.to_owned()),
     }
 }
 
 fn ban() -> NodeType {
     moderation(
         "core.ban",
+        "ban_members",
         vec![prop(
             "delete_messages",
             PropKind::Choice(Choices::DeleteMessages),
@@ -128,12 +133,13 @@ fn ban() -> NodeType {
 }
 
 fn kick() -> NodeType {
-    moderation("core.kick", Vec::new())
+    moderation("core.kick", "kick_members", Vec::new())
 }
 
 fn timeout() -> NodeType {
     moderation(
         "core.timeout",
+        "moderate_members",
         // Discord's longest timeout: 28 days.
         vec![prop("minutes", PropKind::Number { max: 40_320 }, true)],
     )
@@ -142,6 +148,7 @@ fn timeout() -> NodeType {
 fn role_action(id: &str) -> NodeType {
     moderation(
         id,
+        "manage_roles",
         vec![prop("role", PropKind::Variable(DataType::Role), true)],
     )
 }

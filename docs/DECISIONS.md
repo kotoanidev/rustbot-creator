@@ -771,6 +771,16 @@ alternatives that were considered, and why.
   from a variable takes the "error" output (D-082).
 - **Alternatives:** a fixed list (1 minute, 5 minutes, 10 minutes, 1 hour, 1 day, 1 week).
 
+### D-085 — Moderation commands are gated by Discord and warned about
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A command with a moderation action gets Discord's default member
+  permissions for it, e.g. "Ban members" for "Ban". Members without that permission do not
+  see the command, though a server admin can change this under Integrations. Problems also
+  warns when an action is not behind "Has permission?" for the command author. The warning
+  does not block Run.
+- **Alternatives:** only the Discord gate; only the warning; a "Who can use it" field on
+  the command, set to "everyone" by default.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -1010,14 +1020,28 @@ alternatives that were considered, and why.
   - **What counts as a failure:** Discord refusing the call, a command from a DM (no
     server), an option that was not given, or minutes out of range.
   - **Permissions:** an action does not check the author's permissions itself. That is
-    "Has permission?" in the graph (D-014's example).
+    "Has permission?" in the graph (D-014's example), and D-085 gates and warns.
+
+### C-019 — Which actions D-085 gates and warns about
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Permission field:** `NodeType` has an optional `permission`, which plugins can set
+    too: `ban_members` for "Ban", `kick_members` for "Kick", `moderate_members` for "Time
+    out" and `manage_roles` for the role actions.
+  - **Acting on the author:** an action that targets the command author is not gated
+    and gets no warning. That way "/verify" can give its user a fixed role, and members
+    can still see it. A role picked from an option is gated even then, since the author
+    could pick any role.
+  - **The gate:** a command's `default_member_permissions` holds every permission its
+    gated actions need. Discord then asks for all of them.
+  - **Warnings:** warnings are a separate list (`Registry::warnings`). Problems shows
+    them in yellow after the problems, and Run ignores them. An action warns if any path
+    from the trigger reaches it without passing the "yes" of a "Has permission?" for
+    `user`, the author. A check on the target guards nothing.
 ---
 
 ## Open questions (to ask the owner when relevant)
 
-- **Moderation without a permission check:** a command with "Ban" and no "Has
-  permission?" before it lets any member ban through the bot. Options: Problems warns;
-  the command gets Discord's `default_member_permissions` from its actions; or both.
 
 - **Polish for gpui-kit's own strings (D-037):** gpui-component compiles its rust-i18n
   YAML into itself, so the app cannot add a Polish one at runtime. A few component

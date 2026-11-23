@@ -41,6 +41,7 @@ problem-template-empty = W polu „{ $prop }” jest pusta zmienna, np. {"{}"}.
 problem-unknown-variable = Pole „{ $prop }” używa { $path }, które nie istnieje.
 problem-variable-type = Pole „{ $prop }” używa { $path }, która jest innego typu.
 problem-bad-number = Pole „{ $prop }” musi być liczbą większą od 0 i nie większą niż { $max } albo zmienną.
+problem-no-permission-check = Ostrzeżenie: akcja wymagająca uprawnienia „{ $permission }” działa bez sprawdzenia „Ma uprawnienie?” u autora komendy.
 problem-option-name = Opcja { $option }: nazwa musi mieć 1–32 znaki: małe litery, cyfry, - lub _.
 problem-option-duplicate = Opcja { $option }: inna opcja ma tę samą nazwę.
 problem-option-description = Opcja { $option }: opis musi mieć 1–100 znaków.

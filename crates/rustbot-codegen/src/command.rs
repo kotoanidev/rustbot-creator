@@ -36,6 +36,18 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
     let description = text(graph, trigger, "description");
     let options = CommandOption::list(node.props.get("options"));
     let option_builders = options.iter().map(option_builder);
+    // Members without the actions' permissions do not see the command (D-085).
+    let permissions: BTreeSet<&str> = graph
+        .nodes
+        .values()
+        .filter_map(|node| registry.needed_permission(node))
+        .collect();
+    let gate = (!permissions.is_empty()).then(|| {
+        let flags = permissions
+            .iter()
+            .map(|permission| format_ident!("{}", permission.to_uppercase()));
+        quote!(.default_member_permissions(#(djs_rs::model::permissions::Permissions::#flags)|*))
+    });
 
     let mut code = Body {
         file,
@@ -92,6 +104,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         pub(crate) fn definition() -> Result<CreateApplicationCommand, ValidationError> {
             SlashCommandBuilder::new(#name, #description)
                 #(#option_builders)*
+                #gate
                 .build()
         }
 

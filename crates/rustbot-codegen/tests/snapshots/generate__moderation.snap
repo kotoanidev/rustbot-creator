@@ -24,6 +24,12 @@ pub(crate) fn definition() -> Result<CreateApplicationCommand, ValidationError> 
         .option(
             djs_rs::builders::SlashCommandRoleOption::new("rola", "Role").required(false),
         )
+        .default_member_permissions(
+            djs_rs::model::permissions::Permissions::BAN_MEMBERS
+                | djs_rs::model::permissions::Permissions::KICK_MEMBERS
+                | djs_rs::model::permissions::Permissions::MANAGE_ROLES
+                | djs_rs::model::permissions::Permissions::MODERATE_MEMBERS,
+        )
         .build()
 }
 pub(crate) fn register(client: &Client) {

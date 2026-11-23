@@ -41,6 +41,7 @@ problem-template-empty = The field “{ $prop }” has an empty variable, such a
 problem-unknown-variable = The field “{ $prop }” uses { $path }, which does not exist.
 problem-variable-type = The field “{ $prop }” uses { $path }, which is of another type.
 problem-bad-number = The field “{ $prop }” must be a number above 0 and at most { $max }, or a variable.
+problem-no-permission-check = Warning: an action that needs “{ $permission }” runs without “Has permission?” checking the command author first.
 problem-option-name = Option { $option }: the name needs 1–32 lower-case letters, digits, - or _.
 problem-option-duplicate = Option { $option }: another option has the same name.
 problem-option-description = Option { $option }: the description needs 1–100 characters.
