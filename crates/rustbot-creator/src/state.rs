@@ -88,9 +88,6 @@ pub(crate) struct AppState {
     pub(crate) open_graph: Option<usize>,
     /// The node whose form the properties panel shows.
     pub(crate) selected_node: Option<NodeId>,
-    /// The memory variable whose form the properties panel shows when no node is selected,
-    /// as an index into the manifest's `memory` (D-106).
-    pub(crate) selected_memory: Option<usize>,
     /// Requests for the editor to bring the selected node into view, counted (D-090).
     pub(crate) reveal: u64,
     /// What the app, the build and the bot printed, oldest first.
@@ -124,7 +121,6 @@ impl AppState {
             registry,
             open_graph,
             selected_node: None,
-            selected_memory: None,
             reveal: 0,
             logs: Vec::new(),
             toolchain: rustbot_toolchain::Toolchain::locate().ok(),
@@ -318,17 +314,56 @@ impl AppState {
         cx.notify();
     }
 
-    /// Adds the memory variable `name` and shows its form (D-106). It starts as a number per
-    /// user on a server, the most common kind (warnings, XP).
-    pub(crate) fn add_memory(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+    /// Adds the memory variable `name` of type `ty` (D-109), kept per user on each server,
+    /// the most common kind (warnings, XP).
+    pub(crate) fn add_memory(&mut self, name: &str, ty: MemoryType, cx: &mut Context<'_, Self>) {
         self.project.manifest.memory.push(MemoryVar {
             name: name.to_owned(),
-            ty: MemoryType::Number,
+            ty,
             scope: MemoryScope::Member,
             initial: String::new(),
         });
-        self.selected_node = None;
-        self.selected_memory = Some(self.project.manifest.memory.len() - 1);
+        self.memory_changed(cx);
+    }
+
+    /// Renames memory variable `ix` to `name`, in every node and template too (D-109).
+    // shortcut: undo steps taken before keep the old name; clear or rewrite them if it
+    // confuses people.
+    pub(crate) fn rename_memory(&mut self, ix: usize, name: &str, cx: &mut Context<'_, Self>) {
+        let Some(old) = self
+            .project
+            .manifest
+            .memory
+            .get(ix)
+            .map(|var| var.name.clone())
+        else {
+            return;
+        };
+        for (graph, file) in self.project.graphs.iter_mut().enumerate() {
+            let mut changed = false;
+            for node in file.graph.nodes.values_mut() {
+                let memory_node = node.kind.starts_with("core.memory_");
+                for (prop, value) in &mut node.props {
+                    let Some(text) = value.as_str() else {
+                        continue;
+                    };
+                    let renamed = if memory_node && prop == "variable" && text == old {
+                        Some(name.to_owned())
+                    } else {
+                        rustbot_core::template::rename_memory(text, &old, name)
+                    };
+                    if let Some(renamed) = renamed {
+                        *value = renamed.into();
+                        changed = true;
+                    }
+                }
+            }
+            if changed {
+                self.unsaved.insert(graph);
+            }
+        }
+        name.clone_into(&mut self.project.manifest.memory[ix].name);
+        self.save_now();
         self.memory_changed(cx);
     }
 
@@ -352,11 +387,6 @@ impl AppState {
             return;
         }
         self.project.manifest.memory.remove(ix);
-        self.selected_memory = match self.selected_memory {
-            Some(shown) if shown > ix => Some(shown - 1),
-            Some(shown) if shown == ix => None,
-            other => other,
-        };
         self.memory_changed(cx);
     }
 
@@ -388,6 +418,26 @@ impl AppState {
             }
         }
     }
+}
+
+/// The nodes that use memory variable `name`, picked or in a template: `(graph, node)`.
+pub(crate) fn memory_uses(project: &Project, name: &str) -> Vec<(usize, NodeId)> {
+    let mut uses = Vec::new();
+    for (graph, file) in project.graphs.iter().enumerate() {
+        for (id, node) in &file.graph.nodes {
+            let memory_node = node.kind.starts_with("core.memory_");
+            let found = node.props.iter().any(|(prop, value)| {
+                value.as_str().is_some_and(|text| {
+                    (memory_node && prop == "variable" && text == name)
+                        || rustbot_core::template::uses_memory(text, name)
+                })
+            });
+            if found {
+                uses.push((graph, id.clone()));
+            }
+        }
+    }
+    uses
 }
 
 #[cfg(test)]

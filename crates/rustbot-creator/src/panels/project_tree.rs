@@ -8,10 +8,10 @@ use gpui_kit::component::tree::{TreeItem, TreeState, tree};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FocusHandle, IntoElement, ParentElement as _,
-    PromptLevel, Render, Styled as _, Subscription, Window, div, px,
+    PromptLevel, Render, Styled as _, Subscription, WeakEntity, Window, div, px,
 };
 use rustbot_core::registry::{Category, valid_command_name, valid_memory_name};
-use rustbot_core::{GraphKind, Project};
+use rustbot_core::{GraphKind, NodeId, Project};
 
 use crate::i18n::{t, t_with};
 use crate::panels::editor::node_name;
@@ -21,7 +21,8 @@ pub(crate) struct ProjectTree {
     focus: FocusHandle,
     state: Entity<AppState>,
     tree: Entity<TreeState>,
-    /// The name field of a command (D-092) or memory variable (D-106) being added.
+    /// The name field of a command being added (D-092) or a memory variable being renamed
+    /// (D-109).
     adding: Option<(Adding, Entity<InputState>, Subscription)>,
     error: Option<String>,
 }
@@ -32,10 +33,12 @@ super::dock_panel!(ProjectTree, "ProjectTree", "panel-project");
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Adding {
     Command,
-    Memory,
+    /// A new name for memory variable `ix`.
+    Rename(usize),
 }
 
-/// The tree's folder of memory variables; a variable's id is `memory:<index>`.
+/// The tree's folder of memory variables (D-109). A variable's id is `memory:<index>`, and
+/// a node using it is `use:<index>:<graph>:<node>`.
 const MEMORY: &str = "memory";
 
 impl ProjectTree {
@@ -56,13 +59,26 @@ impl ProjectTree {
         }
     }
 
-    /// Shows the name field for a new command or memory variable.
+    /// Shows the name field for a new command or a memory variable's new name.
     fn start_adding(&mut self, what: Adding, window: &mut Window, cx: &mut Context<'_, Self>) {
-        let placeholder = t(match what {
-            Adding::Command => "new-command-placeholder",
-            Adding::Memory => "new-memory-placeholder",
+        let (placeholder, name) = match what {
+            Adding::Command => (t("new-command-placeholder"), String::new()),
+            Adding::Rename(ix) => (
+                t("new-memory-placeholder"),
+                self.state
+                    .read(cx)
+                    .project
+                    .manifest
+                    .memory
+                    .get(ix)
+                    .map_or_else(String::new, |var| var.name.clone()),
+            ),
+        };
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(placeholder)
+                .default_value(name)
         });
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
         input.update(cx, |input, cx| input.focus(window, cx));
         let changes = cx.subscribe_in(
             &input,
@@ -72,7 +88,7 @@ impl ProjectTree {
                     let name = input.read(cx).value().trim().to_owned();
                     match what {
                         Adding::Command => this.add_command(&name, cx),
-                        Adding::Memory => this.add_memory(&name, cx),
+                        Adding::Rename(ix) => this.rename_memory(ix, &name, cx),
                     }
                 }
                 // Leaving an empty field gives up.
@@ -111,25 +127,24 @@ impl ProjectTree {
 }
 
 impl ProjectTree {
-    fn add_memory(&mut self, name: &str, cx: &mut Context<'_, Self>) {
-        let taken = self
-            .state
-            .read(cx)
-            .project
-            .manifest
-            .memory
-            .iter()
-            .any(|var| var.name == name);
-        self.error = if !valid_memory_name(name) {
+    fn rename_memory(&mut self, ix: usize, name: &str, cx: &mut Context<'_, Self>) {
+        let memory = &self.state.read(cx).project.manifest.memory;
+        let unchanged = memory.get(ix).is_some_and(|var| var.name == name);
+        let taken = memory.iter().any(|var| var.name == name);
+        self.error = if unchanged {
+            None
+        } else if !valid_memory_name(name) {
             Some(t("new-memory-invalid"))
         } else if taken {
             Some(t("new-memory-taken"))
         } else {
             self.state
-                .update(cx, |state, cx| state.add_memory(name, cx));
-            self.adding = None;
+                .update(cx, |state, cx| state.rename_memory(ix, name, cx));
             None
         };
+        if self.error.is_none() {
+            self.adding = None;
+        }
         cx.notify();
     }
 }
@@ -173,7 +188,7 @@ fn confirm_delete(
 }
 
 /// A folder per graph kind, where a graph's id is its index in `project.graphs`, and the
-/// memory (D-106).
+/// memory variables with the nodes that use them (D-109).
 fn items(project: &Project) -> Vec<TreeItem> {
     let mut items: Vec<TreeItem> = [
         (GraphKind::Command, "tree-commands"),
@@ -189,13 +204,25 @@ fn items(project: &Project) -> Vec<TreeItem> {
         )
     })
     .collect();
-    let memory = project.manifest.memory.iter().enumerate();
+    let memory = project.manifest.memory.iter().enumerate().map(|(ix, var)| {
+        let uses = crate::state::memory_uses(project, &var.name);
+        let uses = uses.into_iter().map(|(graph, node)| {
+            let file = &project.graphs[graph];
+            let place = match file.kind {
+                GraphKind::Command => format!("/{}", file.name),
+                GraphKind::Event => file.name.clone(),
+            };
+            let label = format!("{place} › {}", node_name(&file.graph.nodes[&node].kind));
+            TreeItem::new(format!("use:{ix}:{graph}:{}", node.0), label)
+        });
+        TreeItem::new(format!("{MEMORY}:{ix}"), var.name.clone())
+            .expanded(true)
+            .children(uses)
+    });
     items.push(
         TreeItem::new(MEMORY, t("tree-memory"))
             .expanded(true)
-            .children(
-                memory.map(|(ix, var)| TreeItem::new(format!("{MEMORY}:{ix}"), var.name.clone())),
-            ),
+            .children(memory),
     );
     items
 }
@@ -203,6 +230,13 @@ fn items(project: &Project) -> Vec<TreeItem> {
 /// The index of the memory variable a tree id names.
 fn memory_ix(id: &str) -> Option<usize> {
     id.strip_prefix(MEMORY)?.strip_prefix(':')?.parse().ok()
+}
+
+/// The graph and node a memory variable's use names.
+fn memory_use(id: &str) -> Option<(usize, NodeId)> {
+    let mut parts = id.strip_prefix("use:")?.splitn(3, ':').skip(1);
+    let graph = parts.next()?.parse().ok()?;
+    Some((graph, NodeId(parts.next()?.to_owned())))
 }
 
 /// The events "+" by Events offers, by name (D-092).
@@ -223,8 +257,14 @@ fn event_menu(state: &Entity<AppState>, mut menu: PopupMenu, cx: &App) -> PopupM
     menu
 }
 
-/// The right-click menu of a graph or memory variable: "Delete", after asking.
-fn delete_menu(state: &Entity<AppState>, item: &TreeItem, menu: PopupMenu) -> PopupMenu {
+/// The right-click menu of a graph, "Delete" after asking, or of a memory variable,
+/// "Rename" and "Delete" (D-109).
+fn item_menu(
+    state: &Entity<AppState>,
+    this: &WeakEntity<ProjectTree>,
+    item: &TreeItem,
+    menu: PopupMenu,
+) -> PopupMenu {
     let (state, name) = (state.clone(), item.label.to_string());
     if let Ok(graph) = item.id.parse::<usize>() {
         return menu.item(
@@ -239,7 +279,15 @@ fn delete_menu(state: &Entity<AppState>, item: &TreeItem, menu: PopupMenu) -> Po
     let Some(var) = memory_ix(&item.id) else {
         return menu;
     };
+    let this = this.clone();
     menu.item(
+        PopupMenuItem::new(t("rename")).on_click(move |_, window, cx| {
+            let _ = this.update(cx, |this, cx| {
+                this.start_adding(Adding::Rename(var), window, cx);
+            });
+        }),
+    )
+    .item(
         PopupMenuItem::new(t("delete")).on_click(move |_, window, cx| {
             let delete = move |state: &mut AppState, cx: &mut Context<'_, AppState>| {
                 state.delete_memory(var, cx);
@@ -269,38 +317,28 @@ impl Render for ProjectTree {
                     state.update(cx, |state, cx| {
                         state.open_graph = Some(graph);
                         state.selected_node = None;
-                        state.selected_memory = None;
                         cx.notify();
                     });
                 });
-            } else if let Some(var) = memory_ix(&item.id) {
+            } else if let Some((graph, node)) = memory_use(&item.id) {
                 let state = state.clone();
                 row = row.on_click(move |_, _, cx| {
-                    state.update(cx, |state, cx| {
-                        state.selected_node = None;
-                        state.selected_memory = Some(var);
-                        cx.notify();
-                    });
+                    let node = node.clone();
+                    state.update(cx, |state, cx| state.show_node(graph, Some(node), cx));
                 });
-            } else if let Some((_, what)) = [
-                (GraphKind::Command.dir(), Adding::Command),
-                (MEMORY, Adding::Memory),
-            ]
-            .into_iter()
-            .find(|(dir, _)| item.id.as_ref() == *dir)
-            {
+            } else if item.id.as_ref() == GraphKind::Command.dir() {
                 let this = this.clone();
                 row = row.suffix(move |_, _| {
                     let this = this.clone();
-                    let button = match what {
-                        Adding::Command => "add-command",
-                        Adding::Memory => "add-memory",
-                    };
-                    Button::new(button).ghost().xsmall().label("+").on_click(
-                        move |_, window, cx| {
-                            let _ = this.update(cx, |this, cx| this.start_adding(what, window, cx));
-                        },
-                    )
+                    Button::new("add-command")
+                        .ghost()
+                        .xsmall()
+                        .label("+")
+                        .on_click(move |_, window, cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.start_adding(Adding::Command, window, cx);
+                            });
+                        })
                 });
             } else if item.id.as_ref() == GraphKind::Event.dir() {
                 let state = state.clone();
@@ -316,8 +354,8 @@ impl Render for ProjectTree {
             row
         })
         .context_menu({
-            let state = self.state.clone();
-            move |_, entry, menu, _, _| delete_menu(&state, entry.item(), menu)
+            let (state, this) = (self.state.clone(), cx.entity().downgrade());
+            move |_, entry, menu, _, _| item_menu(&state, &this, entry.item(), menu)
         })
         .size_full();
         let adding = self.adding.as_ref().map(|(_, input, _)| {
@@ -344,7 +382,7 @@ mod tests {
     use gpui_kit::{AppContext as _, TestAppContext};
     use rustbot_core::{GraphKind, NodeId};
 
-    use super::ProjectTree;
+    use super::{Adding, ProjectTree};
     use crate::state::AppState;
 
     /// "+" by Commands asks for a name, refuses a bad or taken one, and adds and opens the
@@ -421,10 +459,10 @@ mod tests {
         assert!(root.join("graphs/events/member_join_2.json").exists());
     }
 
-    /// "+" by Memory adds a variable under a valid, free name, keeps it in `project.toml`
-    /// and shows its form; deleting it takes it out again (D-106).
+    /// The tree lists each memory variable with the nodes that use it, and renaming it
+    /// fixes them, saved (D-109).
     #[gpui_kit::test]
-    fn plus_adds_a_memory_variable(cx: &mut TestAppContext) {
+    fn memory_lists_its_uses_and_renames_them(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().unwrap();
         let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
         let root = project.root.clone();
@@ -432,41 +470,72 @@ mod tests {
         let mut state = None;
         let (tree, cx) = cx.add_window_view(|_, cx| {
             let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, cx| {
+                app.add_memory("warnings", rustbot_core::MemoryType::Number, cx);
+                app.add_memory("other", rustbot_core::MemoryType::Number, cx);
+                app.edit(false, cx, |file, registry| {
+                    let id =
+                        crate::canvas::add_node(file, registry, "core.memory_change", [0., 0.]);
+                    let change = file.graph.nodes.get_mut(&id).unwrap();
+                    change
+                        .props
+                        .insert("variable".to_owned(), "warnings".into());
+                    let reply = file.graph.nodes.get_mut(&NodeId("n2".to_owned())).unwrap();
+                    reply.props.insert(
+                        "content".to_owned(),
+                        "{{memory.warnings}} {memory.warnings.option.x} {memory.other}".into(),
+                    );
+                });
+                app.save_now();
+            });
             state = Some(app.clone());
             ProjectTree::new(app, cx)
         });
         let state = state.unwrap();
-        for (name, error) in [("Warnings", true), ("warnings", false), ("warnings", true)] {
+        let ids = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.read(|cx| {
+                super::items(&state.read(cx).project)[2]
+                    .children
+                    .iter()
+                    .map(|var| (var.id.to_string(), var.children.len()))
+                    .collect::<Vec<_>>()
+            })
+        };
+        assert_eq!(
+            ids(cx),
+            [("memory:0".to_owned(), 2), ("memory:1".to_owned(), 1)]
+        );
+        assert_eq!(
+            super::memory_use("use:0:0:n3"),
+            Some((0, NodeId("n3".to_owned())))
+        );
+
+        for (name, error) in [("other", true), ("Strikes", true), ("strikes", false)] {
             cx.update(|window, cx| {
-                window.render_frame(cx);
-                window.click("add-memory", cx);
-            });
-            cx.update(|window, cx| {
-                window.input(name, cx);
+                tree.update(cx, |tree, cx| {
+                    tree.start_adding(Adding::Rename(0), window, cx);
+                });
+                let input = tree.read(cx).adding.as_ref().unwrap().1.clone();
+                input.update(cx, |input, cx| input.set_value(name, window, cx));
                 window.press("enter", cx);
             });
-            let shown = cx.read(|cx| tree.read(cx).error.is_some());
-            assert_eq!(shown, error, "{name}");
-            cx.update(|_, cx| tree.update(cx, |tree, _| tree.adding = None));
+            assert_eq!(cx.read(|cx| tree.read(cx).error.is_some()), error, "{name}");
         }
         cx.read(|cx| {
-            let state = state.read(cx);
-            assert_eq!(state.selected_memory, Some(0));
+            let file = &state.read(cx).project.graphs[0];
+            let node = |id: &str| &file.graph.nodes[&NodeId(id.to_owned())].props;
+            assert_eq!(node("n3")["variable"], "strikes");
             assert_eq!(
-                state.registry.memory(),
-                state.project.manifest.memory.as_slice()
+                node("n2")["content"],
+                "{{memory.warnings}} {memory.strikes.option.x} {memory.other}"
             );
         });
+        let saved = std::fs::read_to_string(root.join("graphs/commands/ping.json")).unwrap();
+        assert!(saved.contains("memory.strikes"), "{saved}");
         let toml = std::fs::read_to_string(root.join("project.toml")).unwrap();
-        assert!(toml.contains("name = \"warnings\""), "{toml}");
+        assert!(toml.contains("name = \"strikes\""), "{toml}");
 
         cx.update(|_, cx| state.update(cx, |state, cx| state.delete_memory(0, cx)));
-        cx.read(|cx| {
-            let state = state.read(cx);
-            assert_eq!(state.selected_memory, None);
-            assert_eq!(state.registry.memory(), []);
-        });
-        let toml = std::fs::read_to_string(root.join("project.toml")).unwrap();
-        assert!(!toml.contains("warnings"), "{toml}");
+        assert_eq!(ids(cx), [("memory:0".to_owned(), 1)]);
     }
 }

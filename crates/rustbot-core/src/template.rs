@@ -70,9 +70,73 @@ pub fn parse(template: &str) -> Result<Vec<Segment>, TemplateError> {
     Ok(segments)
 }
 
+/// Whether the template reads memory variable `name`, as `{memory.<name>…}` (D-108).
+#[must_use]
+pub fn uses_memory(template: &str, name: &str) -> bool {
+    parse(template).is_ok_and(|segments| {
+        segments.iter().any(|segment| {
+            matches!(segment, Segment::Var(path)
+                if path.len() >= 2 && path[0] == "memory" && path[1] == name)
+        })
+    })
+}
+
+/// The template with memory variable `old` renamed to `new` (D-109), or `None` when it
+/// does not read `old` or does not parse. The rest of the text stays as it was.
+#[must_use]
+pub fn rename_memory(template: &str, old: &str, new: &str) -> Option<String> {
+    if !uses_memory(template, old) {
+        return None;
+    }
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let at = &rest[start..];
+        if let Some(after) = at.strip_prefix("{{") {
+            out.push_str("{{");
+            rest = after;
+            continue;
+        }
+        // It parsed, so the placeholder is closed.
+        let end = at.find('}')?;
+        let parts: Vec<&str> = at[1..end].split('.').map(str::trim).collect();
+        if parts.len() >= 2 && parts[0] == "memory" && parts[1] == old {
+            out.push_str("{memory.");
+            out.push_str(new);
+            for part in &parts[2..] {
+                out.push('.');
+                out.push_str(part);
+            }
+            out.push('}');
+        } else {
+            out.push_str(&at[..=end]);
+        }
+        rest = &at[end + 1..];
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Segment, TemplateError, parse};
+    use super::{Segment, TemplateError, parse, rename_memory, uses_memory};
+
+    #[test]
+    fn memory_variables_are_found_and_renamed() {
+        let text =
+            "{{memory.xp}} {memory.xp} { memory . xp . option.target }}} {memory.xpp} {user.name}";
+        assert!(uses_memory(text, "xp"));
+        assert!(!uses_memory(text, "x"));
+        assert_eq!(
+            rename_memory(text, "xp", "level").as_deref(),
+            Some(
+                "{{memory.xp}} {memory.level} {memory.level.option.target}}} {memory.xpp} {user.name}"
+            )
+        );
+        assert_eq!(rename_memory("{memory.xpp}", "xp", "level"), None);
+        assert_eq!(rename_memory("{memory.xp", "xp", "level"), None);
+    }
 
     fn var(path: &str) -> Segment {
         Segment::Var(path.split('.').map(str::to_owned).collect())

@@ -1,6 +1,6 @@
-//! The side bar's form (D-066): the selected node's fields, a memory variable chosen in
-//! the project tree (D-106), or else the bot's settings: its token, kept in the system
-//! keyring (D-020), and the test server (D-055, D-065).
+//! The side bar's form (D-066): the selected node's fields, with the settings of the memory
+//! variable it uses (D-109), or the bot's settings when no node is selected: its token,
+//! kept in the system keyring (D-020), and the test server (D-055, D-065).
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
@@ -15,7 +15,9 @@ use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Subscription, Window, div, px,
 };
-use rustbot_core::registry::{ButtonStyle, CommandOption, DataType, MenuOption, PropKind};
+use rustbot_core::registry::{
+    ButtonStyle, CommandOption, DataType, MenuOption, PropKind, valid_memory_name,
+};
 use rustbot_core::{GraphFile, MemoryScope, MemoryType, NodeId, Registry};
 
 use crate::i18n::{t, t_or, t_with};
@@ -45,10 +47,19 @@ pub(crate) struct Properties {
     /// The next change starts a new undo step: set when a field gains the focus.
     fresh: bool,
     bot: Option<BotForm>,
+    /// The settings of the memory variable the shown node uses (D-109).
     memory: Option<MemoryForm>,
+    /// The name field of "New variable…" (D-109).
+    new_memory: Option<NewMemory>,
 }
 
-/// A memory variable's form (D-106, D-107); its name is fixed once added.
+struct NewMemory {
+    input: Entity<InputState>,
+    error: Option<String>,
+    _changes: Subscription,
+}
+
+/// A memory variable's settings (D-107, D-109), shared by every node that uses it.
 struct MemoryForm {
     ix: usize,
     ty: Entity<SelectState<Vec<SharedString>>>,
@@ -104,6 +115,7 @@ struct ItemRow {
 /// A field picked from a list: a variable of a type (D-078), or one value of a fixed list.
 struct Picker {
     prop: String,
+    kind: PropKind,
     /// What each entry writes into the graph, in list order.
     values: Vec<String>,
     labels: Vec<SharedString>,
@@ -156,6 +168,7 @@ impl Properties {
             fresh: true,
             bot: None,
             memory: None,
+            new_memory: None,
         };
         this.sync(window, cx);
         this
@@ -177,6 +190,7 @@ impl Properties {
             self.shown = target;
             self.embed_open = false;
             self.clicks_open = false;
+            self.new_memory = None;
             self.build_fields(window, cx);
         } else if let (Some((_, node)), Some(file)) = (&self.shown, state.open_file()) {
             let values: Vec<String> = self
@@ -201,9 +215,12 @@ impl Properties {
             self.bot = Some(self.build_bot_form(window, cx));
         }
         let state = self.state.read(cx);
-        let memory = state
-            .selected_memory
-            .filter(|ix| self.shown.is_none() && *ix < state.project.manifest.memory.len());
+        let memory = self.shown.as_ref().and_then(|(_, node)| {
+            let props = &state.open_file()?.graph.nodes.get(node)?.props;
+            let name = props.get("variable")?.as_str()?;
+            let memory = &state.project.manifest.memory;
+            memory.iter().position(|var| var.name == name)
+        });
         if memory != self.memory.as_ref().map(|form| form.ix) {
             self.memory = memory.map(|ix| self.build_memory_form(ix, window, cx));
         }
@@ -307,6 +324,101 @@ impl Properties {
         }
     }
 
+    /// "New variable…" was picked: asks for the name.
+    fn start_new_memory(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(t("new-memory-placeholder")));
+        input.update(cx, |input, cx| input.focus(window, cx));
+        let changes = cx.subscribe_in(&input, window, |this, input, event, _, cx| match event {
+            InputEvent::PressEnter { .. } => {
+                let name = input.read(cx).value().trim().to_owned();
+                this.create_memory(&name, cx);
+            }
+            // Leaving an empty field gives up.
+            InputEvent::Blur if input.read(cx).value().trim().is_empty() => {
+                this.new_memory = None;
+                cx.notify();
+            }
+            _ => {}
+        });
+        self.new_memory = Some(NewMemory {
+            input,
+            error: None,
+            _changes: changes,
+        });
+        cx.notify();
+    }
+
+    /// Makes memory variable `name` and picks it for the shown node (D-109). It holds text
+    /// when "Set" already has text typed, else a number.
+    fn create_memory(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+        let memory = &self.state.read(cx).project.manifest.memory;
+        let error = if !valid_memory_name(name) {
+            Some(t("new-memory-invalid"))
+        } else if memory.iter().any(|var| var.name == name) {
+            Some(t("new-memory-taken"))
+        } else {
+            None
+        };
+        if let Some(error) = error {
+            if let Some(new) = &mut self.new_memory {
+                new.error = Some(error);
+            }
+            cx.notify();
+            return;
+        }
+        let value = self.text("value", cx);
+        let value = value.trim();
+        let ty = if value.is_empty() || value.contains('{') || value.parse::<f64>().is_ok() {
+            MemoryType::Number
+        } else {
+            MemoryType::Text
+        };
+        self.new_memory = None;
+        self.state
+            .update(cx, |state, cx| state.add_memory(name, ty, cx));
+        self.fresh = true;
+        self.write("variable", name.to_owned(), cx);
+    }
+
+    /// The "Variable" list, the name field of "New variable…", and the picked variable's
+    /// settings (D-109).
+    fn render_memory_picker(
+        &self,
+        ix: usize,
+        node_id: &str,
+        cx: &Context<'_, Self>,
+    ) -> gpui_kit::AnyElement {
+        let theme = cx.theme();
+        let new = self.new_memory.as_ref().map(|new| {
+            v_flex()
+                .gap(px(2.))
+                .child(Input::new(&new.input).small())
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(t("memory-new-hint")),
+                )
+                .children(
+                    new.error
+                        .clone()
+                        .map(|error| div().text_xs().text_color(theme.danger).child(error)),
+                )
+        });
+        v_flex()
+            .gap(px(6.))
+            .child(self.render_picker(ix, node_id))
+            .children(new)
+            .children(
+                self.memory
+                    .as_ref()
+                    .filter(|_| self.new_memory.is_none())
+                    .map(|form| self.render_memory_form(form, cx)),
+            )
+            .into_any_element()
+    }
+
     fn render_memory_form(
         &self,
         form: &MemoryForm,
@@ -333,11 +445,10 @@ impl Properties {
         };
         v_flex()
             .gap(px(6.))
-            .child(
-                div()
-                    .text_sm()
-                    .child(t_with("memory-title", &[("name", &name)])),
-            )
+            .pl(px(8.))
+            .border_l_2()
+            .border_color(theme.border)
+            .child(note(t("memory-shared-hint"), false))
             .child(label(t("memory-type")))
             .child(Select::new(&form.ty).small())
             .child(label(t("memory-scope")))
@@ -678,6 +789,7 @@ impl Properties {
         match kind {
             PropKind::Variable(DataType::Role) => labels.push(t("var-role-id").into()),
             PropKind::Variable(DataType::Channel) => labels.push(t("var-channel-id").into()),
+            PropKind::Memory => labels.push(t("memory-new").into()),
             _ => {}
         }
         (values, labels)
@@ -749,6 +861,7 @@ impl Properties {
         });
         Picker {
             prop,
+            kind,
             values,
             labels,
             id,
@@ -764,6 +877,11 @@ impl Properties {
         let Some(picker) = self.pickers.get_mut(ix) else {
             return;
         };
+        if picker.kind == PropKind::Memory && entry >= picker.values.len() {
+            self.start_new_memory(window, cx);
+            return;
+        }
+        self.new_memory = None;
         picker.id_chosen = entry >= picker.values.len();
         let value = if let Some(value) = picker.values.get(entry) {
             value.clone()
@@ -799,6 +917,7 @@ impl Properties {
                 })
                 .collect()
         };
+        let creating = self.new_memory.is_some();
         for (ix, kind) in kinds.into_iter().enumerate() {
             let Some(kind) = kind else { return false };
             if self.entries(kind, cx).1 != self.pickers[ix].labels {
@@ -816,7 +935,7 @@ impl Properties {
             let id_chosen =
                 picker.id.is_some() && !value.is_empty() && !picker.values.contains(&value);
             picker.id_chosen = id_chosen || (picker.id_chosen && value.is_empty());
-            let selected = if picker.id_chosen {
+            let selected = if picker.id_chosen || (picker.kind == PropKind::Memory && creating) {
                 Some(picker.values.len())
             } else {
                 picker.values.iter().position(|v| *v == value)
@@ -1052,6 +1171,9 @@ impl Properties {
                     };
                     let name = t_or(&format!("prop-{node_id}-{prop}"), prop);
                     self.render_items(prop, name, cx).into_any_element()
+                }
+                Slot::Pick(ix) if self.pickers[ix].kind == PropKind::Memory => {
+                    self.render_memory_picker(ix, node_id, cx)
                 }
                 Slot::Pick(ix) => self.render_picker(ix, node_id).into_any_element(),
                 Slot::Check(ix) => {
@@ -1703,10 +1825,9 @@ impl Render for Properties {
                     .children(notes)
                     .into_any_element()
             }
-            _ => match (&self.memory, &self.bot) {
-                (Some(form), _) => self.render_memory_form(form, cx),
-                (None, Some(bot)) => Self::render_bot_form(bot, cx).into_any_element(),
-                (None, None) => super::placeholder(t("properties-empty"), cx).into_any_element(),
+            _ => match &self.bot {
+                Some(bot) => Self::render_bot_form(bot, cx).into_any_element(),
+                None => super::placeholder(t("properties-empty"), cx).into_any_element(),
             },
         };
         div().size_full().p(px(12.)).child(body)
@@ -2091,21 +2212,55 @@ mod tests {
         assert_eq!(shown.as_str(), "Pong, {user.name}!");
     }
 
-    /// A memory variable's form saves its starting value, but not a number variable's
-    /// starting text (D-106).
+    /// "New variable…" makes a variable under a valid, free name and picks it; its
+    /// settings show under the list, and a number refuses a starting text (D-109).
     #[gpui_kit::test]
-    fn the_memory_form_keeps_numbers_numbers(cx: &mut TestAppContext) {
+    fn memory_variables_are_made_in_the_node(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().unwrap();
         let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
         cx.update(gpui_kit::init);
         let mut state = None;
         let (properties, cx) = cx.add_window_view(|window, cx| {
             let app = cx.new(|cx| AppState::new(project, cx));
-            app.update(cx, |app, cx| app.add_memory("xp", cx));
+            app.update(cx, |app, cx| {
+                app.edit(false, cx, |file, registry| {
+                    crate::canvas::add_node(file, registry, "core.memory_change", [0., 0.]);
+                });
+                app.selected_node = Some(NodeId("n3".to_owned()));
+            });
             state = Some(app.clone());
             Properties::new(app, window, cx)
         });
         let state = state.unwrap();
+        let labels = cx.read(|cx| properties.read(cx).pickers[0].labels.clone());
+        assert_eq!(labels, [crate::i18n::t("memory-new")]);
+        for (name, error) in [("XP", true), ("xp", false)] {
+            cx.update(|window, cx| {
+                properties.update(cx, |this, cx| this.pick(0, 0, window, cx));
+                window.render_frame(cx);
+            });
+            cx.update(|window, cx| {
+                window.input(name, cx);
+                window.press("enter", cx);
+            });
+            let failed = cx.read(|cx| {
+                let new = properties.read(cx).new_memory.as_ref();
+                new.is_some_and(|new| new.error.is_some())
+            });
+            assert_eq!(failed, error, "{name}");
+        }
+        cx.read(|cx| {
+            let state = state.read(cx);
+            let var = &state.project.manifest.memory[0];
+            assert_eq!(
+                (var.name.as_str(), var.ty),
+                ("xp", rustbot_core::MemoryType::Number)
+            );
+            let node = &state.open_file().unwrap().graph.nodes[&NodeId("n3".to_owned())];
+            assert_eq!(node.props["variable"], "xp");
+        });
+        assert!(cx.read(|cx| properties.read(cx).memory.is_some()));
+
         let initial = |cx: &mut gpui_kit::VisualTestContext| {
             cx.read(|cx| state.read(cx).project.manifest.memory[0].initial.clone())
         };
@@ -2120,7 +2275,7 @@ mod tests {
         assert_eq!(initial(cx), "5");
         assert!(cx.read(|cx| properties.read(cx).memory.as_ref().unwrap().bad_initial));
 
-        // A node selected on the canvas takes the form's place.
+        // A node without a variable has no settings to show.
         cx.update(|_, cx| {
             state.update(cx, |state, cx| {
                 state.selected_node = Some(NodeId("n1".to_owned()));

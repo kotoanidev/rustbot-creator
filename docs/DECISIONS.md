@@ -1393,11 +1393,13 @@ alternatives that were considered, and why.
     or a typed value that is not a number for a number, is a problem. A `{variable}` is
     checked when the bot runs. A variable kept per server or per user where none is known
     (e.g. in "Bot is ready") is a problem.
-  - **The list:** a new variable starts as a number per user on each server (warnings,
-    XP). Its name follows the rules for a command's name and is fixed once added. Its
-    type, scope and starting value are edited in the Properties panel. A number variable
-    refuses a starting value that is not a number. Deleting a variable asks first, and
-    its saved values stay in `data.json`. Memory changes have no undo yet.
+  - **Variables (as D-109 changed it):** "New variable…" makes a variable kept per user
+    on each server (warnings, XP). It holds a number, or text when "Set" already has text
+    typed. Its name follows the rules for a command's name. A number variable refuses a
+    starting value that is not a number. Renaming fixes the "Variable" fields and
+    `{memory.…}` in every graph, but undo steps taken before keep the old name. Deleting
+    asks first, and the saved values stay in `data.json`. Memory changes have no undo
+    yet.
 ---
 
 ## Open questions (to ask the owner when relevant)

@@ -158,21 +158,27 @@ message form), "Add a reaction", "Pin", "Unpin", "Edit message", "Change nicknam
 "Wait". Message actions work on "Last sent by the bot" or "The event's message", and the
 ones that can fail have an "error" output.
 
-Step 7, the bot's memory (D-104–D-108, C-026), is ✅ done in code. The project tree has
-a "Memory" branch: "+" adds a variable, which is kept in `project.toml`, and its type
-(number or text), scope (global, server, user, user on a server) and starting value are
-edited in Properties. The nodes are "Set memory", "Change memory by" and "Reset memory",
+Step 7, the bot's memory (D-104–D-109, C-026), is ✅ done in code.
+- The owner found the first design bad and unused: a "+" in the tree and a separate form.
+  So variables are now made in the node (D-109). "New variable…" in a memory node's
+  "Variable" list asks for a name.
+- The variable's type (number or text), scope (global, server, user, user on a server)
+  and starting value are edited under that list, for every node that uses it. They are
+  kept in `project.toml`.
+- The tree's "Memory" branch lists each variable with the nodes that use it; clicking one
+  opens it, and right-clicking renames or deletes the variable.
+
+The owner tested steps 2 and 4–6 live: everything works except typing a channel or role
+ID, which closed the field after the first digit (fixed in `222a11e`). The nodes are "Set memory", "Change memory by" and "Reset memory",
 and templates read `{memory.name}` or `{memory.name.option.target}`. The bot keeps
 values in `data.json` in its folder. The `--ignored compiles` tests also build the
 memory module and run it twice, checking that values last and that a damaged file is
 never overwritten.
 
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
-test), but nothing from steps 2, 4, 5, 6 and 7 has run live yet. Next:
-1. The owner tries `/ban`, an event (e.g. a welcome message in "Member joined"), a
-   button (e.g. `/confirm` with "Wait for a click"), the new actions and memory (e.g.
-   `/warn` counting warnings) on the test server; fix what they find. They asked to
-   continue without their tests for now, so this waits for them.
+test). Memory has not run live yet. Next:
+1. The owner tries memory on the test server, e.g. `/warn` counting warnings with
+   "Change memory by" and `{memory.warnings.option.target}`; fix what they find.
 2. The next part of the catalog: ask the owner which first, e.g. modals, bot templates,
    or a "Ranking" node for memory.
 
