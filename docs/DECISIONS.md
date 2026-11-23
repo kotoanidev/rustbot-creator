@@ -1008,6 +1008,41 @@ alternatives that were considered, and why.
   label that users see. After the form is sent, a field's value is `{field.<name>}`.
 - **Alternatives:** numbered fields, `{field.1}`.
 
+### D-115 — Bot templates come next, chosen when a project is made
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** After forms, phase 3 continues with bot templates. "New project" shows the
+  templates as cards with a description, "Empty" (with `/ping`) among them, and then the
+  folder dialog.
+- **Alternatives:**
+  - for the timing: the rest of the catalog first; phase 4;
+  - for the choice: also "Add from template" in the project tree; only that.
+
+### D-116 — Four templates to start
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:**
+  - "Moderation with warnings": `/ban`, `/kick` and `/timeout`, each checking the
+    permission, and `/warn`, which counts warnings in memory and shows the count.
+  - "Welcome": a message in a chosen channel when someone joins or leaves, and a welcome
+    DM.
+  - "Roles from a menu": `/roles` sends a message with a select menu, and picking an
+    option gives or takes a role; the clicks always work.
+  - "Reports by form": `/report` opens a form and sends the report to the moderators'
+    channel, answering privately.
+- **Alternatives:** levels with XP for messages.
+
+### D-117 — Channels and roles a template needs are left empty
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A template leaves the fields for the user's channels and roles empty. The
+  Problems panel lists them as empty fields, and a click opens the node to fill in the ID.
+- **Alternatives:** a short wizard asking for the IDs when the project is made.
+
+### D-118 — Templates speak the app's language
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A template's bot texts (replies, command and option descriptions, labels)
+  are in Polish when the app is in Polish, else in English. They live in the Fluent
+  files with the UI text (D-024). Command and option names stay English, e.g. `/ban`.
+- **Alternatives:** always English; a language switch on the template's card.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
