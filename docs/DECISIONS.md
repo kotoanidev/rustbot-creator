@@ -674,6 +674,37 @@ alternatives that were considered, and why.
 - **Alternatives:** an "Invite the bot" button in the bot settings, which needs the
   application ID; both; only instructions.
 
+### D-073 — Phase 3 starts with the `/ban` example of D-014
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The first nodes of the catalog make the D-014 example work end to end:
+  - **Command options:** user, text, number, channel, role.
+  - **Condition:** yes/no branches, e.g. "has permission?" or a comparison.
+  - **Moderation:** ban, kick, timeout, roles.
+  - **Messages:** send to a channel, a reply only the author sees, an embed.
+
+  This crosses every category: trigger, logic and actions.
+- **Alternatives:** a welcome bot (events first); buttons and menus; a little of
+  everything.
+
+### D-074 — Nodes take values from form fields with a variable picker
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A value such as "which user to ban" is a form field on the node. The field
+  offers the variables that fit its type, such as `{option.target}` or `{user}`, in the
+  spirit of D-053. No extra wires are needed. The data pins of D-052 stay in the model,
+  unused by the easy mode for now.
+- **Alternatives:** data pins wired by cables; both (a field, or a connected data pin).
+
+### D-075 — A small console step opens Phase 3
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Before the new nodes, the Logs panel gets:
+  - selecting and copying text;
+  - level colours (ERROR red, WARN yellow);
+  - a "Clear" button;
+  - build lines told apart from the bot's lines.
+
+  A full log viewer can come later.
+- **Alternatives:** a full log viewer with Phase 7 (hosting on the PC); both.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

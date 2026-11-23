@@ -45,9 +45,13 @@ layer, before the scope widens.
 - [x] Budgets measured (D-038), all met; live test with the owner's test bot passed on
       2026-11-23 (`/ping` answered on the test server)
 
-## Phase 3 — Easy mode (D-014, D-032)
-- [ ] Full node catalog and forms over what djs-rs covers: commands, events, messages,
-      embeds, components, moderation, and so on
+## Phase 3 — Easy mode (D-014, D-032) — in progress
+- [ ] Console step (D-075): select and copy, level colours, Clear, build lines apart from
+      the bot's
+- [ ] The `/ban` example of D-014 (D-073): command options, a yes/no condition,
+      moderation (ban, kick, timeout, roles), messages (to a channel, only for the author,
+      embed), with values from form fields and a variable picker (D-074)
+- [ ] Full node catalog and forms over what djs-rs covers: events, components, and so on
 - [ ] Validation and errors shown on the graph
 - [ ] Bot templates
 
