@@ -974,6 +974,40 @@ alternatives that were considered, and why.
   - a "Memory" panel in the dock with a table of the variables;
   - removing memory from the app until a better design.
 
+### D-110 — Modals come next in the catalog
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** After the bot's memory, the catalog continues with modals: a pop-up form
+  that a command or a click opens.
+- **Alternatives:** bot templates; the rest of the catalog (channels, threads, roles,
+  "Ranking"); phase 4, the advanced mode.
+
+### D-111 — A modal is waited for in the same graph
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A "Show form" node waits for the form to be sent, up to 15 minutes. The flow
+  then goes on with the typed values and every variable of the run. A "timeout" output
+  runs if nothing was sent in time; Discord does not report a closed form.
+- **Alternatives:** a form that always works, handled on its own like the clicks of D-097;
+  both, switched in the node.
+
+### D-112 — Modals have text fields only
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A form has 1–5 text fields, each short (one line) or long (a paragraph),
+  with a label, "required", a hint and a minimum and maximum length.
+- **Alternatives:** also radio groups, checkboxes and menus; all of that and file uploads.
+
+### D-113 — A form opens after a command or a click
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Show form" may follow a slash command or a click of a button or menu,
+  before the bot answers it in any way: Discord allows a form only as the first answer.
+  Validation checks the order.
+- **Alternatives:** only after a command.
+
+### D-114 — Typed values are read as `{field.<name>}`
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Each field has a name, with the rules of a command option's name, and a
+  label that users see. After the form is sent, a field's value is `{field.<name>}`.
+- **Alternatives:** numbered fields, `{field.1}`.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
