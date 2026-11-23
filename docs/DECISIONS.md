@@ -815,6 +815,47 @@ alternatives that were considered, and why.
   after this.
 - **Alternatives:** events first; buttons and menus first; bot templates first.
 
+### D-091 — The catalog starts with events
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The first part of the full node catalog is events: graphs in
+  `graphs/events/` started by an event, not a command. The first events are: a member
+  joined, a member left, a new message, the bot is ready, and a reaction added or removed.
+  The app explains the privileged intents that some of them need (Server Members,
+  Message Content), which are switched on in the Discord Developer Portal.
+- **Alternatives:** buttons and menus; more command actions; bot templates.
+
+### D-092 — New graphs come from "+" in the project tree
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Commands" and "Events" in the project tree each have a "+" button. A new
+  command asks for its name, e.g. `ban`. A new event offers the list of events, and its
+  file is named after the event, e.g. `member_join`. A graph is deleted by right-clicking
+  it, choosing "Delete" and confirming.
+- **Alternatives:** a right-click menu on the sections; a "New…" button in the panel's
+  toolbar.
+
+### D-093 — "New message" skips bots unless asked
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The "New message" trigger has a checkbox "Also messages from bots", off by
+  default. The bot's own messages are always skipped, so it cannot loop by answering
+  itself.
+- **Alternatives:** always skip bots.
+
+### D-094 — In a message event, "Reply" answers that message
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** In a "New message" graph, "Reply" sends a Discord reply to that message.
+  In other events Problems says to use "Send to a channel" instead. A new "Delete message"
+  node deletes the message, for automatic moderation.
+- **Alternatives:** "Reply" only in commands, with "Send to a channel" in events.
+
+### D-095 — Privileged intents are explained in the form and in Logs
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** An event that needs a privileged intent (Server Members for members
+  joining or leaving, Message Content for a message's text) shows a note in its form. The
+  note says to switch the intent on in the Developer Portal under Bot, with a link. If
+  Discord refuses the intents, Logs show a plain message with the link (as in D-072).
+- **Alternatives:** a warning in Problems, which stays even once the intent is on; only
+  Logs.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
