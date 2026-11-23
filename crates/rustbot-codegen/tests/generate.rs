@@ -111,6 +111,29 @@ fn options_snapshot() {
     );
 }
 
+/// A text option named `mention` is still text from users, and is made harmless (C-016).
+#[test]
+fn a_text_option_named_mention_is_quieted() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut file = command("say", "Says it", "@here {option.mention}");
+    file.graph
+        .nodes
+        .get_mut(&rustbot_core::NodeId("n1".to_owned()))
+        .unwrap()
+        .props
+        .insert(
+            "options".to_owned(),
+            serde_json::json!([{ "name": "mention", "type": "text", "description": "What" }]),
+        );
+    let p = project(dir.path(), Manifest::new("Say Bot"), &[file]);
+    let registry = Registry::with_core();
+    assert_eq!(registry.validate(&p.graphs[0].graph), Vec::new());
+    let output = generate(&p, &registry).unwrap();
+    let code =
+        output.files[Path::new("generated/src/commands/say.rs")].replace(char::is_whitespace, "");
+    assert!(code.contains("quiet(&option_0)"), "{code}");
+}
+
 /// Only the mentions the template's author wrote notify anyone (C-016).
 #[test]
 fn replies_notify_only_what_the_author_wrote() {
@@ -147,6 +170,8 @@ fn replies_notify_only_what_the_author_wrote() {
     let glued = reply("@here @{option.powód} {user.mention}");
     assert!(glued.contains("quiet(&option_1)"));
     assert!(!glued.contains("quiet(&user_mention)"));
+    assert!(reply("@here {option.cel.mention}").contains("option_0_mention)"));
+    assert!(!reply("@here {option.cel.mention}").contains("quiet(&option_0_mention)"));
 }
 
 #[test]

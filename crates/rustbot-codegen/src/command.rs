@@ -171,7 +171,7 @@ fn template_expr(
                 format.push_str("{}");
                 let var = ident(&path, options);
                 // Mentions are `<@id>` built by the bot, and must stay intact to notify.
-                args.push(if quiet && !path.ends_with(".mention") {
+                args.push(if quiet && !is_mention(&path, options) {
                     quote!(quiet(&#var))
                 } else {
                     quote!(#var)
@@ -233,6 +233,22 @@ fn allowed_mentions(template: &str, options: &[CommandOption], everyone: bool) -
         #(#add)*
         mentions
     })
+}
+
+/// Whether the variable is a mention the bot builds, `<@id>`, `<@&id>` or `<#id>`, rather
+/// than text that could come from users. Decided by the variable, not by its name's ending:
+/// a text option may be called `mention`.
+fn is_mention(path: &str, options: &[CommandOption]) -> bool {
+    match option_path(path, options) {
+        Some((_, option, field)) => {
+            field == Some("mention")
+                && matches!(
+                    option.ty,
+                    DataType::User | DataType::Channel | DataType::Role
+                )
+        }
+        None => matches!(path, "user.mention" | "channel.mention"),
+    }
 }
 
 /// Whether the template's own text has `@everyone` or `@here`. Discord allows both or
