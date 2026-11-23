@@ -39,6 +39,8 @@ pub(crate) struct Properties {
     /// The shown message's buttons and menu options (D-098, D-099).
     buttons: Vec<ItemRow>,
     menu: Vec<ItemRow>,
+    /// The shown form's text fields (D-112).
+    form_fields: Vec<FieldRow>,
     /// The form's fields in the node type's order.
     layout: Vec<Slot>,
     /// The prop holding the shown node's command options, if it has one (D-076).
@@ -91,7 +93,22 @@ enum Slot {
     Options,
     Buttons,
     Menu,
+    FormFields,
 }
+
+/// The typed parts of a form's text field (D-112); "long" and "required" are drawn from
+/// the graph.
+struct FieldRow {
+    name: Entity<InputState>,
+    label: Entity<InputState>,
+    placeholder: Entity<InputState>,
+    min: Entity<InputState>,
+    max: Entity<InputState>,
+    _changes: Vec<Subscription>,
+}
+
+/// A form field's typed keys, in the order of [`FieldRow`]'s inputs.
+const FIELD_KEYS: [&str; 5] = ["name", "label", "placeholder", "min", "max"];
 
 /// The fields of the "Buttons and menu" section, in the node type's order (D-097–D-100).
 const CLICK_PROPS: [&str; 6] = [
@@ -162,6 +179,7 @@ impl Properties {
             clicks_open: false,
             buttons: Vec::new(),
             menu: Vec::new(),
+            form_fields: Vec::new(),
             layout: Vec::new(),
             options_prop: None,
             options: Vec::new(),
@@ -472,6 +490,7 @@ impl Properties {
         self.options.clear();
         self.buttons.clear();
         self.menu.clear();
+        self.form_fields.clear();
         let Some((_, node)) = self.shown.clone() else {
             return;
         };
@@ -521,11 +540,13 @@ impl Properties {
                 }
                 PropKind::Buttons => self.layout.push(Slot::Buttons),
                 PropKind::MenuOptions => self.layout.push(Slot::Menu),
+                PropKind::FormFields => self.layout.push(Slot::FormFields),
             }
         }
         self.build_options(window, cx);
         self.buttons = self.item_rows("buttons", window, cx);
         self.menu = self.item_rows("menu", window, cx);
+        self.form_fields = self.field_rows(window, cx);
     }
 
     /// The shown node's buttons or menu options, as the graph has them.
@@ -603,9 +624,192 @@ impl Properties {
             .collect()
     }
 
+    /// The "wait" field of a message (D-097) or a form (D-111), with what it means.
+    fn render_wait(
+        &self,
+        ix: usize,
+        node_id: &str,
+        variables: &[String],
+        this: &gpui_kit::WeakEntity<Self>,
+        cx: &Context<'_, Self>,
+    ) -> gpui_kit::AnyElement {
+        let hint = if node_id == "core-show_form" {
+            "form-wait-hint"
+        } else {
+            "wait-hint"
+        };
+        v_flex()
+            .gap(px(2.))
+            .child(self.render_text_field(ix, node_id, variables, this))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(t(hint)),
+            )
+            .into_any_element()
+    }
+
+    /// The rows of the shown form's text fields (D-112).
+    fn field_rows(&self, window: &mut Window, cx: &mut Context<'_, Self>) -> Vec<FieldRow> {
+        self.current_items("fields", cx)
+            .into_iter()
+            .enumerate()
+            .map(|(ix, item)| {
+                let mut changes = Vec::new();
+                let inputs = FIELD_KEYS.map(|key| {
+                    let value = item
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned();
+                    let input = cx.new(|cx| {
+                        InputState::new(window, cx)
+                            .default_value(value)
+                            .placeholder(t(&format!("form-field-{key}")))
+                    });
+                    changes.push(item_typing("fields", ix, key, &input, window, cx));
+                    input
+                });
+                let [name, label, placeholder, min, max] = inputs;
+                FieldRow {
+                    name,
+                    label,
+                    placeholder,
+                    min,
+                    max,
+                    _changes: changes,
+                }
+            })
+            .collect()
+    }
+
+    /// Adds a text field with a free name, `field3`, and a label such as "Field 3" in the
+    /// app's language (D-112).
+    fn add_form_field(&mut self, cx: &mut Context<'_, Self>) {
+        let base = t("form-field-default-label");
+        self.edit_items("fields", true, cx, |items| {
+            let taken = |name: &str| {
+                items
+                    .iter()
+                    .any(|item| item.get("name") == Some(&name.into()))
+            };
+            let next = (1..=items.len() + 1)
+                .find(|n| !taken(&format!("field{n}")))
+                .unwrap_or(1);
+            items.push(serde_json::json!({
+                "name": format!("field{next}"),
+                "label": format!("{base} {next}"),
+                "required": true,
+            }));
+        });
+    }
+
+    fn render_form_fields(
+        &self,
+        label_text: String,
+        cx: &Context<'_, Self>,
+    ) -> impl IntoElement + use<> {
+        let theme = cx.theme();
+        let items = self.current_items("fields", cx);
+        v_flex()
+            .gap(px(6.))
+            .child(label(label_text))
+            .children(
+                self.form_fields
+                    .iter()
+                    .zip(&items)
+                    .enumerate()
+                    .map(|(ix, (row, item))| {
+                        let flag =
+                            |key: &str| item.get(key) == Some(&serde_json::Value::Bool(true));
+                        let check = |key: &'static str, id: &'static str| {
+                            Checkbox::new((id, ix))
+                                .checked(flag(key))
+                                .label(t(&format!("form-field-{key}")))
+                                .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                                    let checked = *checked;
+                                    this.edit_items("fields", true, cx, |items| {
+                                        set_key(items, ix, key, checked);
+                                    });
+                                }))
+                        };
+                        v_flex()
+                            .gap(px(4.))
+                            .p(px(6.))
+                            .border_1()
+                            .border_color(theme.border)
+                            .rounded(px(4.))
+                            .child(
+                                h_flex()
+                                    .gap(px(4.))
+                                    .child(div().w(px(96.)).child(Input::new(&row.name).small()))
+                                    .child(div().flex_1().child(Input::new(&row.label).small()))
+                                    .child(
+                                        Button::new(("field-remove", ix))
+                                            .ghost()
+                                            .xsmall()
+                                            .label(t("option-remove"))
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.edit_items("fields", true, cx, |items| {
+                                                    if ix < items.len() {
+                                                        items.remove(ix);
+                                                    }
+                                                });
+                                            })),
+                                    ),
+                            )
+                            .child(Input::new(&row.placeholder).small())
+                            .child(
+                                h_flex()
+                                    .gap(px(4.))
+                                    .child(div().flex_1().child(Input::new(&row.min).small()))
+                                    .child(div().flex_1().child(Input::new(&row.max).small())),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap(px(12.))
+                                    .child(check("long", "field-long"))
+                                    .child(check("required", "field-required")),
+                            )
+                    }),
+            )
+            .child(
+                Button::new("field-add")
+                    .xsmall()
+                    .label(t("form-field-add"))
+                    .disabled(items.len() >= 5)
+                    .on_click(cx.listener(|this, _, _, cx| this.add_form_field(cx))),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(t("form-fields-hint")),
+            )
+    }
+
     /// Rebuilds the buttons' and options' rows when some were added or removed, and
     /// otherwise brings their text and colour up to date.
     fn sync_items(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let fields = self.current_items("fields", cx);
+        if fields.len() == self.form_fields.len() {
+            for (row, item) in self.form_fields.iter().zip(&fields) {
+                let inputs = [&row.name, &row.label, &row.placeholder, &row.min, &row.max];
+                for (input, key) in inputs.into_iter().zip(FIELD_KEYS) {
+                    let value = item
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if input.read(cx).value() != value.as_str() {
+                        input.update(cx, |input, cx| input.set_value(value, window, cx));
+                    }
+                }
+            }
+        } else {
+            self.form_fields = self.field_rows(window, cx);
+        }
         for prop in ["buttons", "menu"] {
             let items = self.current_items(prop, cx);
             let rows = if prop == "buttons" {
@@ -769,7 +973,8 @@ impl Properties {
             | PropKind::Bool
             | PropKind::Color
             | PropKind::Buttons
-            | PropKind::MenuOptions => Vec::new(),
+            | PropKind::MenuOptions
+            | PropKind::FormFields => Vec::new(),
         };
         let mut labels: Vec<SharedString> = values
             .iter()
@@ -783,6 +988,7 @@ impl Properties {
                 | PropKind::Color
                 | PropKind::Buttons
                 | PropKind::MenuOptions
+                | PropKind::FormFields
                 | PropKind::Memory => value.clone().into(),
             })
             .collect();
@@ -1121,8 +1327,10 @@ impl Properties {
                 Slot::Options => "",
                 Slot::Buttons => "buttons",
                 Slot::Menu => "menu",
+                Slot::FormFields => "fields",
             };
-            if CLICK_PROPS.contains(&prop) {
+            // A form's "wait" is its own, not a click's (D-111).
+            if CLICK_PROPS.contains(&prop) && node_id != "core-show_form" {
                 if !clicks_header {
                     clicks_header = true;
                     rows.push(section("clicks-section", self.clicks_open, cx, |this| {
@@ -1150,16 +1358,13 @@ impl Properties {
                 }
             }
             rows.push(match *slot {
-                Slot::Text(ix) if self.fields[ix].prop == "wait" => v_flex()
-                    .gap(px(2.))
-                    .child(self.render_text_field(ix, node_id, variables, this))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(t("wait-hint")),
-                    )
-                    .into_any_element(),
+                Slot::Text(ix) if self.fields[ix].prop == "wait" => {
+                    self.render_wait(ix, node_id, variables, this, cx)
+                }
+                Slot::FormFields => {
+                    let name = t_or(&format!("prop-{node_id}-fields"), "fields");
+                    self.render_form_fields(name, cx).into_any_element()
+                }
                 Slot::Text(ix) => self
                     .render_text_field(ix, node_id, variables, this)
                     .into_any_element(),
@@ -2283,5 +2488,66 @@ mod tests {
             });
         });
         assert!(cx.read(|cx| properties.read(cx).memory.is_none()));
+    }
+
+    /// "+ Add field" adds text fields with free names, up to 5; typing and the switches
+    /// write them, and "Remove" takes one out (D-112).
+    #[gpui_kit::test]
+    fn form_fields_are_edited_in_the_form(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (properties, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, cx| {
+                app.edit(false, cx, |file, registry| {
+                    crate::canvas::add_node(file, registry, "core.show_form", [0., 0.]);
+                });
+                app.selected_node = Some(NodeId("n3".to_owned()));
+            });
+            state = Some(app.clone());
+            Properties::new(app, window, cx)
+        });
+        let state = state.unwrap();
+        let fields = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.read(|cx| {
+                let file = state.read(cx).open_file().unwrap();
+                rustbot_core::registry::FormField::list(
+                    file.graph.nodes[&NodeId("n3".to_owned())]
+                        .props
+                        .get("fields"),
+                )
+            })
+        };
+        cx.update(gpui_kit::test::TestWindowExt::render_frame);
+        for _ in 0..6 {
+            cx.update(|window, cx| {
+                window.click("field-add", cx);
+                window.render_frame(cx);
+            });
+        }
+        let names: Vec<String> = fields(cx).into_iter().map(|field| field.name).collect();
+        assert_eq!(names, ["field1", "field2", "field3", "field4", "field5"]);
+        assert!(fields(cx)[0].required);
+
+        cx.update(|window, cx| {
+            let input = properties.read(cx).form_fields[0].name.clone();
+            input.update(cx, |input, cx| {
+                input.set_value("", window, cx);
+                input.focus(window, cx);
+            });
+            window.render_frame(cx);
+        });
+        cx.update(|window, cx| window.input("reason", cx));
+        cx.update(|window, cx| {
+            window.click(("field-long", 0_usize), cx);
+            window.click(("field-remove", 4_usize), cx);
+            window.render_frame(cx);
+        });
+        let first = &fields(cx)[0];
+        assert_eq!((first.name.as_str(), first.long), ("reason", true));
+        assert_eq!(fields(cx).len(), 4);
+        assert_eq!(cx.read(|cx| properties.read(cx).form_fields.len()), 4);
     }
 }

@@ -5,7 +5,7 @@ use gpui_kit::{
     Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render,
     StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window, div, px,
 };
-use rustbot_core::registry::{ComponentProblem, OptionProblem, Problem, ProblemKind};
+use rustbot_core::registry::{ComponentProblem, FormProblem, OptionProblem, Problem, ProblemKind};
 use rustbot_core::template::TemplateError;
 
 use crate::i18n::{t, t_with};
@@ -177,6 +177,25 @@ pub(crate) fn describe(problem: &Problem) -> String {
         ProblemKind::OnlyAuthorWithoutUser => t("problem-only-author-without-user"),
         ProblemKind::NoEventMessage => t("problem-no-event-message"),
         ProblemKind::UnknownMemory(name) => t_with("problem-unknown-memory", &[("name", name)]),
+        ProblemKind::BadForm { field, problem } => {
+            let why = t(match problem {
+                FormProblem::Title => "problem-form-title",
+                FormProblem::Count => "problem-form-count",
+                FormProblem::Name => "problem-form-name",
+                FormProblem::Label => "problem-form-label",
+                FormProblem::Placeholder => "problem-form-placeholder",
+                FormProblem::Length => "problem-form-length",
+            });
+            match field {
+                Some(field) => t_with(
+                    "problem-form-field",
+                    &[("field", &(field + 1).to_string()), ("why", &why)],
+                ),
+                None => why,
+            }
+        }
+        ProblemKind::FormNotFirst => t("problem-form-not-first"),
+        ProblemKind::ReplyAfterClosedForm => t("problem-reply-after-closed-form"),
         ProblemKind::MemoryNeedsServer => t("problem-memory-needs-server"),
         ProblemKind::MemoryNeedsUser => t("problem-memory-needs-user"),
         ProblemKind::NotANumber(prop) if prop == "variable" => t("problem-memory-not-number"),

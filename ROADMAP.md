@@ -60,7 +60,7 @@ layer, before the scope widens.
   - [x] Buttons and select menus: clicks that always work or are waited for (D-096–D-100)
   - [x] More actions: DM, reactions, pins, editing, nicknames, waiting (D-101–D-103)
   - [x] The bot's memory: lasting variables in four scopes (D-104–D-108)
-  - [ ] Modals
+  - [x] Modals: forms with text fields after a command or click (D-110–D-114)
 - [x] Validation and errors shown on the graph
 - [ ] Bot templates
 

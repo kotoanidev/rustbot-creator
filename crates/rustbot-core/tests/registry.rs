@@ -350,7 +350,10 @@ fn new_nodes_start_with_values_of_the_right_kind() {
             let value = prop.kind.default_value();
             let expected_list = matches!(
                 prop.kind,
-                PropKind::Options | PropKind::Buttons | PropKind::MenuOptions
+                PropKind::Options
+                    | PropKind::Buttons
+                    | PropKind::MenuOptions
+                    | PropKind::FormFields
             );
             assert_eq!(
                 value.is_array(),
@@ -1033,6 +1036,129 @@ fn memory_is_read_and_changed_where_its_owner_is_known() {
             ProblemKind::MemoryNeedsServer,
             ProblemKind::MemoryNeedsUser,
             ProblemKind::NotANumber("value".to_owned())
+        ]
+    );
+}
+
+/// A command with a form: its graph from the nodes after the trigger, wired `then`.
+fn form_problems(
+    registry: &Registry,
+    nodes: &serde_json::Value,
+    edges: &serde_json::Value,
+) -> Vec<(String, ProblemKind)> {
+    let mut all = serde_json::json!({
+        "n1": { "type": "core.slash_command", "props": {
+            "name": "report", "description": "Reports", "options": [
+                { "name": "who", "type": "user", "description": "Who" } ] } }
+    });
+    all.as_object_mut()
+        .unwrap()
+        .extend(nodes.as_object().unwrap().clone());
+    let graph: Graph = serde_json::from_value(serde_json::json!({
+        "schema": 1, "nodes": all, "edges": edges.clone()
+    }))
+    .unwrap();
+    registry
+        .validate(&graph)
+        .into_iter()
+        .map(|p| (p.node.unwrap().0, p.kind))
+        .collect()
+}
+
+#[test]
+fn forms_come_first_and_their_fields_follow_them() {
+    let registry = Registry::with_core();
+    let form = |fields: serde_json::Value| {
+        serde_json::json!({ "type": "core.show_form", "props": {
+            "title": "Report", "fields": fields } })
+    };
+    let reason = serde_json::json!([
+        { "name": "reason", "label": "Why?", "long": true, "required": true, "max": "500" }
+    ]);
+    let reply = |content: &str| serde_json::json!({ "type": "core.reply", "props": { "content": content } });
+    let edge = |from: &str, to: &str| serde_json::json!({ "from": from, "to": to });
+    let check = serde_json::json!({ "type": "core.has_permission",
+        "props": { "user": "user", "permission": "kick_members" } });
+
+    // After a condition, the form's fields are known after "then", not after "timeout".
+    assert_eq!(
+        form_problems(
+            &registry,
+            &serde_json::json!({ "n2": check, "n3": form(reason.clone()),
+                "n4": reply("{option.who.mention}: {field.reason}"),
+                "n5": { "type": "core.send_message", "props": { "channel": "channel",
+                    "content": "{field.reason}" } },
+                "n6": reply("Too late") }),
+            &serde_json::json!([
+                edge("n1.then", "n2.run"),
+                edge("n2.yes", "n3.run"),
+                edge("n3.then", "n4.run"),
+                edge("n3.timeout", "n5.run"),
+                edge("n5.then", "n6.run")
+            ])
+        ),
+        vec![
+            (
+                "n5".to_owned(),
+                ProblemKind::UnknownVariable {
+                    prop: "content".to_owned(),
+                    path: "field.reason".to_owned()
+                }
+            ),
+            ("n6".to_owned(), ProblemKind::ReplyAfterClosedForm),
+        ]
+    );
+    // A reply first, then a form: too late; a form after a waited click is fine.
+    assert_eq!(
+        form_problems(
+            &registry,
+            &serde_json::json!({ "n2": { "type": "core.reply", "props": { "content": "Sure?",
+                    "wait": "1", "buttons": [ { "id": "b1", "label": "Yes", "style": "primary" } ] } },
+                "n3": form(reason.clone()), "n4": form(reason.clone()) }),
+            &serde_json::json!([
+                edge("n1.then", "n2.run"),
+                edge("n2.b1", "n3.run"),
+                edge("n2.then", "n4.run")
+            ])
+        ),
+        vec![("n4".to_owned(), ProblemKind::FormNotFirst)]
+    );
+    // A form shares its wire with nothing, which would run before or after it.
+    assert_eq!(
+        form_problems(
+            &registry,
+            &serde_json::json!({ "n2": form(reason), "n3": reply("Hi") }),
+            &serde_json::json!([edge("n1.then", "n2.run"), edge("n1.then", "n3.run")])
+        ),
+        vec![("n2".to_owned(), ProblemKind::FormNotFirst)]
+    );
+    // Discord's rules for the fields.
+    let bad = serde_json::json!([
+        { "name": "a-b", "label": "One" },
+        { "name": "a_b", "label": "" },
+        { "name": "c", "label": "Three", "min": "10", "max": "5" },
+        { "name": "d", "label": "Four", "max": "0" },
+        { "name": "e", "label": "Five", "placeholder": "x".repeat(101) },
+        { "name": "f", "label": "Six" }
+    ]);
+    let problems: Vec<_> = form_problems(
+        &registry,
+        &serde_json::json!({ "n2": form(bad) }),
+        &serde_json::json!([edge("n1.then", "n2.run")]),
+    )
+    .into_iter()
+    .map(|(_, kind)| kind)
+    .collect();
+    let form = |field, problem| ProblemKind::BadForm { field, problem };
+    assert_eq!(
+        problems,
+        vec![
+            form(Some(1), rustbot_core::registry::FormProblem::Name),
+            form(Some(1), rustbot_core::registry::FormProblem::Label),
+            form(Some(2), rustbot_core::registry::FormProblem::Length),
+            form(Some(3), rustbot_core::registry::FormProblem::Length),
+            form(Some(4), rustbot_core::registry::FormProblem::Placeholder),
+            form(Some(5), rustbot_core::registry::FormProblem::Count),
         ]
     );
 }

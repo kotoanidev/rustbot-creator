@@ -508,6 +508,105 @@ fn remembering() -> Vec<GraphFile> {
     ]
 }
 
+/// Forms (D-111-D-114): after a command, after a click waited for, after a click that
+/// always works, and one whose sending nothing answers.
+#[allow(clippy::too_many_lines)] // the graphs, as data
+fn forms() -> Vec<GraphFile> {
+    let fields = serde_json::json!([
+        { "name": "reason", "label": "Why?", "long": true, "required": true,
+          "min": "10", "max": "500", "placeholder": "Tell us more" },
+        { "name": "contact-me", "label": "Contact" }
+    ]);
+    vec![
+        command_graph(
+            "report",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "report", "description": "Reports a user", "options": [
+                            { "name": "who", "type": "user", "description": "Who", "required": true } ] } },
+                    "n2": { "type": "core.show_form", "props": {
+                        "title": "Report", "fields": fields, "wait": "10" } },
+                    "n3": { "type": "core.reply", "props": { "private": true,
+                        "content": "Thanks, {user.name}: {option.who.mention} for {field.reason} ({field.contact-me})" } },
+                    "n4": { "type": "core.send_message", "props": { "channel": "channel",
+                        "content": "{user.mention} gave up" } },
+                    "n5": { "type": "core.reply", "props": { "content": "Logged" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n5.run" },
+                    { "from": "n2.timeout", "to": "n4.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "feedback",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "feedback", "description": "Asks for feedback" } },
+                    "n2": { "type": "core.reply", "props": { "content": "Tell us?", "wait": "2",
+                        "buttons": [ { "id": "b1", "label": "Write", "style": "primary" } ] } },
+                    "n3": { "type": "core.show_form", "props": { "title": "Feedback",
+                        "fields": [ { "name": "text", "label": "Your feedback" } ] } },
+                    "n4": { "type": "core.memory_set", "props": {
+                        "variable": "motd", "value": "{field.text}" } },
+                    "n5": { "type": "core.reply", "props": { "content": "Saved {field.text}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.b1", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n4.then", "to": "n5.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "apply",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "apply", "description": "Posts the application button" } },
+                    "n2": { "type": "core.reply", "props": { "content": "Apply here",
+                        "buttons": [ { "id": "b1", "label": "Apply", "style": "success" } ] } },
+                    "n3": { "type": "core.show_form", "props": { "title": "Application",
+                        "fields": [ { "name": "about", "label": "About you", "long": true } ] } },
+                    "n4": { "type": "core.send_message", "props": { "channel": "channel",
+                        "content": "{user.mention} applied: {field.about}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.b1", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "note",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "note", "description": "Takes a note" } },
+                    "n2": { "type": "core.show_form", "props": { "title": "Note",
+                        "fields": [ { "name": "text", "label": "Note" } ] } },
+                    "n3": { "type": "core.memory_set", "props": {
+                        "variable": "log", "value": "{field.text}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" }
+                ]
+            }),
+        ),
+    ]
+}
+
 /// An event graph from JSON.
 fn event_graph(name: &str, graph: serde_json::Value) -> GraphFile {
     GraphFile {
@@ -860,6 +959,21 @@ fn memory_snapshot() {
 }
 
 #[test]
+fn forms_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut manifest = Manifest::new("Form Bot");
+    manifest.memory = memory();
+    let p = project(dir.path(), manifest, &forms());
+    let output = generate(&p, &Registry::with_core()).unwrap();
+    for name in ["report", "feedback", "apply", "note"] {
+        insta::assert_snapshot!(
+            format!("form_{name}"),
+            &output.files[&Path::new("generated/src/commands").join(format!("{name}.rs"))]
+        );
+    }
+}
+
+#[test]
 fn events_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let p = project(dir.path(), Manifest::new("Event Bot"), &events());
@@ -1068,6 +1182,7 @@ fn generated_bot_compiles() {
     graphs.extend(clicks());
     graphs.extend(actions());
     graphs.extend(remembering());
+    graphs.extend(forms());
     let mut manifest = Manifest::new("Ping Bot");
     manifest.memory = memory();
     let p = project(dir.path(), manifest, &graphs);

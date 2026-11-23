@@ -175,12 +175,21 @@ values in `data.json` in its folder. The `--ignored compiles` tests also build t
 memory module and run it twice, checking that values last and that a damaged file is
 never overwritten.
 
+Step 8, modals (D-110–D-114, C-027), is ✅ done in code:
+- "Show form" opens a form with 1–5 text fields, edited in its Properties. Each field has
+  a name, a label, a hint, "long", "required" and lengths.
+- It goes right after a command or click, with only conditions before it. Validation
+  checks that.
+- It waits up to 15 minutes. "then" goes on with `{field.<name>}`, and "Reply" answers
+  the form. "time ran out" runs if nobody sent it.
+
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
-test). Memory has not run live yet. Next:
-1. The owner tries memory on the test server, e.g. `/warn` counting warnings with
-   "Change memory by" and `{memory.warnings.option.target}`; fix what they find.
-2. The next part of the catalog: ask the owner which first, e.g. modals, bot templates,
-   or a "Ranking" node for memory.
+test). Memory and forms have not run live yet. Next:
+1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
+   `{memory.warnings.option.target}`) and forms (e.g. `/report` with "Show form" and a
+   reply using `{field.reason}`) on the test server; fix what they find.
+2. What comes next in phase 3: ask the owner, e.g. bot templates, the rest of the
+   catalog (channels, threads, roles, "Ranking" for memory), or phase 4.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

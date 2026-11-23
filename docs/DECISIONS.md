@@ -1434,6 +1434,27 @@ alternatives that were considered, and why.
     `{memory.…}` in every graph, but undo steps taken before keep the old name. Deleting
     asks first, and the saved values stay in `data.json`. Memory changes have no undo
     yet.
+
+### C-027 — How forms work
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Order:** Discord takes a form only as the first answer to a command or click, within
+    3 seconds. So before "Show form" only conditions may run, and it must be alone on its
+    wire: nodes on one output run one after another. A sent form cannot be answered with
+    another form.
+  - **Waiting:** an empty "wait" waits 15 minutes. The form's custom ID is
+    `form:<node>`, and only the user who opened it can send it. After "time ran out",
+    nothing can reply, because the form was the answer: "Reply" there is the problem
+    `ReplyAfterClosedForm`. "Send to a channel" and DMs still work.
+  - **Answering:** after a form is sent, "Reply" answers it. If nothing does, a form
+    opened from a click is acknowledged quietly. A form opened from a command cannot be,
+    so a private "thinking" answer is made and deleted at once; otherwise Discord shows
+    an error in the form.
+  - **Fields:** `{field.<name>}` is known after "then", for the rest of the run, until a
+    click that always works starts a handler of its own. An optional field left empty is
+    empty text. `-` and `_` in a name make the same Rust name, so two names that differ
+    only there are the problem `BadForm`. The title, labels and hints are plain text,
+    without variables.
 ---
 
 ## Open questions (to ask the owner when relevant)

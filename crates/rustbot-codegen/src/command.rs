@@ -5,7 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use rustbot_core::registry::{
-    Button, ButtonStyle, CommandOption, DataType, MenuOption, click_items, is_id, waits_for_click,
+    Button, ButtonStyle, CommandOption, DataType, FormField, MenuOption, click_items, is_id,
+    waits_for_click,
 };
 use rustbot_core::template::{self, Segment};
 use rustbot_core::{
@@ -59,7 +60,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         command: name,
         event: None,
         path: Vec::new(),
-        clicked: false,
+        answer: Answer::Start,
         routes: Vec::new(),
         track_last: tracks_last(file),
         reaction: false,
@@ -261,8 +262,8 @@ pub(crate) struct Body<'a> {
     event: Option<Event>,
     /// The nodes from the trigger to here, to find loops.
     path: Vec<NodeId>,
-    /// After a click waited for: replies answer `click` (D-097).
-    clicked: bool,
+    /// What a "Reply" answers here.
+    answer: Answer,
     /// Messages whose clicks "always work", which need a handler of their own (D-097).
     routes: Vec<NodeId>,
     /// Some node works on "the last message sent", so message nodes keep theirs (D-103).
@@ -271,6 +272,19 @@ pub(crate) struct Body<'a> {
     reaction: bool,
     /// The project's memory variables (D-106).
     memory: &'a [MemoryVar],
+}
+
+/// What a "Reply" answers, and how.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Answer {
+    /// The command, or an event's message: `cmd`, checking `replied` for follow-ups.
+    Start,
+    /// The click of a handler of its own (D-097): `cmd`, with `replied`.
+    Route,
+    /// A click waited for (D-097): `click`, with `click_replied`.
+    Click,
+    /// A form sent (D-111): `form`, with `form_replied`.
+    Form,
 }
 
 /// The helper functions a module's handlers need.
@@ -352,7 +366,7 @@ impl<'a> Body<'a> {
             command: &file.name,
             event: Some(event),
             path: Vec::new(),
-            clicked: false,
+            answer: Answer::Start,
             routes: Vec::new(),
             track_last: tracks_last(file),
             reaction: false,
@@ -373,7 +387,7 @@ impl<'a> Body<'a> {
             command: &file.name,
             event: None,
             path: Vec::new(),
-            clicked: false,
+            answer: Answer::Route,
             routes: Vec::new(),
             track_last: tracks_last(file),
             reaction: false,
@@ -452,6 +466,7 @@ impl<'a> Body<'a> {
                 let action = self.memory_action(id);
                 self.fallible(id, &action)?
             }
+            "core.show_form" => (self.show_form(id)?, false),
             "core.wait" => {
                 let duration = self.duration(text(graph, id, "seconds"), 1, 900.0);
                 (quote!(tokio::time::sleep(#duration).await;), true)
@@ -566,9 +581,9 @@ impl<'a> Body<'a> {
         } else {
             quote!(let click = clicks.next().await;)
         };
-        let was = std::mem::replace(&mut self.clicked, true);
+        let was = std::mem::replace(&mut self.answer, Answer::Click);
         let dispatch = self.dispatch(id, &quote!(click));
-        self.clicked = was;
+        self.answer = was;
         let dispatch = dispatch?;
         let item = (!dispatch.is_empty())
             .then(|| quote!(let item = click.custom_id.strip_prefix("wait:").unwrap_or_default();));
@@ -593,6 +608,95 @@ impl<'a> Body<'a> {
                 // A click must be answered, or Discord says it failed.
                 if !click_replied.get() {
                     click.defer_update(&ctx).await?;
+                }
+            } #timeout
+        })
+    }
+
+    /// Shows a form (D-111-D-114) as the answer to the command or click, and waits for it:
+    /// "then" with its fields as `field_<name>`, or "timeout".
+    fn show_form(&mut self, id: &NodeId) -> Result<TokenStream, Error> {
+        let graph = &self.file.graph;
+        let title = text(graph, id, "title").trim().to_owned();
+        let custom_id = format!("form:{}", id.0);
+        let fields = FormField::list(graph.nodes[id].props.get("fields"));
+        let inputs = fields.iter().map(|field| {
+            let (name, label) = (&field.name, field.label.trim());
+            let make = if field.long {
+                quote!(paragraph)
+            } else {
+                quote!(short)
+            };
+            let required = field.required;
+            let placeholder = field.placeholder.trim();
+            let placeholder = (!placeholder.is_empty()).then(|| quote!(.placeholder(#placeholder)));
+            let min = FormField::length(&field.min)
+                .flatten()
+                .map(|n| quote!(.min_length(#n)));
+            let max = FormField::length(&field.max)
+                .flatten()
+                .map(|n| quote!(.max_length(#n)));
+            quote! {
+                .label(
+                    #label,
+                    djs_rs::builders::TextInputBuilder::#make(#name)
+                        .required(#required) #placeholder #min #max,
+                )
+            }
+        });
+        // A form opened from a click may be acknowledged quietly; one from a command
+        // cannot, so a private "thinking" answer is made and deleted.
+        let (target, replied, from_click) = match self.answer {
+            Answer::Click => (quote!(click), Some(quote!(click_replied)), true),
+            Answer::Route => (quote!(cmd), Some(quote!(replied)), true),
+            Answer::Start => (quote!(cmd), None, false),
+            Answer::Form => unreachable!("validated: a form is not the answer to a form"),
+        };
+        let mark = replied.map(|replied| quote!(#replied.set(true);));
+        let wait = text(graph, id, "wait");
+        let duration = if wait.trim().is_empty() {
+            quote!(std::time::Duration::from_secs(900))
+        } else {
+            self.duration(wait, 60, 15.0)
+        };
+        let was = std::mem::replace(&mut self.answer, Answer::Form);
+        let then = self.after(id, "then");
+        self.answer = was;
+        let then = then?;
+        let timeout = self.after(id, "timeout")?;
+        let bindings = fields.iter().filter_map(|field| {
+            let var = field_ident(&field.name);
+            let name = &field.name;
+            uses(&then, &var.to_string())
+                .then(|| quote!(let #var = form.text_value(#name).unwrap_or_default().to_owned();))
+        });
+        let ack = if from_click {
+            quote!(form.defer_update(&ctx).await?;)
+        } else {
+            quote! {
+                form.defer_reply(&ctx, djs_rs::model::message::MessageFlags::EPHEMERAL)
+                    .await?;
+                form.delete_reply(&ctx).await?;
+            }
+        };
+        let timeout = (!timeout.is_empty()).then(|| quote!(else { #timeout }));
+        Ok(quote! {
+            let modal = djs_rs::builders::ModalBuilder::new(#custom_id, #title)
+                #(#inputs)*
+                .build()?;
+            #target.show_modal(&ctx, modal).await?;
+            #mark
+            let sent = #target
+                .await_modal_submit(&ctx, #duration)
+                .filter(|submitted| submitted.custom_id == #custom_id)
+                .await;
+            if let Ok(form) = sent {
+                let form_replied = std::cell::Cell::new(false);
+                #(#bindings)*
+                #then
+                // A sent form must be answered, or Discord shows an error in it.
+                if !form_replied.get() {
+                    #ack
                 }
             } #timeout
         })
@@ -688,16 +792,17 @@ impl<'a> Body<'a> {
                     .await? #end
             };
         }
-        let (target, replied) = if self.clicked {
-            (quote!(click), quote!(click_replied))
-        } else if self.event.is_some() {
-            return quote! {
-                event
-                    .reply(&ctx, djs_rs::model::rest::CreateMessage::default() #message)
-                    .await? #end
-            };
-        } else {
-            (quote!(cmd), quote!(replied))
+        let (target, replied) = match self.answer {
+            Answer::Click => (quote!(click), quote!(click_replied)),
+            Answer::Form => (quote!(form), quote!(form_replied)),
+            Answer::Start if self.event.is_some() => {
+                return quote! {
+                    event
+                        .reply(&ctx, djs_rs::model::rest::CreateMessage::default() #message)
+                        .await? #end
+                };
+            }
+            Answer::Start | Answer::Route => (quote!(cmd), quote!(replied)),
         };
         // Only the author sees it (D-086).
         if graph.nodes[id].props.get("private") == Some(&Value::Bool(true)) {
@@ -711,7 +816,7 @@ impl<'a> Body<'a> {
             .await?;
         };
         let fetch = want.then(|| quote!(#target.fetch_reply(&ctx).await?));
-        if self.clicked || self.follow_ups {
+        if matches!(self.answer, Answer::Click | Answer::Form) || self.follow_ups {
             quote! {
                 if #replied.replace(true) {
                     #target.follow_up(
@@ -1424,7 +1529,10 @@ fn template_expr(
                 } else {
                     quote!(#var)
                 });
-                vars.insert(path);
+                // A form's fields are bound where it was sent, not at the top.
+                if !path.starts_with("field.") {
+                    vars.insert(path);
+                }
             }
         }
     }
@@ -1528,7 +1636,13 @@ fn ident(path: &str, options: &[CommandOption]) -> proc_macro2::Ident {
             None => format_ident!("option_{ix}"),
         };
     }
-    format_ident!("{}", path.replace('.', "_"))
+    format_ident!("{}", path.replace(['.', '-'], "_"))
+}
+
+/// A form field's value in generated code (D-114): `field_<name>`, bound where the form was
+/// sent.
+fn field_ident(name: &str) -> proc_macro2::Ident {
+    format_ident!("field_{}", name.replace('-', "_"))
 }
 
 /// `option.<name>[.<field>]` as the option's position, the option and the field.

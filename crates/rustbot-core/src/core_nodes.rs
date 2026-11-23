@@ -47,6 +47,7 @@ pub(crate) fn all() -> Vec<NodeType> {
         memory_node("core.memory_set", vec![text_template("value", false)]),
         memory_node("core.memory_change", vec![text_template("amount", true)]),
         memory_node("core.memory_reset", Vec::new()),
+        show_form(),
     ]
 }
 
@@ -138,6 +139,29 @@ fn wait() -> NodeType {
         intents: Vec::new(),
         permission: None,
         triggers: Vec::new(),
+    }
+}
+
+/// "Show form" (D-111-D-114): a modal with text fields, waited for up to 15 minutes; "then"
+/// once it is sent, "timeout" if not. Empty "wait" waits the longest.
+fn show_form() -> NodeType {
+    NodeType {
+        id: "core.show_form".to_owned(),
+        category: Category::Action,
+        pins: vec![
+            flow("run", Direction::In),
+            flow("then", Direction::Out),
+            flow("timeout", Direction::Out),
+        ],
+        props: vec![
+            prop("title", PropKind::Text { templates: false }, true),
+            prop("fields", PropKind::FormFields, false),
+            prop("wait", PropKind::Number { max: 15 }, false),
+        ],
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+        triggers: vec!["core.slash_command".to_owned(), "core.click".to_owned()],
     }
 }
 

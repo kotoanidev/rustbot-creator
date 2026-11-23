@@ -162,6 +162,8 @@ pub enum PropKind {
     MenuOptions,
     /// A memory variable of the project, by its name (D-106).
     Memory,
+    /// A form's text fields: a list of [`FormField`] (D-112).
+    FormFields,
 }
 
 impl PropKind {
@@ -169,7 +171,7 @@ impl PropKind {
     #[must_use]
     pub fn default_value(self) -> serde_json::Value {
         match self {
-            Self::Options | Self::Buttons | Self::MenuOptions => {
+            Self::Options | Self::Buttons | Self::MenuOptions | Self::FormFields => {
                 serde_json::Value::Array(Vec::new())
             }
             // Deleting nothing is the safe start (D-083).
@@ -303,6 +305,66 @@ pub enum OptionProblem {
     TooMany,
 }
 
+/// A text field of a form (D-112), as stored in the graph file.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FormField {
+    /// Read as `{field.<name>}` (D-114), with the rules of a command option's name.
+    pub name: String,
+    /// What users see above it: 1-45 characters.
+    pub label: String,
+    /// A paragraph rather than one line.
+    #[serde(default)]
+    pub long: bool,
+    /// Whether it must be filled in.
+    #[serde(default)]
+    pub required: bool,
+    /// Grey text in the empty field: at most 100 characters.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub placeholder: String,
+    /// The fewest characters it takes, 0-4000; empty for no limit.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub min: String,
+    /// The most characters it takes, 1-4000; empty for Discord's 4000.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub max: String,
+}
+
+impl FormField {
+    /// The fields stored in a form field, or none if it holds something else.
+    #[must_use]
+    pub fn list(value: Option<&serde_json::Value>) -> Vec<Self> {
+        value
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default()
+    }
+
+    /// `min` or `max` as a number; `None` when empty, `Some(None)` when it is no length.
+    #[must_use]
+    pub fn length(text: &str) -> Option<Option<u16>> {
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.parse().ok().filter(|n| *n <= 4000))
+    }
+}
+
+/// What breaks Discord's rules for a form (D-112).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FormProblem {
+    /// The title is over 45 characters.
+    Title,
+    /// No fields, or more than 5; reported on the sixth.
+    Count,
+    /// A name that is not a valid one, or used twice.
+    Name,
+    /// A label that is empty or over 45 characters.
+    Label,
+    /// A hint over 100 characters.
+    Placeholder,
+    /// A minimum or maximum that is not 0-4000 (1-4000 for the maximum), or a minimum
+    /// above the maximum.
+    Length,
+}
+
 /// A button under a message, as stored in the graph file (D-098).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -430,10 +492,20 @@ fn click_scope() -> Vec<Variable> {
 /// Where a node runs (D-097). After a click that "always works", a new handler starts in
 /// which only [`click_scope`] is known (`routed`); after a click waited for, every variable
 /// stays, and replies answer the click (`clicked`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(clippy::struct_excessive_bools)] // independent facts about where a node runs
 struct Context {
     routed: bool,
     clicked: bool,
+    /// The forms sent earlier in the run, whose fields are known (D-111).
+    forms: Vec<NodeId>,
+    /// After a form nobody sent: its interaction was answered with it, so nothing can
+    /// reply.
+    closed: bool,
+    /// Something other than a condition ran since the interaction began, or it was
+    /// answered: too late for a form, which must be the first answer, within 3 seconds
+    /// (D-113).
+    late: bool,
 }
 
 /// A variable a trigger provides to templates.
@@ -564,6 +636,18 @@ pub enum ProblemKind {
     NoEventMessage,
     /// A memory variable the project does not declare (D-106).
     UnknownMemory(String),
+    /// A form breaks Discord's rules (D-112).
+    BadForm {
+        /// The field's position from 0, or `None` for the title or the number of fields.
+        field: Option<usize>,
+        /// What is wrong.
+        problem: FormProblem,
+    },
+    /// "Show form" after the bot did something other than a condition, or answered: a form
+    /// must be the first answer to a command or click (D-113).
+    FormNotFirst,
+    /// "Reply" after a form nobody sent ("timeout"), when there is nothing to reply to.
+    ReplyAfterClosedForm,
     /// A memory variable kept per server where no server is known, e.g. "Bot is ready".
     MemoryNeedsServer,
     /// A memory variable kept per user where no user is known and none is chosen.
@@ -644,6 +728,19 @@ impl fmt::Display for Problem {
             }
             ProblemKind::NoEventMessage => f.write_str("this event comes with no message"),
             ProblemKind::UnknownMemory(name) => write!(f, "no memory variable {name:?}"),
+            ProblemKind::BadForm { field, problem } => {
+                write!(f, "the form breaks Discord's rules ({problem:?}")?;
+                match field {
+                    Some(field) => write!(f, " in field {})", field + 1),
+                    None => f.write_str(")"),
+                }
+            }
+            ProblemKind::FormNotFirst => {
+                f.write_str("a form must be the first answer, with only conditions before it")
+            }
+            ProblemKind::ReplyAfterClosedForm => {
+                f.write_str("nothing can be replied to after a form that was not sent")
+            }
             ProblemKind::MemoryNeedsServer => {
                 f.write_str("the variable is kept per server, and no server is known here")
             }
@@ -825,7 +922,8 @@ impl Registry {
         let Some(node) = graph.nodes.get(id) else {
             return false;
         };
-        if node.kind == "core.reply" {
+        // A form answers the command too (D-111).
+        if matches!(node.kind.as_str(), "core.reply" | "core.show_form") {
             return true;
         }
         let Some(node_type) = self.get(&node.kind) else {
@@ -879,10 +977,9 @@ impl Registry {
             1 => {}
             _ => report(None, ProblemKind::SeveralTriggers),
         }
-        let scopes = [self.scope(graph), click_scope()];
         let trigger_id = self.trigger(graph);
         let trigger = trigger_id.map(|id| graph.nodes[id].kind.as_str());
-        let contexts = Self::contexts(graph, trigger_id);
+        let contexts = self.contexts(graph, trigger_id);
         // A node no wire reaches is checked as if the trigger led to it.
         let unreached = BTreeSet::from([Context::default()]);
         for (id, node) in &graph.nodes {
@@ -893,14 +990,14 @@ impl Registry {
             // A node that runs in several contexts is checked in each, and every problem
             // is reported once.
             let mut found: Vec<ProblemKind> = Vec::new();
-            for &context in contexts.get(id).unwrap_or(&unreached) {
+            for context in contexts.get(id).unwrap_or(&unreached) {
                 let base = if context.routed {
                     Some("core.click")
                 } else {
                     trigger
                 };
-                let scope = &scopes[usize::from(context.routed)];
-                for kind in check_node(node, node_type, base, context, scope, &self.memory) {
+                let scope = self.scope_in(graph, context);
+                for kind in check_node(node, node_type, base, context, &scope, &self.memory) {
                     if !found.contains(&kind) {
                         found.push(kind);
                     }
@@ -916,6 +1013,18 @@ impl Registry {
             }
             if node_type.props.iter().any(|p| p.name == "embed_title") && is_empty_message(node) {
                 report(Some(id), ProblemKind::EmptyMessage);
+            }
+        }
+
+        // Nodes on one output run one after another, so a form must be alone on its wire to
+        // be the first answer (D-113).
+        for edge in &graph.edges {
+            let form = graph
+                .nodes
+                .get(&edge.to.node)
+                .is_some_and(|node| node.kind == "core.show_form");
+            if form && graph.edges.iter().filter(|e| e.from == edge.from).count() > 1 {
+                report(Some(&edge.to.node), ProblemKind::FormNotFirst);
             }
         }
 
@@ -1024,15 +1133,23 @@ impl Registry {
         })
     }
 
-    /// The contexts each node the trigger leads to runs in (D-097).
-    fn contexts(graph: &Graph, trigger: Option<&NodeId>) -> BTreeMap<NodeId, BTreeSet<Context>> {
+    /// The contexts each node the trigger leads to runs in (D-097, D-111).
+    fn contexts(
+        &self,
+        graph: &Graph,
+        trigger: Option<&NodeId>,
+    ) -> BTreeMap<NodeId, BTreeSet<Context>> {
         let mut reached: BTreeMap<NodeId, BTreeSet<Context>> = BTreeMap::new();
         let mut next: Vec<(NodeId, Context)> = trigger
             .map(|id| (id.clone(), Context::default()))
             .into_iter()
             .collect();
         while let Some((id, context)) = next.pop() {
-            if !reached.entry(id.clone()).or_default().insert(context) {
+            if !reached
+                .entry(id.clone())
+                .or_default()
+                .insert(context.clone())
+            {
                 continue;
             }
             let Some(node) = graph.nodes.get(&id) else {
@@ -1040,18 +1157,39 @@ impl Registry {
             };
             let clicks = click_items(node);
             let waits = waits_for_click(node);
+            // A trigger or a condition leaves time for a form; anything else does not.
+            let quick = self.get(&node.kind).is_some_and(|t| {
+                t.category == Category::Trigger || t.pins.iter().any(|pin| pin.name == "yes")
+            });
             for edge in graph.edges.iter().filter(|edge| edge.from.node == id) {
-                let after = if !clicks.contains(&edge.from.pin) {
-                    context
+                let after = if node.kind == "core.show_form" {
+                    let mut after = Context {
+                        late: true,
+                        ..context.clone()
+                    };
+                    if edge.from.pin == "then" {
+                        after.forms.push(id.clone());
+                    } else {
+                        after.closed = true;
+                    }
+                    after
+                } else if !clicks.contains(&edge.from.pin) {
+                    Context {
+                        late: context.late || !quick,
+                        ..context.clone()
+                    }
                 } else if waits {
+                    // A click is a new interaction to answer.
                     Context {
                         clicked: true,
-                        ..context
+                        closed: false,
+                        late: false,
+                        ..context.clone()
                     }
                 } else {
                     Context {
                         routed: true,
-                        clicked: false,
+                        ..Context::default()
                     }
                 };
                 next.push((edge.to.node.clone(), after));
@@ -1060,19 +1198,46 @@ impl Registry {
         reached
     }
 
-    /// The variables `node`'s fields can use: the graph's, or after a click that "always
-    /// works", only the clicker, the channel and the server (D-097).
-    #[must_use]
-    pub fn scope_at(&self, graph: &Graph, node: &NodeId) -> Vec<Variable> {
-        let contexts = Self::contexts(graph, self.trigger(graph));
-        let routed = contexts
-            .get(node)
-            .is_some_and(|contexts| contexts.iter().any(|context| context.routed));
-        if routed {
+    /// The variables known in `context`: the graph's, or after a click that "always works"
+    /// only the clicker, the channel and the server (D-097), and the fields of the forms
+    /// sent before (D-114).
+    fn scope_in(&self, graph: &Graph, context: &Context) -> Vec<Variable> {
+        let mut scope = if context.routed {
             click_scope()
         } else {
             self.scope(graph)
+        };
+        for form in &context.forms {
+            let fields = graph.nodes.get(form).map(|node| node.props.get("fields"));
+            scope.extend(
+                FormField::list(fields.flatten())
+                    .into_iter()
+                    .map(|field| Variable {
+                        name: format!("field.{}", field.name),
+                        ty: DataType::Text,
+                    }),
+            );
         }
+        scope
+    }
+
+    /// The variables `node`'s fields can use: the graph's, or after a click that "always
+    /// works", only the clicker, the channel and the server (D-097); and after a form, its
+    /// fields (D-114).
+    #[must_use]
+    pub fn scope_at(&self, graph: &Graph, node: &NodeId) -> Vec<Variable> {
+        let contexts = self.contexts(graph, self.trigger(graph));
+        let context = contexts
+            .get(node)
+            .and_then(|contexts| {
+                contexts
+                    .iter()
+                    .find(|context| context.routed)
+                    .or_else(|| contexts.iter().next())
+            })
+            .cloned()
+            .unwrap_or_default();
+        self.scope_in(graph, &context)
     }
 
     /// Whether the reference's node exists with a known type. Unknown types are reported once,
@@ -1090,13 +1255,14 @@ fn check_node(
     node: &Node,
     node_type: &NodeType,
     base: Option<&str>,
-    context: Context,
+    context: &Context,
     scope: &[Variable],
     memory: &[MemoryVar],
 ) -> Vec<ProblemKind> {
     let mut problems = Vec::new();
-    // After any click, "Reply" answers it.
-    let replies_to_click = context.clicked && node.kind == "core.reply";
+    // After any click, "Reply" and "Show form" answer it.
+    let replies_to_click =
+        context.clicked && matches!(node.kind.as_str(), "core.reply" | "core.show_form");
     if let Some(base) = base
         && !node_type.triggers.is_empty()
         && !node_type.triggers.iter().any(|t| t == base)
@@ -1117,6 +1283,21 @@ fn check_node(
         problems.extend(check_prop(prop, node.props.get(&prop.name), scope, memory));
     }
     problems.extend(check_memory_node(node, scope, memory));
+    if node.kind == "core.show_form" {
+        if context.late {
+            problems.push(ProblemKind::FormNotFirst);
+        }
+        let title = node.props.get("title").and_then(serde_json::Value::as_str);
+        if title.is_some_and(|title| title.trim().chars().count() > 45) {
+            problems.push(ProblemKind::BadForm {
+                field: None,
+                problem: FormProblem::Title,
+            });
+        }
+    }
+    if context.closed && node.kind == "core.reply" {
+        problems.push(ProblemKind::ReplyAfterClosedForm);
+    }
     let event_message = matches!(
         base,
         Some("core.message" | "core.reaction_add" | "core.reaction_remove")
@@ -1194,6 +1375,10 @@ fn check_prop(
             } else {
                 Vec::new()
             }
+        }
+        (PropKind::FormFields, Some(value)) => {
+            serde_json::from_value::<Vec<FormField>>(value.clone())
+                .map_or_else(|_| wrong_type(), |fields| check_form_fields(&fields))
         }
         (PropKind::Buttons, Some(value)) => serde_json::from_value::<Vec<Button>>(value.clone())
             .map_or_else(|_| wrong_type(), |buttons| check_buttons(&buttons)),
@@ -1374,6 +1559,39 @@ fn check_options(options: &[CommandOption]) -> Vec<ProblemKind> {
             bad(ix, OptionProblem::RequiredAfterOptional);
         }
         optional_before |= !option.required;
+    }
+    problems
+}
+
+/// Discord's rules for a form's fields (D-112).
+fn check_form_fields(fields: &[FormField]) -> Vec<ProblemKind> {
+    let mut problems = Vec::new();
+    let mut bad = |field, problem| problems.push(ProblemKind::BadForm { field, problem });
+    if fields.is_empty() {
+        bad(None, FormProblem::Count);
+    }
+    // `-` and `_` make the same Rust name in generated code.
+    let mut names = BTreeSet::new();
+    for (ix, field) in fields.iter().enumerate() {
+        if ix == 5 {
+            bad(Some(ix), FormProblem::Count);
+        }
+        if !valid_option_name(&field.name) || !names.insert(field.name.replace('-', "_")) {
+            bad(Some(ix), FormProblem::Name);
+        }
+        if field.label.trim().is_empty() || field.label.trim().chars().count() > 45 {
+            bad(Some(ix), FormProblem::Label);
+        }
+        if field.placeholder.trim().chars().count() > 100 {
+            bad(Some(ix), FormProblem::Placeholder);
+        }
+        let (min, max) = (FormField::length(&field.min), FormField::length(&field.max));
+        let wrong = matches!(min, Some(None))
+            || matches!(max, Some(None | Some(0)))
+            || matches!((min, max), (Some(Some(min)), Some(Some(max))) if min > max);
+        if wrong {
+            bad(Some(ix), FormProblem::Length);
+        }
     }
     problems
 }
