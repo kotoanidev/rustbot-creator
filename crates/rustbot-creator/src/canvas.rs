@@ -194,8 +194,11 @@ mod tests {
         GraphFile {
             kind: GraphKind::Command,
             name: "ping".to_owned(),
-            graph: serde_json::from_str(include_str!("../templates/ping.json")).unwrap(),
-            layout: serde_json::from_str(include_str!("../templates/ping.layout.json")).unwrap(),
+            graph: serde_json::from_str(include_str!("../templates/empty/ping.json")).unwrap(),
+            layout: serde_json::from_str(
+                r#"{ "schema": 1, "nodes": { "n1": [80.0, 120.0], "n2": [380.0, 120.0] } }"#,
+            )
+            .unwrap(),
         }
     }
 

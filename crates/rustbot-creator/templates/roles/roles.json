@@ -1,0 +1,197 @@
+{
+  "schema": 1,
+  "nodes": {
+    "n1": {
+      "type": "core.slash_command",
+      "props": {
+        "name": "roles",
+        "description": "$tpl-roles-description"
+      }
+    },
+    "n2": {
+      "type": "core.has_permission",
+      "props": {
+        "user": "user",
+        "permission": "manage_roles"
+      }
+    },
+    "n3": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-roles-message",
+        "menu": [
+          {
+            "id": "o1",
+            "label": "$tpl-roles-option-1"
+          },
+          {
+            "id": "o2",
+            "label": "$tpl-roles-option-2"
+          }
+        ],
+        "menu_placeholder": "$tpl-roles-placeholder"
+      }
+    },
+    "n4": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-no-permission",
+        "private": true
+      }
+    },
+    "n5": {
+      "type": "core.has_role",
+      "props": {
+        "user": "user",
+        "role": ""
+      }
+    },
+    "n6": {
+      "type": "core.remove_role",
+      "props": {
+        "user": "user",
+        "role": ""
+      }
+    },
+    "n7": {
+      "type": "core.add_role",
+      "props": {
+        "user": "user",
+        "role": ""
+      }
+    },
+    "n8": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-roles-removed",
+        "private": true
+      }
+    },
+    "n9": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-roles-added",
+        "private": true
+      }
+    },
+    "n10": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-failed",
+        "private": true
+      }
+    },
+    "n11": {
+      "type": "core.has_role",
+      "props": {
+        "user": "user",
+        "role": ""
+      }
+    },
+    "n12": {
+      "type": "core.remove_role",
+      "props": {
+        "user": "user",
+        "role": ""
+      }
+    },
+    "n13": {
+      "type": "core.add_role",
+      "props": {
+        "user": "user",
+        "role": ""
+      }
+    },
+    "n14": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-roles-removed",
+        "private": true
+      }
+    },
+    "n15": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-roles-added",
+        "private": true
+      }
+    },
+    "n16": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-failed",
+        "private": true
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "n1.then",
+      "to": "n2.run"
+    },
+    {
+      "from": "n2.yes",
+      "to": "n3.run"
+    },
+    {
+      "from": "n2.no",
+      "to": "n4.run"
+    },
+    {
+      "from": "n5.yes",
+      "to": "n6.run"
+    },
+    {
+      "from": "n5.no",
+      "to": "n7.run"
+    },
+    {
+      "from": "n6.then",
+      "to": "n8.run"
+    },
+    {
+      "from": "n7.then",
+      "to": "n9.run"
+    },
+    {
+      "from": "n6.error",
+      "to": "n10.run"
+    },
+    {
+      "from": "n7.error",
+      "to": "n10.run"
+    },
+    {
+      "from": "n3.o1",
+      "to": "n5.run"
+    },
+    {
+      "from": "n11.yes",
+      "to": "n12.run"
+    },
+    {
+      "from": "n11.no",
+      "to": "n13.run"
+    },
+    {
+      "from": "n12.then",
+      "to": "n14.run"
+    },
+    {
+      "from": "n13.then",
+      "to": "n15.run"
+    },
+    {
+      "from": "n12.error",
+      "to": "n16.run"
+    },
+    {
+      "from": "n13.error",
+      "to": "n16.run"
+    },
+    {
+      "from": "n3.o2",
+      "to": "n11.run"
+    }
+  ]
+}

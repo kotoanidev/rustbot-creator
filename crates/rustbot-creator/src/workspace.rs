@@ -8,10 +8,11 @@ use gpui_kit::component::dock::{DockArea, DockLayout, DockPlacement, DockSkin, p
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement as _, PathPromptOptions, Render,
-    Styled as _, Window, div, px,
+    AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, PathPromptOptions, Render, StatefulInteractiveElement as _, Styled as _,
+    Window, div, px,
 };
-use rustbot_core::{GraphFile, GraphKind, Manifest, Project};
+use rustbot_core::Project;
 
 use crate::i18n::{t, t_with};
 use crate::panels::{Editor, Logs, Problems, ProjectTree, Properties};
@@ -21,6 +22,8 @@ use crate::state::AppState;
 pub(crate) struct Workspace {
     open: Option<(Entity<AppState>, Entity<DockArea>)>,
     error: Option<String>,
+    /// "New project" shows the templates (D-115).
+    choosing: bool,
 }
 
 impl Workspace {
@@ -33,6 +36,7 @@ impl Workspace {
         let mut this = Self {
             open: None,
             error: None,
+            choosing: false,
         };
         if let Some(path) = path {
             this.open_project(&path, window, cx);
@@ -48,8 +52,16 @@ impl Workspace {
         cx.notify();
     }
 
-    fn create_project(&mut self, root: &Path, window: &mut Window, cx: &mut Context<'_, Self>) {
-        match new_project(root) {
+    fn create_project(
+        &mut self,
+        root: &Path,
+        template: usize,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.choosing = false;
+        let template = &crate::templates::TEMPLATES[template];
+        match crate::templates::create(root, template) {
             Ok(project) => {
                 // Made here, so trusted (D-064).
                 if let Ok(toolchain) = rustbot_toolchain::Toolchain::locate() {
@@ -112,7 +124,7 @@ impl Workspace {
         .detach();
     }
 
-    fn pick_new_folder(window: &mut Window, cx: &mut Context<'_, Self>) {
+    fn pick_new_folder(template: usize, window: &mut Window, cx: &mut Context<'_, Self>) {
         let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
         let path = cx.prompt_for_new_path(&home, Some("my-bot"));
         cx.spawn_in(window, async move |this, cx| {
@@ -120,35 +132,89 @@ impl Workspace {
                 return;
             };
             let _ = this.update_in(cx, |this, window, cx| {
-                this.create_project(&path, window, cx);
+                this.create_project(&path, template, window, cx);
             });
         })
         .detach();
     }
 }
 
-/// A project named after its folder, with a `/ping` command to start from.
+/// A project named after its folder, from the "Empty" template: a `/ping` command to start
+/// from.
+#[cfg(test)]
 pub(crate) fn new_project(root: &Path) -> Result<Project, rustbot_core::Error> {
-    let name = root
-        .file_name()
-        .map_or_else(|| "bot".to_owned(), |n| n.to_string_lossy().into_owned());
-    let mut project = Project::create(root, Manifest::new(&name))?;
-    let ping = GraphFile {
-        kind: GraphKind::Command,
-        name: "ping".to_owned(),
-        graph: serde_json::from_str(include_str!("../templates/ping.json"))
-            .expect("the ping template is a valid graph"),
-        layout: serde_json::from_str(include_str!("../templates/ping.layout.json"))
-            .expect("the ping template is a valid layout"),
-    };
-    project.save_graph(&ping)?;
-    project.graphs.push(ping);
-    Ok(project)
+    crate::templates::create(root, &crate::templates::TEMPLATES[0])
+}
+
+/// The template cards "New project" shows (D-115), then the folder dialog.
+fn template_cards(cx: &mut Context<'_, Workspace>) -> impl IntoElement {
+    let theme = cx.theme();
+    let cards = crate::templates::TEMPLATES
+        .iter()
+        .enumerate()
+        .map(|(ix, template)| {
+            let title = t(&format!("template-{}", template.id));
+            let about = t(&format!("template-{}-about", template.id));
+            v_flex()
+                .id(("template", ix))
+                .w(px(260.))
+                .gap(px(6.))
+                .p(px(12.))
+                .border_1()
+                .border_color(theme.border)
+                .rounded(px(6.))
+                .cursor_pointer()
+                .hover(|style| style.bg(theme.secondary_hover))
+                .child(div().font_weight(FontWeight::SEMIBOLD).child(title))
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child(about),
+                )
+                .on_click(cx.listener(move |_, _, window, cx| {
+                    Workspace::pick_new_folder(ix, window, cx);
+                }))
+        })
+        .collect::<Vec<_>>();
+    v_flex()
+        .size_full()
+        .items_center()
+        .justify_center()
+        .gap(px(16.))
+        .bg(theme.background)
+        .text_color(theme.foreground)
+        .child(div().text_xl().child(t("choose-template")))
+        .child(
+            h_flex()
+                .flex_wrap()
+                .justify_center()
+                .max_w(px(840.))
+                .gap(px(12.))
+                .children(cards),
+        )
+        .child(
+            div()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child(t("template-fill-hint")),
+        )
+        .child(
+            Button::new("templates-back")
+                .label(t("back"))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.choosing = false;
+                    cx.notify();
+                })),
+        )
 }
 
 impl Render for Workspace {
     fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         crate::measure::frame_start();
+        if self.open.is_none() && self.choosing {
+            return template_cards(cx).into_any_element();
+        }
         let theme = cx.theme();
         let Some((state, dock)) = &self.open else {
             return v_flex()
@@ -171,8 +237,10 @@ impl Render for Workspace {
                             Button::new("new-project")
                                 .primary()
                                 .label(t("new-project"))
-                                .on_click(cx.listener(|_, _, window, cx| {
-                                    Self::pick_new_folder(window, cx);
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.choosing = true;
+                                    this.error = None;
+                                    cx.notify();
                                 })),
                         )
                         .child(

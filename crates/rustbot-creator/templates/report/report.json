@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "nodes": {
+    "n1": {
+      "type": "core.slash_command",
+      "props": {
+        "name": "report",
+        "description": "$tpl-report-description",
+        "options": [
+          {
+            "name": "who",
+            "type": "user",
+            "description": "$tpl-report-who",
+            "required": true
+          }
+        ]
+      }
+    },
+    "n2": {
+      "type": "core.show_form",
+      "props": {
+        "title": "$tpl-report-title",
+        "fields": [
+          {
+            "name": "reason",
+            "label": "$tpl-report-reason",
+            "long": true,
+            "required": true,
+            "max": "1000"
+          },
+          {
+            "name": "details",
+            "label": "$tpl-report-details"
+          }
+        ]
+      }
+    },
+    "n3": {
+      "type": "core.send_message",
+      "props": {
+        "channel": "",
+        "content": "$tpl-report-to-mods"
+      }
+    },
+    "n4": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-report-thanks",
+        "private": true
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "n1.then",
+      "to": "n2.run"
+    },
+    {
+      "from": "n2.then",
+      "to": "n3.run"
+    },
+    {
+      "from": "n3.then",
+      "to": "n4.run"
+    }
+  ]
+}

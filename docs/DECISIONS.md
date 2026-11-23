@@ -1490,6 +1490,28 @@ alternatives that were considered, and why.
     empty text. `-` and `_` in a name make the same Rust name, so two names that differ
     only there are the problem `BadForm`. The title, labels and hints are plain text,
     without variables.
+
+### C-028 — How bot templates are made
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Files:** each template is a folder in `crates/rustbot-creator/templates/<id>/`,
+    with one graph JSON per command or event, built into the app; nothing is downloaded
+    (D-060). The `/ping` of D-057 moved to `templates/empty/`.
+  - **Texts:** a string that is exactly `"$tpl-…"` is the Fluent message of that name,
+    in the app's language (D-118). Braces in those messages are written `{"{"}` and
+    `{"}"}`, as Fluent wants.
+  - **Layout:** nodes are placed when the project is made: columns by their distance
+    from the trigger, rows in the order the wires reach them. Templates have no layout
+    files.
+  - **Contents:**
+    - "Moderation" keeps warnings in a number variable per user on each server.
+    - "Roles from a menu" toggles each role with "Has role?". Its role changes are
+      warnings (C-024), because anyone may pick an option: that is the point of a role
+      menu.
+    - "Welcome" needs the Server Members intent, switched on in the portal (D-095).
+  - **Checks:** a test makes every template in the current language. Its only problems
+    must be empty channel and role fields, and with those filled in it must generate.
+    `template_bots_compile` builds each bot by hand.
 ---
 
 ## Open questions (to ask the owner when relevant)

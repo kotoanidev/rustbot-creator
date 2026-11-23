@@ -183,13 +183,27 @@ Step 8, modals (D-110–D-114, C-027), is ✅ done in code:
 - It waits up to 15 minutes. "then" goes on with `{field.<name>}`, and "Reply" answers
   the form. "time ran out" runs if nobody sent it.
 
+Step 9, bot templates (D-115–D-118, C-028), is ✅ done in code. "New project" shows
+cards, and the folder dialog follows:
+- "Empty" (`/ping`);
+- "Moderation with warnings" (`/ban`, `/kick`, `/timeout`, `/warn`);
+- "Welcome" (join, leave, DM);
+- "Roles from a menu" (`/roles`);
+- "Reports by form" (`/report`).
+
+Texts are in the app's language, and channels and roles are left empty for Problems to
+point at. Building them found two generator bugs, fixed in the commit before.
+
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
-test). Memory and forms have not run live yet. Next:
+test, and `template_bots_compile` for the templates). Memory, forms and templates have
+not run live yet. Next:
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
-   `{memory.warnings.option.target}`) and forms (e.g. `/report` with "Show form" and a
-   reply using `{field.reason}`) on the test server; fix what they find.
-2. What comes next in phase 3: ask the owner, e.g. bot templates, the rest of the
-   catalog (channels, threads, roles, "Ranking" for memory), or phase 4.
+   `{memory.warnings.option.target}`), forms and the templates (e.g. a new project from
+   "Reports by form", with the channel filled in) on the test server; fix what they
+   find.
+2. What comes next: ask the owner. For example, close phase 3 with the rest of the
+   catalog (channels, threads, roles, "Ranking" for memory, levels), or start phase 4,
+   the advanced mode.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

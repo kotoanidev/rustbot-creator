@@ -62,7 +62,7 @@ layer, before the scope widens.
   - [x] The bot's memory: lasting variables in four scopes (D-104–D-108)
   - [x] Modals: forms with text fields after a command or click (D-110–D-114)
 - [x] Validation and errors shown on the graph
-- [ ] Bot templates
+- [x] Bot templates: empty, moderation, welcome, roles from a menu, reports (D-115–D-118)
 
 ## Phase 4 — Advanced mode (D-015, D-030)
 - [ ] gpui-kit code editor for the user's own modules in `src/`

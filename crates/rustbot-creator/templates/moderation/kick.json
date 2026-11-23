@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "nodes": {
+    "n1": {
+      "type": "core.slash_command",
+      "props": {
+        "name": "kick",
+        "description": "$tpl-kick-description",
+        "options": [
+          {
+            "name": "target",
+            "type": "user",
+            "description": "$tpl-opt-target",
+            "required": true
+          },
+          {
+            "name": "reason",
+            "type": "text",
+            "description": "$tpl-opt-reason"
+          }
+        ]
+      }
+    },
+    "n2": {
+      "type": "core.has_permission",
+      "props": {
+        "user": "user",
+        "permission": "kick_members"
+      }
+    },
+    "n3": {
+      "type": "core.kick",
+      "props": {
+        "user": "option.target",
+        "reason": "{option.reason}"
+      }
+    },
+    "n4": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-kick-done"
+      }
+    },
+    "n5": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-failed",
+        "private": true
+      }
+    },
+    "n6": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-no-permission",
+        "private": true
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "n1.then",
+      "to": "n2.run"
+    },
+    {
+      "from": "n2.yes",
+      "to": "n3.run"
+    },
+    {
+      "from": "n3.then",
+      "to": "n4.run"
+    },
+    {
+      "from": "n3.error",
+      "to": "n5.run"
+    },
+    {
+      "from": "n2.no",
+      "to": "n6.run"
+    }
+  ]
+}

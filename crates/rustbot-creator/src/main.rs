@@ -6,6 +6,7 @@ mod measure;
 mod panels;
 mod run;
 mod state;
+mod templates;
 mod trust;
 mod workspace;
 

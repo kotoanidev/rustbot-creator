@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "nodes": {
+    "n1": {
+      "type": "core.slash_command",
+      "props": {
+        "name": "ping",
+        "description": "$tpl-ping-description"
+      }
+    },
+    "n2": {
+      "type": "core.reply",
+      "props": {
+        "content": "$tpl-ping-reply"
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "n1.then",
+      "to": "n2.run"
+    }
+  ]
+}

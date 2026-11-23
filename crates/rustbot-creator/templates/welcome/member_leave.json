@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "nodes": {
+    "n1": {
+      "type": "core.member_leave"
+    },
+    "n2": {
+      "type": "core.send_message",
+      "props": {
+        "channel": "",
+        "content": "$tpl-welcome-leave"
+      }
+    }
+  },
+  "edges": [
+    {
+      "from": "n1.then",
+      "to": "n2.run"
+    }
+  ]
+}
