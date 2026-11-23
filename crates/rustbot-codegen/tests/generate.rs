@@ -143,6 +143,10 @@ fn replies_notify_only_what_the_author_wrote() {
     assert!(here.contains("quiet(&option_1)"));
     assert!(here.contains("fnquiet("));
     assert!(!none.contains("quiet"));
+    // Mentions stay intact, and a value cannot complete an "@" in the template.
+    let glued = reply("@here @{option.powód} {user.mention}");
+    assert!(glued.contains("quiet(&option_1)"));
+    assert!(!glued.contains("quiet(&user_mention)"));
 }
 
 #[test]

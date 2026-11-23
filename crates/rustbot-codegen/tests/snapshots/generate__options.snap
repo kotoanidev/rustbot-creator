@@ -40,12 +40,12 @@ pub(crate) fn definition() -> Result<CreateApplicationCommand, ValidationError> 
         )
         .build()
 }
-/// `@everyone` and `@here` in text from users, made harmless with a zero-width
-/// space, for messages whose author allowed them (C-016).
+/// Text from users, unable to form `@everyone` or `@here`, for messages whose
+/// author allowed them (C-016). A zero-width space follows every `@` and leads
+/// the value, so it cannot join the text around it into a mention either.
 fn quiet(text: &dyn std::fmt::Display) -> String {
-    text.to_string()
-        .replace("@everyone", "@\u{200b}everyone")
-        .replace("@here", "@\u{200b}here")
+    let text = text.to_string().replace('@', "@\u{200b}");
+    format!("\u{200b}{text}")
 }
 pub(crate) fn register(client: &Client) {
     client
@@ -124,12 +124,11 @@ pub(crate) fn register(client: &Client) {
                                 format!(
                                     "{} {} {} {} {} | {} {} {} | {} {} {} | {} {} {} {} @here",
                                     quiet(& option_0_name), quiet(& option_0_id), quiet(&
-                                    option_0_username), quiet(& option_0_display_name), quiet(&
-                                    option_0_mention), quiet(& option_1), quiet(& option_2),
+                                    option_0_username), quiet(& option_0_display_name),
+                                    option_0_mention, quiet(& option_1), quiet(& option_2),
                                     quiet(& option_3), quiet(& option_4_id), quiet(&
-                                    option_4_name), quiet(& option_4_mention), quiet(&
-                                    option_5_id), quiet(& option_5_name), quiet(&
-                                    option_5_mention), quiet(& user_mention)
+                                    option_4_name), option_4_mention, quiet(& option_5_id),
+                                    quiet(& option_5_name), option_5_mention, user_mention
                                 ),
                             )
                             .allowed_mentions({

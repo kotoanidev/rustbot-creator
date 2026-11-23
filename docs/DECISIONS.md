@@ -929,8 +929,10 @@ alternatives that were considered, and why.
   - anything else notifies no one, including `<@id>` typed by hand.
 
   Discord allows `@everyone` and `@here` together or not at all. So when a template
-  allows them, every variable's value goes through a generated `quiet()`, which puts a
-  zero-width space after the `@`. A user's "@everyone" cannot ride on an author's "@here".
+  allows them, every variable's value except the `….mention` ones goes through a generated
+  `quiet()`. It puts a zero-width space after every `@` and one in front of the value. A
+  user's "@everyone" cannot ride on an author's "@here", and neither can a value glued to
+  an `@` in the template, as in `@{option.x}` with "everyone".
   This is the safe default. The owner may want a per-node switch later.
 ---
 

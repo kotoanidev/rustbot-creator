@@ -87,12 +87,12 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
     // With @everyone allowed in a message, the same text from users must not trigger it.
     let quiet = needs_quiet.then(|| {
         quote! {
-            /// `@everyone` and `@here` in text from users, made harmless with a zero-width
-            /// space, for messages whose author allowed them (C-016).
+            /// Text from users, unable to form `@everyone` or `@here`, for messages whose
+            /// author allowed them (C-016). A zero-width space follows every `@` and leads
+            /// the value, so it cannot join the text around it into a mention either.
             fn quiet(text: &dyn std::fmt::Display) -> String {
-                text.to_string()
-                    .replace("@everyone", "@\u{200b}everyone")
-                    .replace("@here", "@\u{200b}here")
+                let text = text.to_string().replace('@', "@\u{200b}");
+                format!("\u{200b}{text}")
             }
         }
     });
@@ -170,7 +170,8 @@ fn template_expr(
                 let path = path.join(".");
                 format.push_str("{}");
                 let var = ident(&path, options);
-                args.push(if quiet {
+                // Mentions are `<@id>` built by the bot, and must stay intact to notify.
+                args.push(if quiet && !path.ends_with(".mention") {
                     quote!(quiet(&#var))
                 } else {
                     quote!(#var)
