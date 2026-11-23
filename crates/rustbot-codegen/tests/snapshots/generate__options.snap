@@ -121,7 +121,8 @@ pub(crate) fn register(client: &Client) {
                 let user_mention = djs_rs::formatters::user_mention(author.id);
                 cmd.reply(
                         &ctx,
-                        djs_rs::model::interaction::MessageCallbackData::from(
+                        djs_rs::model::interaction::MessageCallbackData::default()
+                            .content(
                                 format!(
                                     "{} {} {} {} {} | {} {} {} | {} {} {} | {} {} {} {} @here",
                                     quiet(& option_0_name), quiet(& option_0_id), quiet(&

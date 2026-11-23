@@ -148,6 +148,10 @@ pub enum PropKind {
         /// The largest number allowed.
         max: u32,
     },
+    /// A switch, `true` or `false`.
+    Bool,
+    /// A colour as `#RRGGBB`, or a `{variable}` template that gives one when the bot runs.
+    Color,
 }
 
 impl PropKind {
@@ -158,9 +162,12 @@ impl PropKind {
             Self::Options => serde_json::Value::Array(Vec::new()),
             // Deleting nothing is the safe start (D-083).
             Self::Choice(Choices::DeleteMessages) => serde_json::Value::String("none".to_owned()),
-            Self::Text { .. } | Self::Variable(_) | Self::Choice(_) | Self::Number { .. } => {
-                serde_json::Value::String(String::new())
-            }
+            Self::Bool => serde_json::Value::Bool(false),
+            Self::Text { .. }
+            | Self::Variable(_)
+            | Self::Choice(_)
+            | Self::Number { .. }
+            | Self::Color => serde_json::Value::String(String::new()),
         }
     }
 }
@@ -203,8 +210,21 @@ impl Choices {
     }
 }
 
-/// Whether a role field's value is an ID rather than a variable: 17-20 digits that fit a
-/// Discord ID (D-080).
+/// Whether a message node has nothing to send: no text, embed title or embed description
+/// (D-087). Message nodes are those with the `embed_…` fields.
+fn is_empty_message(node: &Node) -> bool {
+    ["content", "embed_title", "embed_description"]
+        .iter()
+        .all(|name| {
+            node.props
+                .get(*name)
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(|text| text.trim().is_empty())
+        })
+}
+
+/// Whether a role or channel field's value is an ID rather than a variable: 17-20 digits
+/// that fit a Discord ID (D-080, D-088).
 #[must_use]
 pub fn is_id(value: &str) -> bool {
     (17..=20).contains(&value.len())
@@ -349,6 +369,13 @@ pub enum ProblemKind {
         /// The permission, as a [`Choices::Permission`] value.
         permission: String,
     },
+    /// A warning: a path through the command can end without "Reply", so Discord shows
+    /// "The application did not respond" (D-089).
+    NoReply,
+    /// A message has no text and no embed title or description (D-087).
+    EmptyMessage,
+    /// A colour field holds something other than `#RRGGBB`.
+    BadColor(String),
     /// A number field holds something other than a number from above 0 to `max` (D-084).
     BadNumber {
         /// The form field.
@@ -390,6 +417,9 @@ impl fmt::Display for Problem {
             ProblemKind::WrongVariableType { prop, path } => {
                 write!(f, "{prop:?}: {{{path}}} has the wrong type")
             }
+            ProblemKind::NoReply => write!(f, "the command may end without a reply"),
+            ProblemKind::EmptyMessage => write!(f, "the message has no text and no embed"),
+            ProblemKind::BadColor(prop) => write!(f, "{prop:?} is not a colour like #5865F2"),
             ProblemKind::NoPermissionCheck { permission } => {
                 write!(
                     f,
@@ -489,6 +519,14 @@ impl Registry {
         }) else {
             return warnings;
         };
+        if graph.nodes[trigger].kind == "core.slash_command"
+            && !self.always_replies(graph, trigger, &mut Vec::new())
+        {
+            warnings.push(Problem {
+                node: Some(trigger.clone()),
+                kind: ProblemKind::NoReply,
+            });
+        }
         // (node, guarded) pairs, so loops and joins end.
         let mut seen = BTreeSet::new();
         let mut next = vec![(trigger.clone(), false)];
@@ -515,6 +553,45 @@ impl Registry {
             }
         }
         warnings
+    }
+
+    /// Whether every way through the command from `id` on replies (D-089). Siblings on one
+    /// pin run one after another, so one that always replies is enough; each output pin of
+    /// a node is a branch, and all of them must reply. An unwired "error" ends the command
+    /// with a failure in Logs (D-082) and is left out.
+    fn always_replies(&self, graph: &Graph, id: &NodeId, path: &mut Vec<NodeId>) -> bool {
+        let Some(node) = graph.nodes.get(id) else {
+            return false;
+        };
+        if node.kind == "core.reply" {
+            return true;
+        }
+        let Some(node_type) = self.get(&node.kind) else {
+            return false;
+        };
+        if path.contains(id) {
+            // A loop, which validation reports.
+            return true;
+        }
+        path.push(id.clone());
+        let replies = node_type
+            .pins
+            .iter()
+            .filter(|pin| pin.direction == Direction::Out && pin.kind == PinKind::Flow)
+            .all(|pin| {
+                let next: Vec<&NodeId> = graph
+                    .edges
+                    .iter()
+                    .filter(|edge| &edge.from.node == id && edge.from.pin == pin.name)
+                    .map(|edge| &edge.to.node)
+                    .collect();
+                (pin.name == "error" && next.is_empty())
+                    || next
+                        .iter()
+                        .any(|next| self.always_replies(graph, next, path))
+            });
+        path.pop();
+        replies
     }
 
     /// Everything wrong in `graph`, in node order. Empty means it can be generated.
@@ -556,6 +633,9 @@ impl Registry {
                 if !node_type.props.iter().any(|p| &p.name == name) {
                     report(Some(id), ProblemKind::UnknownProp(name.clone()));
                 }
+            }
+            if node_type.props.iter().any(|p| p.name == "embed_title") && is_empty_message(node) {
+                report(Some(id), ProblemKind::EmptyMessage);
             }
         }
 
@@ -651,7 +731,7 @@ fn check_prop(
     let wrong_type = || vec![ProblemKind::WrongPropType(prop.name.clone())];
     match (prop.kind, value) {
         (_, None) if prop.required => vec![ProblemKind::MissingProp(prop.name.clone())],
-        (_, None) => Vec::new(),
+        (_, None) | (PropKind::Bool, Some(serde_json::Value::Bool(_))) => Vec::new(),
         (PropKind::Text { templates }, Some(serde_json::Value::String(text))) => {
             if prop.required && text.trim().is_empty() {
                 vec![ProblemKind::MissingProp(prop.name.clone())]
@@ -675,7 +755,7 @@ fn check_prop(
             }
         }
         (PropKind::Variable(ty), Some(serde_json::Value::String(name))) => {
-            if ty == DataType::Role && is_id(name) {
+            if matches!(ty, DataType::Role | DataType::Channel) && is_id(name) {
                 return Vec::new();
             }
             match scope.iter().find(|var| &var.name == name) {
@@ -707,6 +787,16 @@ fn check_prop(
                     prop: prop.name.clone(),
                     max,
                 }]
+            }
+        }
+        (PropKind::Color, Some(serde_json::Value::String(text))) => {
+            let hex = text.trim().strip_prefix('#').unwrap_or_default();
+            if text.trim().is_empty() || text.contains('{') {
+                check_template(&prop.name, text, scope)
+            } else if hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+                Vec::new()
+            } else {
+                vec![ProblemKind::BadColor(prop.name.clone())]
             }
         }
         (PropKind::Choice(choices), Some(serde_json::Value::String(value))) => {

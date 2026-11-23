@@ -69,10 +69,7 @@ fn templates_are_checked() {
 
 #[test]
 fn required_props() {
-    assert_eq!(
-        kinds(&ping("   ")),
-        vec![ProblemKind::MissingProp("content".to_owned())]
-    );
+    assert_eq!(kinds(&ping("   ")), vec![ProblemKind::EmptyMessage]);
     let g = graph(
         r#"{ "schema": 1, "nodes": {
               "n1": { "type": "core.slash_command", "props": { "name": "ping", "description": 3, "colour": "x" } } } }"#,
@@ -435,6 +432,7 @@ fn warnings_of(node: &serde_json::Value, edges: &serde_json::Value) -> Vec<Probl
         .warnings(&graph)
         .into_iter()
         .map(|w| w.kind)
+        .filter(|kind| *kind != ProblemKind::NoReply)
         .collect()
 }
 
@@ -479,4 +477,102 @@ fn actions_on_others_need_a_permission_check_on_the_author() {
     );
     let self_kick = serde_json::json!({ "type": "core.kick", "props": { "user": "user" } });
     assert_eq!(warnings_of(&self_kick, &direct), Vec::new());
+}
+
+/// The warnings of `/say` with these nodes and edges; `n1` is the command.
+fn reply_warnings(nodes: &serde_json::Value, edges: &serde_json::Value) -> Vec<ProblemKind> {
+    let mut nodes = nodes.clone();
+    nodes["n1"] = serde_json::json!({ "type": "core.slash_command", "props": {
+        "name": "say", "description": "Says", "options": [
+            { "name": "kanał", "type": "channel", "description": "Where" } ] } });
+    let graph: Graph =
+        serde_json::from_value(serde_json::json!({ "schema": 1, "nodes": nodes, "edges": edges }))
+            .unwrap();
+    let registry = Registry::with_core();
+    assert_eq!(registry.validate(&graph), Vec::new());
+    registry
+        .warnings(&graph)
+        .into_iter()
+        .map(|w| w.kind)
+        .collect()
+}
+
+#[test]
+fn a_command_warns_when_a_path_ends_without_a_reply() {
+    let nodes = serde_json::json!({
+        "n2": { "type": "core.send_message", "props": {
+            "channel": "option.kanał", "content": "", "embed_title": "News" } },
+        "n3": { "type": "core.reply", "props": { "content": "Sent", "private": true } },
+        "n4": { "type": "core.has_permission",
+                "props": { "user": "user", "permission": "manage_messages" } },
+        "n6": { "type": "core.send_message", "props": {
+            "channel": "123456789012345678", "content": "Hi" } }
+    });
+    let edges = |list: &[(&str, &str)]| {
+        serde_json::Value::Array(
+            list.iter()
+                .map(|(from, to)| serde_json::json!({ "from": from, "to": to }))
+                .collect(),
+        )
+    };
+    let warn = vec![ProblemKind::NoReply];
+    let none: Vec<ProblemKind> = Vec::new();
+    assert_eq!(reply_warnings(&nodes, &edges(&[])), warn);
+    assert_eq!(
+        reply_warnings(&nodes, &edges(&[("n1.then", "n2.run")])),
+        warn
+    );
+    let sent = [("n1.then", "n2.run"), ("n2.then", "n3.run")];
+    assert_eq!(reply_warnings(&nodes, &edges(&sent)), none);
+    // A reply in a sibling that runs earlier counts too.
+    let siblings = [("n1.then", "n3.run"), ("n1.then", "n6.run")];
+    assert_eq!(reply_warnings(&nodes, &edges(&siblings)), none);
+    // Both branches of a condition must reply.
+    let one_branch = [("n1.then", "n4.run"), ("n4.yes", "n3.run")];
+    assert_eq!(reply_warnings(&nodes, &edges(&one_branch)), warn);
+    let both = [
+        ("n1.then", "n4.run"),
+        ("n4.yes", "n3.run"),
+        ("n4.no", "n6.run"),
+        ("n6.then", "n3.run"),
+    ];
+    assert_eq!(reply_warnings(&nodes, &edges(&both)), none);
+}
+
+#[test]
+fn messages_need_text_or_an_embed_and_colours_are_hex() {
+    let check = |props: serde_json::Value| {
+        kinds(&with_condition(
+            &serde_json::json!({ "type": "core.send_message", "props": props }),
+        ))
+    };
+    assert_eq!(
+        check(serde_json::json!({ "channel": "channel", "content": " " })),
+        vec![ProblemKind::EmptyMessage]
+    );
+    for ok in [
+        serde_json::json!({ "channel": "channel", "embed_description": "{option.powód}" }),
+        serde_json::json!({ "channel": "123456789012345678", "content": "x",
+            "embed_color": "#5865f2" }),
+        serde_json::json!({ "channel": "channel", "content": "x", "embed_color": "{option.powód}" }),
+    ] {
+        assert_eq!(check(ok.clone()), Vec::new(), "{ok}");
+    }
+    for color in ["5865F2", "#5865F", "#GGGGGG", "red"] {
+        assert_eq!(
+            check(
+                serde_json::json!({ "channel": "channel", "content": "x", "embed_color": color })
+            ),
+            vec![ProblemKind::BadColor("embed_color".to_owned())],
+            "{color}"
+        );
+    }
+    // A channel field takes an ID, a user field does not (D-088).
+    assert_eq!(
+        check(serde_json::json!({ "channel": "option.cel", "content": "x" })),
+        vec![ProblemKind::WrongVariableType {
+            prop: "channel".to_owned(),
+            path: "option.cel".to_owned()
+        }]
+    );
 }

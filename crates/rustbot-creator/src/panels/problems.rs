@@ -102,6 +102,9 @@ pub(crate) fn describe(problem: &Problem) -> String {
         ProblemKind::WrongVariableType { prop, path } => {
             t_with("problem-variable-type", &[("prop", prop), ("path", path)])
         }
+        ProblemKind::NoReply => t("problem-no-reply"),
+        ProblemKind::EmptyMessage => t("problem-empty-message"),
+        ProblemKind::BadColor(prop) => t_with("problem-bad-color", &[("prop", prop)]),
         ProblemKind::NoPermissionCheck { permission } => t_with(
             "problem-no-permission-check",
             &[(

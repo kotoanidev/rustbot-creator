@@ -39,6 +39,7 @@ pub(crate) fn register(client: &Client) {
             |ctx, cmd| async move {
                 let interaction = cmd.interaction();
                 let author = interaction.author().ok_or("the command has no user")?;
+                let replied = std::cell::Cell::new(false);
                 let option_0_mention = cmd
                     .get_user("cel")
                     .map(|user| djs_rs::formatters::user_mention(user.id).to_string())
@@ -80,33 +81,59 @@ pub(crate) fn register(client: &Client) {
                     .await;
                 match result {
                     Ok(()) => {
-                        cmd.reply(
-                                &ctx,
-                                djs_rs::model::interaction::MessageCallbackData::from(
-                                        format!("Banned {}", option_0_mention),
-                                    )
-                                    .allowed_mentions({
-                                        let mut mentions = djs_rs::model::message::AllowedMentions::default();
-                                        mentions
-                                            .users
-                                            .extend(cmd.get_user("cel").map(|user| user.id));
-                                        mentions
-                                    }),
-                            )
-                            .await?;
+                        if replied.replace(true) {
+                            cmd.follow_up(
+                                    &ctx,
+                                    djs_rs::model::rest::CreateFollowupMessage::default()
+                                        .content(format!("Banned {}", option_0_mention))
+                                        .allowed_mentions({
+                                            let mut mentions = djs_rs::model::message::AllowedMentions::default();
+                                            mentions
+                                                .users
+                                                .extend(cmd.get_user("cel").map(|user| user.id));
+                                            mentions
+                                        }),
+                                )
+                                .await?;
+                        } else {
+                            cmd.reply(
+                                    &ctx,
+                                    djs_rs::model::interaction::MessageCallbackData::default()
+                                        .content(format!("Banned {}", option_0_mention))
+                                        .allowed_mentions({
+                                            let mut mentions = djs_rs::model::message::AllowedMentions::default();
+                                            mentions
+                                                .users
+                                                .extend(cmd.get_user("cel").map(|user| user.id));
+                                            mentions
+                                        }),
+                                )
+                                .await?;
+                        }
                     }
                     Err(error) => {
                         eprintln!("WARN /moderate: {error}");
-                        cmd.reply(
-                                &ctx,
-                                djs_rs::model::interaction::MessageCallbackData::from(
-                                        "I can't ban them",
-                                    )
-                                    .allowed_mentions(
-                                        djs_rs::model::message::AllowedMentions::default(),
-                                    ),
-                            )
-                            .await?;
+                        if replied.replace(true) {
+                            cmd.follow_up(
+                                    &ctx,
+                                    djs_rs::model::rest::CreateFollowupMessage::default()
+                                        .content("I can't ban them")
+                                        .allowed_mentions(
+                                            djs_rs::model::message::AllowedMentions::default(),
+                                        ),
+                                )
+                                .await?;
+                        } else {
+                            cmd.reply(
+                                    &ctx,
+                                    djs_rs::model::interaction::MessageCallbackData::default()
+                                        .content("I can't ban them")
+                                        .allowed_mentions(
+                                            djs_rs::model::message::AllowedMentions::default(),
+                                        ),
+                                )
+                                .await?;
+                        }
                     }
                 }
                 let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
@@ -126,16 +153,27 @@ pub(crate) fn register(client: &Client) {
                     .await;
                 if let Err(error) = result {
                     eprintln!("WARN /moderate: {error}");
-                    cmd.reply(
-                            &ctx,
-                            djs_rs::model::interaction::MessageCallbackData::from(
-                                    "No kick",
-                                )
-                                .allowed_mentions(
-                                    djs_rs::model::message::AllowedMentions::default(),
-                                ),
-                        )
-                        .await?;
+                    if replied.replace(true) {
+                        cmd.follow_up(
+                                &ctx,
+                                djs_rs::model::rest::CreateFollowupMessage::default()
+                                    .content("No kick")
+                                    .allowed_mentions(
+                                        djs_rs::model::message::AllowedMentions::default(),
+                                    ),
+                            )
+                            .await?;
+                    } else {
+                        cmd.reply(
+                                &ctx,
+                                djs_rs::model::interaction::MessageCallbackData::default()
+                                    .content("No kick")
+                                    .allowed_mentions(
+                                        djs_rs::model::message::AllowedMentions::default(),
+                                    ),
+                            )
+                            .await?;
+                    }
                 }
                 {
                     let members = ctx

@@ -151,6 +151,48 @@ fn moderation() -> GraphFile {
     }
 }
 
+/// `/announce`: messages to channels, embeds, a private reply and a follow-up (D-086-D-088).
+fn messages() -> GraphFile {
+    let graph: Graph = serde_json::from_value(serde_json::json!({
+        "schema": 1,
+        "nodes": {
+            "n1": { "type": "core.slash_command", "props": {
+                "name": "announce", "description": "Announces", "options": [
+                    { "name": "kanał", "type": "channel", "description": "Where", "required": true },
+                    { "name": "tekst", "type": "text", "description": "What", "required": true },
+                    { "name": "kolor", "type": "text", "description": "Colour" },
+                    { "name": "obraz", "type": "text", "description": "Image" } ] } },
+            "n2": { "type": "core.send_message", "props": {
+                "channel": "option.kanał", "content": "{option.tekst} @here",
+                "embed_title": "Announcement", "embed_description": "{option.tekst}",
+                "embed_color": "#5865F2", "embed_image": "{option.obraz}",
+                "embed_footer": "By {user.name}" } },
+            "n3": { "type": "core.reply", "props": {
+                "content": "Sent to {option.kanał.mention}", "private": true } },
+            "n4": { "type": "core.send_message", "props": {
+                "channel": "channel", "content": "",
+                "embed_description": "Log: {user.mention}", "embed_color": "{option.kolor}" } },
+            "n5": { "type": "core.send_message", "props": {
+                "channel": "123456789012345678", "content": "Fixed" } },
+            "n6": { "type": "core.reply", "props": { "content": "Second" } }
+        },
+        "edges": [
+            { "from": "n1.then", "to": "n2.run" },
+            { "from": "n2.then", "to": "n3.run" },
+            { "from": "n1.then", "to": "n4.run" },
+            { "from": "n4.then", "to": "n5.run" },
+            { "from": "n1.then", "to": "n6.run" }
+        ]
+    }))
+    .unwrap();
+    GraphFile {
+        kind: GraphKind::Command,
+        name: "announce".to_owned(),
+        graph,
+        layout: Layout::default(),
+    }
+}
+
 /// A project on disk with these graphs, opened again as the app would.
 fn project(dir: &Path, manifest: Manifest, graphs: &[GraphFile]) -> Project {
     let project = Project::create(dir, manifest).unwrap();
@@ -294,6 +336,19 @@ fn moderation_snapshot() {
     insta::assert_snapshot!(
         "moderation",
         &output.files[Path::new("generated/src/commands/moderate.rs")]
+    );
+}
+
+#[test]
+fn messages_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = project(dir.path(), Manifest::new("News Bot"), &[messages()]);
+    let registry = Registry::with_core();
+    assert_eq!(registry.validate(&p.graphs[0].graph), Vec::new());
+    let output = generate(&p, &registry).unwrap();
+    insta::assert_snapshot!(
+        "messages",
+        &output.files[Path::new("generated/src/commands/announce.rs")]
     );
 }
 
@@ -463,6 +518,7 @@ fn generated_bot_compiles() {
     graphs.push(ban());
     graphs.push(conditions());
     graphs.push(moderation());
+    graphs.push(messages());
     let p = project(dir.path(), Manifest::new("Ping Bot"), &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
 

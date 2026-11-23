@@ -8,6 +8,7 @@ pub(crate) fn all() -> Vec<NodeType> {
     vec![
         slash_command(),
         reply(),
+        send_message(),
         has_permission(),
         has_role(),
         compare(),
@@ -45,11 +46,42 @@ fn reply() -> NodeType {
         id: "core.reply".to_owned(),
         category: Category::Action,
         pins: vec![flow("run", Direction::In), flow("then", Direction::Out)],
-        props: vec![text("content", true)],
+        props: message(vec![prop("private", PropKind::Bool, false)]),
         provides: Vec::new(),
         intents: Vec::new(),
         permission: None,
     }
+}
+
+/// Sends a message to a channel (D-073): one of the command's, an option, or an ID (D-088).
+fn send_message() -> NodeType {
+    let mut props = vec![prop("channel", PropKind::Variable(DataType::Channel), true)];
+    props.extend(message(Vec::new()));
+    NodeType {
+        id: "core.send_message".to_owned(),
+        category: Category::Action,
+        pins: vec![flow("run", Direction::In), flow("then", Direction::Out)],
+        props,
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+    }
+}
+
+/// A message's fields: its text, `extra`, then the embed (D-079, D-087). The form groups
+/// the `embed_…` fields into a section, and the message needs text or an embed.
+fn message(extra: Vec<Prop>) -> Vec<Prop> {
+    let template = |name| prop(name, PropKind::Text { templates: true }, false);
+    let mut props = vec![template("content")];
+    props.extend(extra);
+    props.extend([
+        template("embed_title"),
+        template("embed_description"),
+        prop("embed_color", PropKind::Color, false),
+        template("embed_image"),
+        template("embed_footer"),
+    ]);
+    props
 }
 
 /// A condition (D-077): it runs, and continues at "yes" or "no".

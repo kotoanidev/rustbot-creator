@@ -105,19 +105,26 @@ The owner finds the console hard to read and wants it improved later. Colour cod
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Phase 3, step 2e: messages (D-073, D-079).** These are done:
+**Phase 3: the owner's live test of the `/ban` example, then the next Phase 3 item.**
+Step 2 (the `/ban` example of D-014, D-073) is ✅ done in code:
+- 2a, the command options (D-076);
 - 2b, the variable picker: {x} and typed pickers, with "Role with ID…" (D-078, D-080);
 - 2c, the conditions "Has permission?", "Has role?" and "Compare" (D-077, D-081), with
   branching codegen (C-017);
 - 2d, the moderation actions "Ban", "Kick", "Time out", "Add role" and "Remove role", with
-  "then" and "error" outputs (D-082–D-084, C-018). The generated bot builds against
-  djs-rs with clippy, but no live run has happened yet: the owner tests later.
+  "then" and "error" outputs (D-082–D-084, C-018). Moderation commands are gated by
+  Discord's default member permissions, and Problems warns in yellow when an action is
+  not behind "Has permission?" (D-085, C-019);
+- 2e, the messages: "Reply" with "Only the command author sees it" (D-086), "Send to a
+  channel" with "Channel with ID…" (D-088), the folding "Embed" section (D-079, D-087),
+  follow-ups for later replies, and a warning when a command may not reply (D-089, C-020).
 
-  Moderation commands are gated by Discord's default member permissions, and Problems
-  warns in yellow when an action is not behind "Has permission?" (D-085, C-019).
-
-2e covers "Send to a channel", a reply only the author sees (ephemeral) and a basic embed
-(D-079).
+Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
+test), but nothing from step 2 has run live yet. Next:
+1. Ask the owner to build `/ban` in the app and try it on the test server: a user option,
+   "Has permission?", "Ban" with "error" wired, and a private reply. Fix what they find.
+2. Then ask which Phase 3 item comes next: the full node catalog, problems shown on the
+   graph, or bot templates.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

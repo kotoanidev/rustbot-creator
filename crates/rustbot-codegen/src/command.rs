@@ -36,20 +36,16 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
     let description = text(graph, trigger, "description");
     let options = CommandOption::list(node.props.get("options"));
     let option_builders = options.iter().map(option_builder);
-    // Members without the actions' permissions do not see the command (D-085).
-    let permissions: BTreeSet<&str> = graph
+    let gate = gate(&file.graph, registry);
+    // Discord takes one reply to a command; later ones are follow-ups.
+    let follow_ups = graph
         .nodes
         .values()
-        .filter_map(|node| registry.needed_permission(node))
-        .collect();
-    let gate = (!permissions.is_empty()).then(|| {
-        let flags = permissions
-            .iter()
-            .map(|permission| format_ident!("{}", permission.to_uppercase()));
-        quote!(.default_member_permissions(#(djs_rs::model::permissions::Permissions::#flags)|*))
-    });
-
+        .filter(|n| n.kind == "core.reply")
+        .count()
+        > 1;
     let mut code = Body {
+        follow_ups,
         file,
         options: &options,
         vars: BTreeSet::new(),
@@ -71,6 +67,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
     // which holds the options.
     let interaction = (needs_interaction || vars.iter().any(|path| !path.starts_with("option.")))
         .then(|| quote!(let interaction = cmd.interaction();));
+    let replied = follow_ups.then(|| quote!(let replied = std::cell::Cell::new(false);));
     let author = vars
         .iter()
         .any(|path| path.starts_with("user."))
@@ -114,6 +111,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
             client.command(#name, |ctx, cmd| async move {
                 #interaction
                 #author
+                #replied
                 #(#bindings)*
                 #body
                 Ok(())
@@ -122,9 +120,27 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
     })
 }
 
+/// `.default_member_permissions(…)`: members without the permissions of the command's
+/// gated actions do not see it (D-085).
+fn gate(graph: &Graph, registry: &Registry) -> Option<TokenStream> {
+    let permissions: BTreeSet<&str> = graph
+        .nodes
+        .values()
+        .filter_map(|node| registry.needed_permission(node))
+        .collect();
+    (!permissions.is_empty()).then(|| {
+        let flags = permissions
+            .iter()
+            .map(|permission| format_ident!("{}", permission.to_uppercase()));
+        quote!(.default_member_permissions(#(djs_rs::model::permissions::Permissions::#flags)|*))
+    })
+}
+
 /// The command's body, built from its trigger along the flow wires.
 struct Body<'a> {
     file: &'a GraphFile,
+    /// More than one "Reply": each checks `replied` to reply or follow up.
+    follow_ups: bool,
     options: &'a [CommandOption],
     /// The template variables used, which become `let`s at the top.
     vars: BTreeSet<String>,
@@ -174,20 +190,15 @@ impl Body<'_> {
         self.path.push(id.clone());
         let graph = &self.file.graph;
         let code = match graph.nodes[id].kind.as_str() {
-            "core.reply" => {
-                let template = text(graph, id, "content");
-                let everyone = mentions_everyone(template);
-                self.quiet |= everyone;
-                let content = template_expr(template, self.options, everyone, &mut self.vars);
-                let mentions = allowed_mentions(template, self.options, everyone);
+            "core.reply" => self.reply(id)?,
+            "core.send_message" => {
+                let channel = self.channel(text(graph, id, "channel"));
+                let message = self.message(id);
                 let then = self.after(id, "then")?;
                 quote! {
-                    cmd.reply(
-                        &ctx,
-                        djs_rs::model::interaction::MessageCallbackData::from(#content)
-                            .allowed_mentions(#mentions),
-                    )
-                    .await?;
+                    ctx.messages(#channel)
+                        .send(djs_rs::model::rest::CreateMessage::default() #message)
+                        .await?;
                     #then
                 }
             }
@@ -212,42 +223,7 @@ impl Body<'_> {
                 }
             }
             "core.ban" | "core.kick" | "core.timeout" | "core.add_role" | "core.remove_role" => {
-                self.interaction = true;
-                let action = self.action(id);
-                let then = self.after(id, "then")?;
-                let error = self.after(id, "error")?;
-                let command = self.command;
-                if error.is_empty() {
-                    // A failure ends the command, and djs-rs logs it (D-082).
-                    quote! {
-                        { #action }
-                        #then
-                    }
-                } else {
-                    let log = format!(
-                        "WARN /{}: {{error}}",
-                        command.replace('{', "{{").replace('}', "}}")
-                    );
-                    let log = quote!(eprintln!(#log););
-                    let handle = if then.is_empty() {
-                        quote!(if let Err(error) = result { #log #error })
-                    } else {
-                        quote! {
-                            match result {
-                                Ok(()) => { #then }
-                                Err(error) => { #log #error }
-                            }
-                        }
-                    };
-                    quote! {
-                        let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
-                            #action
-                            Ok(())
-                        }
-                        .await;
-                        #handle
-                    }
-                }
+                self.moderate(id)?
             }
             _ => {
                 return Err(Error::NoCodegen {
@@ -259,6 +235,80 @@ impl Body<'_> {
         };
         self.path.pop();
         Ok(code)
+    }
+
+    /// A reply, or a follow-up if the command replied already (D-086).
+    fn reply(&mut self, id: &NodeId) -> Result<TokenStream, Error> {
+        let graph = &self.file.graph;
+        let mut message = self.message(id);
+        // Only the author sees it (D-086).
+        if graph.nodes[id].props.get("private") == Some(&Value::Bool(true)) {
+            message.extend(quote!(.ephemeral()));
+        }
+        let then = self.after(id, "then")?;
+        let reply = quote! {
+            cmd.reply(
+                &ctx,
+                djs_rs::model::interaction::MessageCallbackData::default() #message,
+            )
+            .await?;
+        };
+        let reply = if self.follow_ups {
+            quote! {
+                if replied.replace(true) {
+                    cmd.follow_up(
+                        &ctx,
+                        djs_rs::model::rest::CreateFollowupMessage::default() #message,
+                    )
+                    .await?;
+                } else {
+                    #reply
+                }
+            }
+        } else {
+            reply
+        };
+        Ok(quote!(#reply #then))
+    }
+
+    /// A moderation action, then "then" or, on failure, "error" (D-082).
+    fn moderate(&mut self, id: &NodeId) -> Result<TokenStream, Error> {
+        self.interaction = true;
+        let action = self.action(id);
+        let then = self.after(id, "then")?;
+        let error = self.after(id, "error")?;
+        let command = self.command;
+        Ok(if error.is_empty() {
+            // A failure ends the command, and djs-rs logs it (D-082).
+            quote! {
+                { #action }
+                #then
+            }
+        } else {
+            let log = format!(
+                "WARN /{}: {{error}}",
+                command.replace('{', "{{").replace('}', "}}")
+            );
+            let log = quote!(eprintln!(#log););
+            let handle = if then.is_empty() {
+                quote!(if let Err(error) = result { #log #error })
+            } else {
+                quote! {
+                    match result {
+                        Ok(()) => { #then }
+                        Err(error) => { #log #error }
+                    }
+                }
+            };
+            quote! {
+                let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                    #action
+                    Ok(())
+                }
+                .await;
+                #handle
+            }
+        })
     }
 
     /// A condition node's test, a `bool` (D-077).
@@ -416,16 +466,109 @@ impl Body<'_> {
         }
     }
 
+    /// A message's builder calls: its text with the mentions it may make (C-016), and its
+    /// embed (D-087).
+    fn message(&mut self, id: &NodeId) -> TokenStream {
+        let file = self.file;
+        let template = text(&file.graph, id, "content");
+        let mut message = TokenStream::new();
+        if !template.trim().is_empty() {
+            let everyone = mentions_everyone(template);
+            self.quiet |= everyone;
+            let content = template_expr(template, self.options, everyone, &mut self.vars);
+            let mentions = allowed_mentions(template, self.options, everyone);
+            message.extend(quote!(.content(#content).allowed_mentions(#mentions)));
+        }
+        message.extend(self.embed(id));
+        message
+    }
+
+    /// A message's `.embed(…)`, if it has a title or description (D-079, D-087). A field
+    /// whose variables come out empty is left out, and so is a colour that is not one.
+    fn embed(&mut self, id: &NodeId) -> Option<TokenStream> {
+        let file = self.file;
+        let field = |name| text(&file.graph, id, name);
+        if field("embed_title").trim().is_empty() && field("embed_description").trim().is_empty() {
+            return None;
+        }
+        let mut steps = Vec::new();
+        for (name, method) in [
+            ("embed_title", "title"),
+            ("embed_description", "description"),
+            ("embed_image", "image"),
+            ("embed_footer", "footer"),
+        ] {
+            let template = field(name);
+            if template.trim().is_empty() {
+                continue;
+            }
+            let literal = is_literal(template);
+            let value = template_expr(template, self.options, false, &mut self.vars);
+            let set = |value: TokenStream| {
+                let method = format_ident!("{method}");
+                if method == "footer" {
+                    quote!(embed.footer(djs_rs::builders::EmbedFooterBuilder::new(#value)))
+                } else {
+                    quote!(embed.#method(#value))
+                }
+            };
+            steps.push(if literal {
+                let set = set(value);
+                quote!(let embed = #set;)
+            } else {
+                let set = set(quote!(value));
+                quote! {
+                    let value = #value;
+                    let embed = if value.is_empty() { embed } else { #set };
+                }
+            });
+        }
+        let color = field("embed_color").trim();
+        if let Some(hex) = color.strip_prefix('#').filter(|_| is_literal(color)) {
+            let color = u32::from_str_radix(hex, 16).expect("validated colour");
+            steps.push(quote!(let embed = embed.color(#color);));
+        } else if !color.is_empty() {
+            let value = template_expr(color, self.options, false, &mut self.vars);
+            steps.push(quote! {
+                let embed = match u32::from_str_radix(#value.trim().trim_start_matches('#'), 16) {
+                    Ok(color) if color <= 0xFF_FFFF => embed.color(color),
+                    _ => embed,
+                };
+            });
+        }
+        Some(quote! {
+            .embed({
+                let embed = djs_rs::builders::EmbedBuilder::new();
+                #(#steps)*
+                embed.build()?
+            })
+        })
+    }
+
+    /// A channel field's channel, a `ChannelId`: the command's, an option, or an ID (D-088).
+    fn channel(&mut self, channel: &str) -> TokenStream {
+        if channel == "channel" {
+            self.interaction = true;
+            return quote!(interaction.channel_id.ok_or("the command has no channel")?);
+        }
+        if is_id(channel) {
+            let id: u64 = channel.parse().expect("validated ID");
+            return quote!(djs_rs::model::id::ChannelId::new(#id));
+        }
+        let (_, option, _) = option_path(channel, self.options).expect("validated variable");
+        let (name, missing) = (
+            &option.name,
+            format!("the option {} was not given", option.name),
+        );
+        quote!(cmd.get_channel(#name).map(|channel| channel.id).ok_or(#missing)?)
+    }
+
     /// An audit log reason, an `Option<&str>`; none when the field is empty.
     fn reason(&mut self, reason: &str) -> TokenStream {
         match reason {
             "" => quote!(None),
             reason => {
-                let literal = rustbot_core::template::parse(reason).is_ok_and(|segments| {
-                    segments
-                        .iter()
-                        .all(|s| matches!(s, rustbot_core::template::Segment::Text(_)))
-                });
+                let literal = is_literal(reason);
                 let reason = template_expr(reason, self.options, false, &mut self.vars);
                 if literal {
                     quote!(Some(#reason))
@@ -449,6 +592,15 @@ impl Body<'_> {
 }
 
 /// A text prop. Validation guarantees required props are strings.
+/// Whether a template has no variables, so its Rust expression is a string literal.
+fn is_literal(template: &str) -> bool {
+    rustbot_core::template::parse(template).is_ok_and(|segments| {
+        segments
+            .iter()
+            .all(|s| matches!(s, rustbot_core::template::Segment::Text(_)))
+    })
+}
+
 fn text<'a>(graph: &'a Graph, id: &NodeId, prop: &str) -> &'a str {
     match graph.nodes[id].props.get(prop) {
         Some(Value::String(s)) => s,

@@ -32,6 +32,7 @@ pub(crate) fn register(client: &Client) {
             "check",
             |ctx, cmd| async move {
                 let interaction = cmd.interaction();
+                let replied = std::cell::Cell::new(false);
                 let option_0_name = cmd
                     .get_user("cel")
                     .map(|user| {
@@ -64,16 +65,27 @@ pub(crate) fn register(client: &Client) {
                         .to_lowercase()
                         .contains(&"spam".to_lowercase())
                     {
-                        cmd.reply(
-                                &ctx,
-                                djs_rs::model::interaction::MessageCallbackData::from(
-                                        "Spam!",
-                                    )
-                                    .allowed_mentions(
-                                        djs_rs::model::message::AllowedMentions::default(),
-                                    ),
-                            )
-                            .await?;
+                        if replied.replace(true) {
+                            cmd.follow_up(
+                                    &ctx,
+                                    djs_rs::model::rest::CreateFollowupMessage::default()
+                                        .content("Spam!")
+                                        .allowed_mentions(
+                                            djs_rs::model::message::AllowedMentions::default(),
+                                        ),
+                                )
+                                .await?;
+                        } else {
+                            cmd.reply(
+                                    &ctx,
+                                    djs_rs::model::interaction::MessageCallbackData::default()
+                                        .content("Spam!")
+                                        .allowed_mentions(
+                                            djs_rs::model::message::AllowedMentions::default(),
+                                        ),
+                                )
+                                .await?;
+                        }
                     } else {
                         if cmd
                             .get_member("cel")
@@ -85,29 +97,51 @@ pub(crate) fn register(client: &Client) {
                                 member.member.roles.contains(&role)
                             })
                         {
-                            cmd.reply(
-                                    &ctx,
-                                    djs_rs::model::interaction::MessageCallbackData::from(
-                                            format!("{} is a moderator", option_0_name),
-                                        )
-                                        .allowed_mentions(
-                                            djs_rs::model::message::AllowedMentions::default(),
-                                        ),
-                                )
-                                .await?;
+                            if replied.replace(true) {
+                                cmd.follow_up(
+                                        &ctx,
+                                        djs_rs::model::rest::CreateFollowupMessage::default()
+                                            .content(format!("{} is a moderator", option_0_name))
+                                            .allowed_mentions(
+                                                djs_rs::model::message::AllowedMentions::default(),
+                                            ),
+                                    )
+                                    .await?;
+                            } else {
+                                cmd.reply(
+                                        &ctx,
+                                        djs_rs::model::interaction::MessageCallbackData::default()
+                                            .content(format!("{} is a moderator", option_0_name))
+                                            .allowed_mentions(
+                                                djs_rs::model::message::AllowedMentions::default(),
+                                            ),
+                                    )
+                                    .await?;
+                            }
                         }
                     }
                 } else {
-                    cmd.reply(
-                            &ctx,
-                            djs_rs::model::interaction::MessageCallbackData::from(
-                                    "No permission",
-                                )
-                                .allowed_mentions(
-                                    djs_rs::model::message::AllowedMentions::default(),
-                                ),
-                        )
-                        .await?;
+                    if replied.replace(true) {
+                        cmd.follow_up(
+                                &ctx,
+                                djs_rs::model::rest::CreateFollowupMessage::default()
+                                    .content("No permission")
+                                    .allowed_mentions(
+                                        djs_rs::model::message::AllowedMentions::default(),
+                                    ),
+                            )
+                            .await?;
+                    } else {
+                        cmd.reply(
+                                &ctx,
+                                djs_rs::model::interaction::MessageCallbackData::default()
+                                    .content("No permission")
+                                    .allowed_mentions(
+                                        djs_rs::model::message::AllowedMentions::default(),
+                                    ),
+                            )
+                            .await?;
+                    }
                 }
                 if !(interaction
                     .member
@@ -123,16 +157,27 @@ pub(crate) fn register(client: &Client) {
                         .zip("3".trim().parse::<f64>().ok())
                         .is_some_and(|(left, right)| left > right)
                     {
-                        cmd.reply(
-                                &ctx,
-                                djs_rs::model::interaction::MessageCallbackData::from(
-                                        "More than 3",
-                                    )
-                                    .allowed_mentions(
-                                        djs_rs::model::message::AllowedMentions::default(),
-                                    ),
-                            )
-                            .await?;
+                        if replied.replace(true) {
+                            cmd.follow_up(
+                                    &ctx,
+                                    djs_rs::model::rest::CreateFollowupMessage::default()
+                                        .content("More than 3")
+                                        .allowed_mentions(
+                                            djs_rs::model::message::AllowedMentions::default(),
+                                        ),
+                                )
+                                .await?;
+                        } else {
+                            cmd.reply(
+                                    &ctx,
+                                    djs_rs::model::interaction::MessageCallbackData::default()
+                                        .content("More than 3")
+                                        .allowed_mentions(
+                                            djs_rs::model::message::AllowedMentions::default(),
+                                        ),
+                                )
+                                .await?;
+                        }
                     }
                 }
                 Ok(())

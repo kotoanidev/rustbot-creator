@@ -25,6 +25,10 @@ pub(crate) struct Properties {
     shown: Option<(usize, NodeId)>,
     fields: Vec<Field>,
     pickers: Vec<Picker>,
+    /// The switches' props, drawn from the graph.
+    checks: Vec<String>,
+    /// Whether the "Embed" section is open (D-087).
+    embed_open: bool,
     /// The form's fields in the node type's order.
     layout: Vec<Slot>,
     /// The prop holding the shown node's command options, if it has one (D-076).
@@ -49,6 +53,7 @@ struct Field {
 enum Slot {
     Text(usize),
     Pick(usize),
+    Check(usize),
     Options,
 }
 
@@ -96,6 +101,8 @@ impl Properties {
             shown: None,
             fields: Vec::new(),
             pickers: Vec::new(),
+            checks: Vec::new(),
+            embed_open: false,
             layout: Vec::new(),
             options_prop: None,
             options: Vec::new(),
@@ -120,6 +127,7 @@ impl Properties {
             });
         if target != self.shown {
             self.shown = target;
+            self.embed_open = false;
             self.build_fields(window, cx);
         } else if let (Some((_, node)), Some(file)) = (&self.shown, state.open_file()) {
             let values: Vec<String> = self
@@ -148,6 +156,7 @@ impl Properties {
     fn build_fields(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
         self.fields.clear();
         self.pickers.clear();
+        self.checks.clear();
         self.layout.clear();
         self.options_prop = None;
         self.options.clear();
@@ -173,9 +182,15 @@ impl Properties {
             })
             .collect();
         for (prop, kind, value) in props {
+            // A filled-in embed shows its section (D-087).
+            self.embed_open |= prop.starts_with("embed_") && !value.is_empty();
             match kind {
-                PropKind::Text { .. } | PropKind::Number { .. } => {
-                    // A number may come from a variable too (D-084).
+                PropKind::Bool => {
+                    self.layout.push(Slot::Check(self.checks.len()));
+                    self.checks.push(prop);
+                }
+                PropKind::Text { .. } | PropKind::Number { .. } | PropKind::Color => {
+                    // A number or colour may come from a variable too (D-084).
                     let templates = kind != PropKind::Text { templates: false };
                     self.layout.push(Slot::Text(self.fields.len()));
                     let field = Self::text_field(prop, templates, value, window, cx);
@@ -240,20 +255,28 @@ impl Properties {
                 })
             }
             PropKind::Choice(choices) => choices.values().iter().map(|&v| v.to_owned()).collect(),
-            PropKind::Text { .. } | PropKind::Options | PropKind::Number { .. } => Vec::new(),
+            PropKind::Text { .. }
+            | PropKind::Options
+            | PropKind::Number { .. }
+            | PropKind::Bool
+            | PropKind::Color => Vec::new(),
         };
         let mut labels: Vec<SharedString> = values
             .iter()
             .map(|value| match kind {
                 PropKind::Variable(_) => variable_label(value).into(),
                 PropKind::Choice(choices) => choice_label(choices, value).into(),
-                PropKind::Text { .. } | PropKind::Options | PropKind::Number { .. } => {
-                    value.clone().into()
-                }
+                PropKind::Text { .. }
+                | PropKind::Options
+                | PropKind::Number { .. }
+                | PropKind::Bool
+                | PropKind::Color => value.clone().into(),
             })
             .collect();
-        if kind == PropKind::Variable(DataType::Role) {
-            labels.push(t("var-role-id").into());
+        match kind {
+            PropKind::Variable(DataType::Role) => labels.push(t("var-role-id").into()),
+            PropKind::Variable(DataType::Channel) => labels.push(t("var-channel-id").into()),
+            _ => {}
         }
         (values, labels)
     }
@@ -267,7 +290,8 @@ impl Properties {
         cx: &mut Context<'_, Self>,
     ) -> Picker {
         let (values, labels) = self.entries(kind, cx);
-        let takes_id = kind == PropKind::Variable(DataType::Role);
+        // Roles and channels may be typed as IDs (D-080, D-088).
+        let takes_id = matches!(kind, PropKind::Variable(DataType::Role | DataType::Channel));
         let id_chosen = takes_id && is_id(value);
         let selected = if id_chosen {
             Some(values.len())
@@ -297,7 +321,11 @@ impl Properties {
             let input = cx.new(|cx| {
                 InputState::new(window, cx)
                     .default_value(shown)
-                    .placeholder(t("role-id-placeholder"))
+                    .placeholder(t(if kind == PropKind::Variable(DataType::Role) {
+                        "role-id-placeholder"
+                    } else {
+                        "channel-id-placeholder"
+                    }))
             });
             let name = prop.clone();
             changes.push(
@@ -546,6 +574,90 @@ impl Properties {
         });
     }
 
+    /// The form's rows in the node type's order, with the `embed_…` fields under a header
+    /// that opens and closes them (D-087).
+    fn rows(
+        &self,
+        file: &GraphFile,
+        node: &NodeId,
+        node_id: &str,
+        variables: &[String],
+        this: &gpui_kit::WeakEntity<Self>,
+        cx: &Context<'_, Self>,
+    ) -> Vec<gpui_kit::AnyElement> {
+        let mut rows = Vec::new();
+        let mut header = false;
+        for slot in &self.layout {
+            let prop = match *slot {
+                Slot::Text(ix) => &self.fields[ix].prop,
+                Slot::Pick(ix) => &self.pickers[ix].prop,
+                Slot::Check(ix) => &self.checks[ix],
+                Slot::Options => "",
+            };
+            if prop.starts_with("embed_") {
+                if !header {
+                    header = true;
+                    let arrow = if self.embed_open { "▾" } else { "▸" };
+                    rows.push(
+                        Button::new("embed-section")
+                            .ghost()
+                            .small()
+                            .label(format!("{arrow} {}", t("embed-section")))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.embed_open = !this.embed_open;
+                                cx.notify();
+                            }))
+                            .into_any_element(),
+                    );
+                }
+                if !self.embed_open {
+                    continue;
+                }
+            }
+            rows.push(match *slot {
+                Slot::Text(ix) => self
+                    .render_text_field(ix, node_id, variables, this)
+                    .into_any_element(),
+                Slot::Pick(ix) => {
+                    let picker = &self.pickers[ix];
+                    let name = t_or(&format!("prop-{node_id}-{}", picker.prop), &picker.prop);
+                    v_flex()
+                        .gap(px(4.))
+                        .child(label(name))
+                        .child(Select::new(&picker.select).small())
+                        .children(
+                            picker
+                                .id
+                                .as_ref()
+                                .filter(|_| picker.id_chosen)
+                                .map(|id| Input::new(id).small()),
+                        )
+                        .into_any_element()
+                }
+                Slot::Check(ix) => {
+                    let prop = self.checks[ix].clone();
+                    let checked = file.graph.nodes[node].props.get(&prop)
+                        == Some(&serde_json::Value::Bool(true));
+                    let name = t_or(&format!("prop-{node_id}-{prop}"), &prop);
+                    Checkbox::new(("prop-check", ix))
+                        .checked(checked)
+                        .label(name)
+                        .on_click(cx.listener(move |this, checked: &bool, _, cx| {
+                            this.fresh = true;
+                            this.write(&prop, *checked, cx);
+                        }))
+                        .into_any_element()
+                }
+                Slot::Options => {
+                    let prop = self.options_prop.clone().unwrap_or_default();
+                    let name = t_or(&format!("prop-{node_id}-{prop}"), &prop);
+                    self.render_options(name, cx).into_any_element()
+                }
+            });
+        }
+        rows
+    }
+
     /// Text field `ix` with its label and, for templates, the {x} variable menu (D-078).
     fn render_text_field(
         &self,
@@ -675,7 +787,12 @@ impl Properties {
     }
 
     /// Writes a field into the graph; the first change after focusing is one undo step.
-    fn write(&mut self, prop: &str, value: String, cx: &mut Context<'_, Self>) {
+    fn write(
+        &mut self,
+        prop: &str,
+        value: impl Into<serde_json::Value>,
+        cx: &mut Context<'_, Self>,
+    ) {
         let Some((_, node)) = self.shown.clone() else {
             return;
         };
@@ -683,8 +800,7 @@ impl Properties {
         self.state.update(cx, |state, cx| {
             state.edit(undoable, cx, |file, _| {
                 if let Some(node) = file.graph.nodes.get_mut(&node) {
-                    node.props
-                        .insert(prop.to_owned(), serde_json::Value::String(value));
+                    node.props.insert(prop.to_owned(), value.into());
                 }
             });
         });
@@ -911,35 +1027,7 @@ impl Render for Properties {
                 v_flex()
                     .gap(px(6.))
                     .child(div().text_sm().child(super::editor::node_name(kind)))
-                    .children(self.layout.iter().map(|slot| {
-                        match *slot {
-                            Slot::Text(ix) => self
-                                .render_text_field(ix, &node_id, &variables, &this)
-                                .into_any_element(),
-                            Slot::Pick(ix) => {
-                                let picker = &self.pickers[ix];
-                                let name =
-                                    t_or(&format!("prop-{node_id}-{}", picker.prop), &picker.prop);
-                                v_flex()
-                                    .gap(px(4.))
-                                    .child(label(name))
-                                    .child(Select::new(&picker.select).small())
-                                    .children(
-                                        picker
-                                            .id
-                                            .as_ref()
-                                            .filter(|_| picker.id_chosen)
-                                            .map(|id| Input::new(id).small()),
-                                    )
-                                    .into_any_element()
-                            }
-                            Slot::Options => {
-                                let prop = self.options_prop.clone().unwrap_or_default();
-                                let name = t_or(&format!("prop-{node_id}-{prop}"), &prop);
-                                self.render_options(name, cx).into_any_element()
-                            }
-                        }
-                    }))
+                    .children(self.rows(file, node, &node_id, &variables, &this, cx))
                     .into_any_element()
             }
             _ => match &self.bot {
@@ -1134,6 +1222,66 @@ mod tests {
 
     /// Typing into the reply's field changes the graph; Ctrl+Z in the canvas puts the old
     /// text back into the field too.
+    /// The reply's embed fields stay folded until the header opens them, and the
+    /// "only the author" switch writes `true`, as one undo step (D-086, D-087).
+    #[gpui_kit::test]
+    fn the_embed_section_folds_and_the_switch_writes(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (properties, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, _| {
+                app.selected_node = Some(NodeId("n2".to_owned()));
+            });
+            state = Some(app.clone());
+            Properties::new(app, window, cx)
+        });
+        let state = state.unwrap();
+        let shown = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.update(|window, cx| {
+                window.render_frame(cx);
+                properties.update(cx, |this, cx| {
+                    let (file, node) = (
+                        this.state.read(cx).open_file().unwrap().clone(),
+                        NodeId("n2".to_owned()),
+                    );
+                    let this_entity = cx.entity().downgrade();
+                    this.rows(&file, &node, "core-reply", &[], &this_entity, cx)
+                        .len()
+                })
+            })
+        };
+        // Message, the switch and the folded "Embed" header.
+        assert_eq!(shown(cx), 3);
+        cx.update(|window, cx| window.click("embed-section", cx));
+        assert_eq!(shown(cx), 8);
+
+        cx.update(|window, cx| {
+            properties.update(cx, |this, cx| {
+                this.fresh = true;
+                this.write("private", true, cx);
+            });
+            window.render_frame(cx);
+        });
+        let private = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.read(|cx| {
+                let file = state.read(cx).open_file().unwrap();
+                file.graph.nodes[&NodeId("n2".to_owned())]
+                    .props
+                    .get("private")
+                    .cloned()
+            })
+        };
+        assert_eq!(private(cx), Some(serde_json::Value::Bool(true)));
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.undo(false, cx));
+            window.render_frame(cx);
+        });
+        assert_eq!(private(cx), None);
+    }
+
     #[gpui_kit::test]
     fn a_field_edits_the_node_and_follows_undo(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().unwrap();

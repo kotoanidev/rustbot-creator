@@ -25,9 +25,8 @@ pub(crate) fn register(client: &Client) {
                     .unwrap_or_else(|| author.display_name());
                 cmd.reply(
                         &ctx,
-                        djs_rs::model::interaction::MessageCallbackData::from(
-                                format!("Pong, {}!", user_name),
-                            )
+                        djs_rs::model::interaction::MessageCallbackData::default()
+                            .content(format!("Pong, {}!", user_name))
                             .allowed_mentions(
                                 djs_rs::model::message::AllowedMentions::default(),
                             ),

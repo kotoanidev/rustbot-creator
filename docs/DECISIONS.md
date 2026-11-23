@@ -781,6 +781,32 @@ alternatives that were considered, and why.
 - **Alternatives:** only the Discord gate; only the warning; a "Who can use it" field on
   the command, set to "everyone" by default.
 
+### D-086 — "Only the author sees it" is a switch on "Reply"
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Reply" gets a checkbox "Only the command author sees it" (an ephemeral
+  reply). It is off by default.
+- **Alternatives:** a separate "Reply privately" node.
+
+### D-087 — An embed is a section of the message form
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** "Reply" and "Send to a channel" have a collapsible "Embed" section with
+  the D-079 fields. The embed is sent when its title or description is not empty, and the
+  message text may then be empty.
+- **Alternatives:** an "Embed" node whose data output wires into the message.
+
+### D-088 — A channel field also takes a channel ID
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Like roles (D-080), a channel field lists the channel variables and, last,
+  "Channel with ID…". That lets moderation logs go to a fixed channel, for example.
+- **Alternatives:** variables only.
+
+### D-089 — Problems warns when a command may not reply
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Discord needs an answer to a command within 3 seconds, or it shows "The
+  application did not respond". Problems warns, without blocking Run (D-085), when a path
+  through a command can end without "Reply".
+- **Alternatives:** the bot sends a private "✅" itself; nothing.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -1038,6 +1064,30 @@ alternatives that were considered, and why.
     them in yellow after the problems, and Run ignores them. An action warns if any path
     from the trigger reaches it without passing the "yes" of a "Has permission?" for
     `user`, the author. A check on the target guards nothing.
+
+### C-020 — How messages are built
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Field kinds:** `PropKind::Bool` is a checkbox, and a new node starts with `false`.
+    `PropKind::Color` takes `#RRGGBB` or a template, and Problems flags any other typed
+    value (`BadColor`).
+  - **Message fields:** "Reply" and "Send to a channel" share their fields: text, then
+    the node's own fields, then `embed_title`, `embed_description`, `embed_color`,
+    `embed_image` and `embed_footer`. The form folds the `embed_…` fields under "Embed",
+    which opens by itself when one of them is filled in. A message with no text, title
+    or description is `EmptyMessage`.
+  - **Embed values:** a field whose variables come out empty when the bot runs is left
+    out, and so is a colour from a variable that is not one. Discord's embed limits are
+    checked by djs-rs, and a failure ends the command with an error in Logs.
+  - **Several replies:** with more than one "Reply" in a command, each checks a
+    `replied` cell. The first replies, and the later ones send follow-ups, so a second
+    "Reply" never fails.
+  - **"Send to a channel" has no "error" output** (D-082 covers moderation). A failed
+    send ends the command with an error in Logs. Mentions follow C-016, as in replies.
+  - **Not replying (D-089):** a command warns unless every way through it replies. Nodes
+    wired to one pin run in turn, so one that always replies is enough. A node's output
+    pins are branches, and each one must reply. An unwired "error" does not count, since
+    the command fails there anyway.
 ---
 
 ## Open questions (to ask the owner when relevant)
