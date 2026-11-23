@@ -223,6 +223,7 @@ impl Choices {
                 "manage_roles",
                 "manage_channels",
                 "manage_messages",
+                "manage_threads",
                 "manage_nicknames",
                 "kick_members",
                 "ban_members",
@@ -846,16 +847,28 @@ impl Registry {
         self.types.values()
     }
 
-    /// The permission `node` needs, if it is a moderation action that acts on someone
-    /// other than the command author (D-085). Acting on the author is allowed, so "/verify"
-    /// can give its user a fixed role; a role from an option needs the permission even
-    /// then, since the user could pick any role.
+    /// The permission `node` needs, unless what it does is harmless for whoever runs it
+    /// (D-085, C-030):
+    /// - a moderation action on the command author, so "/verify" can give its user a fixed
+    ///   role; a role from an option needs the permission even then, since the user could
+    ///   pick any role;
+    /// - a private channel for the author and a fixed role, which is a ticket;
+    /// - adding someone to the public thread the bot just created.
     #[must_use]
     pub fn needed_permission(&self, node: &Node) -> Option<&str> {
         let permission = self.get(&node.kind)?.permission.as_deref()?;
         let text = |name: &str| node.props.get(name).and_then(serde_json::Value::as_str);
-        let on_others = text("user") != Some("user") || text("role").is_some_and(|r| !is_id(r));
-        on_others.then_some(permission)
+        let author = text("user") == Some("user");
+        let harmless = match node.kind.as_str() {
+            "core.create_channel" => {
+                author
+                    && text("visibility") == Some("private")
+                    && text("role").is_none_or(|role| role.is_empty() || is_id(role))
+            }
+            "core.add_to_thread" => text("thread") == Some("created_thread"),
+            _ => author && text("role").is_none_or(is_id),
+        };
+        (!harmless).then_some(permission)
     }
 
     /// Warnings, which do not block Run: moderation actions that a path from the trigger

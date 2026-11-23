@@ -189,6 +189,7 @@ choice-permission-manage_guild = Manage server
 choice-permission-manage_roles = Manage roles
 choice-permission-manage_channels = Manage channels
 choice-permission-manage_messages = Manage messages
+choice-permission-manage_threads = Manage threads
 choice-permission-manage_nicknames = Manage nicknames
 choice-permission-kick_members = Kick members
 choice-permission-ban_members = Ban members

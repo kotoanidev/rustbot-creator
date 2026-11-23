@@ -189,6 +189,7 @@ choice-permission-manage_guild = Zarządzanie serwerem
 choice-permission-manage_roles = Zarządzanie rolami
 choice-permission-manage_channels = Zarządzanie kanałami
 choice-permission-manage_messages = Zarządzanie wiadomościami
+choice-permission-manage_threads = Zarządzanie wątkami
 choice-permission-manage_nicknames = Zarządzanie pseudonimami
 choice-permission-kick_members = Wyrzucanie członków
 choice-permission-ban_members = Banowanie członków

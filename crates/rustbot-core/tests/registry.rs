@@ -484,6 +484,35 @@ fn actions_on_others_need_a_permission_check_on_the_author() {
     );
     let self_kick = serde_json::json!({ "type": "core.kick", "props": { "user": "user" } });
     assert_eq!(warnings_of(&self_kick, &direct), Vec::new());
+
+    // A private ticket for the author and fixed staff needs nothing (C-030); any other
+    // channel does, though its "user" is the author too.
+    let channel = |visibility: &str, role: &str| {
+        serde_json::json!({ "type": "core.create_channel", "props": {
+            "name": "ticket", "visibility": visibility, "user": "user", "role": role } })
+    };
+    let channels = vec![ProblemKind::NoPermissionCheck {
+        permission: "manage_channels".to_owned(),
+    }];
+    assert_eq!(warnings_of(&channel("private", ""), &direct), Vec::new());
+    assert_eq!(
+        warnings_of(&channel("private", "123456789012345678"), &direct),
+        Vec::new()
+    );
+    assert_eq!(
+        warnings_of(&channel("private", "option.rola"), &direct),
+        channels
+    );
+    assert_eq!(warnings_of(&channel("category", ""), &direct), channels);
+    // The bot could add anyone, the author too, to a private thread they cannot see.
+    let add = serde_json::json!({ "type": "core.add_to_thread", "props": {
+        "thread": "123456789012345678", "user": "user" } });
+    assert_eq!(
+        warnings_of(&add, &direct),
+        vec![ProblemKind::NoPermissionCheck {
+            permission: "manage_threads".to_owned()
+        }]
+    );
 }
 
 /// The warnings of `/say` with these nodes and edges; `n1` is the command.

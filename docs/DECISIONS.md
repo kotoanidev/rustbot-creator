@@ -1572,6 +1572,21 @@ alternatives that were considered, and why.
     that borrowed the "last sent message" cell. That made the handler not `Send`, so a
     bot pinning "the last one" with "error" wired did not build. The block now reads a
     copy.
+
+### C-030 — Which catalog nodes need a permission check
+- **Date:** 2026-11-23
+- **Choice:** a security review found two holes in C-029, fixed in the same day's
+  commit:
+  - "Create channel" took the moderation rule of D-085, "acting on the author is
+    allowed", from its "user" field. That field only says who sees the channel, so any
+    member could make the bot create public channels. Now a channel needs "Manage
+    channels", with the warning and Discord's gate, unless it is a ticket: private, for
+    the author, and seen by a fixed role or none.
+  - "Add to thread" needed nothing, and the bot may see private threads its users cannot.
+    It now needs "Manage threads", which "Has permission?" lists too. A thread the bot
+    just created is public, so adding to it needs nothing.
+  - Members can still open as many tickets as they like. Limiting that, e.g. one ticket
+    per member through memory, is up to the bot's author.
 ---
 
 ## Open questions (to ask the owner when relevant)

@@ -129,6 +129,8 @@ fn create_thread() -> NodeType {
     }
 }
 
+/// "Add to thread" (D-119). The bot may see private threads its users cannot, so it needs
+/// "Manage threads" unless the thread is the public one just created (C-030).
 fn add_to_thread() -> NodeType {
     NodeType {
         id: "core.add_to_thread".to_owned(),
@@ -140,7 +142,7 @@ fn add_to_thread() -> NodeType {
         ],
         provides: Vec::new(),
         intents: Vec::new(),
-        permission: None,
+        permission: Some("manage_threads".to_owned()),
         triggers: Vec::new(),
     }
 }
