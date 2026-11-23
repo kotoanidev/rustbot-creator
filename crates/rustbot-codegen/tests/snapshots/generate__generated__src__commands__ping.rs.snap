@@ -22,7 +22,16 @@ pub(crate) fn register(client: &Client) {
                     .as_ref()
                     .and_then(|member| member.member.nick.as_deref())
                     .unwrap_or_else(|| author.display_name());
-                cmd.reply(&ctx, format!("Pong, {}!", user_name)).await?;
+                cmd.reply(
+                        &ctx,
+                        djs_rs::model::interaction::MessageCallbackData::from(
+                                format!("Pong, {}!", user_name),
+                            )
+                            .allowed_mentions(
+                                djs_rs::model::message::AllowedMentions::default(),
+                            ),
+                    )
+                    .await?;
                 Ok(())
             },
         );

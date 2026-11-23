@@ -49,7 +49,7 @@ layer, before the scope widens.
 - [x] Console step (D-075): select and copy, level colours, Clear, build lines apart from
       the bot's
 - [ ] The `/ban` example of D-014 (D-073), with values from form fields (D-074):
-  - [ ] Command options as a list in the command's form (D-076)
+  - [x] Command options as a list in the command's form (D-076)
   - [ ] Variable picker: lists for user/channel/role fields, {x} for text (D-078)
   - [ ] Conditions with "yes"/"no" outputs: has permission, has role, compare (D-077)
   - [ ] Moderation: ban, kick, timeout, add/remove a role

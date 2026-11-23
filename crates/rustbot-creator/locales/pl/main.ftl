@@ -61,6 +61,19 @@ prop-core-slash_command-name = Nazwa komendy
 prop-core-slash_command-description = Opis
 prop-core-slash_command-options = Opcje
 prop-core-reply-content = Wiadomość
+option-add = + Dodaj opcję
+option-remove = Usuń
+option-required = Wymagana
+option-name-placeholder = nazwa
+option-description-placeholder = Podpowiedź widoczna dla użytkowników
+option-default-name = opcja
+type-text = Tekst
+type-number = Liczba
+type-bool = Tak/nie
+type-user = Użytkownik
+type-channel = Kanał
+type-role = Rola
+type-server = Serwer
 
 ## Panel właściwości i ustawienia bota.
 props-variables = Zmienne: { $list }

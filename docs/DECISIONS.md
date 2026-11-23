@@ -912,6 +912,23 @@ alternatives that were considered, and why.
   - **Generated code:** the locals are named by position (`option_0_name`), since option
     names may have letters that are not ASCII. An optional option that is not filled in
     is empty text, and yes/no prints `true`/`false`.
+  - **Editor:** the Properties panel shows each option as a box with name, a type
+    drop-down, description, "Required" and "Remove", and "+ Add option" below. A new
+    option is text, named `option1`/`opcja1` (the first free one), with an empty
+    description that Problems asks for. Text edits are one undo step per focus. Adding,
+    removing, the type and "Required" are one step each.
+
+### C-016 — Generated messages notify only what their author wrote
+- **Date:** 2026-11-23
+- **Choice:** a security review found that text from users reached replies unfiltered:
+  `/ban reason:@everyone`, or a nickname, could ping the whole server. Every generated
+  reply now sets Discord's `allowed_mentions`:
+  - a `{user.mention}` or `{option.<user or role>.mention}` variable notifies that user
+    or role;
+  - `@everyone`/`@here` notify only when typed into the template itself;
+  - anything else notifies no one, including `<@id>` typed by hand.
+
+  This is the safe default. The owner may want a per-node switch later.
 ---
 
 ## Open questions (to ask the owner when relevant)

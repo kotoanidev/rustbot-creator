@@ -2,15 +2,16 @@
 //! node is selected: its token, kept in the system keyring (D-020), and the test server
 //! (D-055, D-065).
 
-use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::v_flex;
+use gpui_kit::component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::component::{ActiveTheme as _, IndexPath, Sizable as _, h_flex, v_flex};
 use gpui_kit::{
     AppContext as _, Context, Entity, FocusHandle, IntoElement, ParentElement as _, Render,
-    Styled as _, Subscription, Window, div, px,
+    SharedString, Styled as _, Subscription, Window, div, px,
 };
-use rustbot_core::registry::PropKind;
+use rustbot_core::registry::{CommandOption, DataType, PropKind};
 use rustbot_core::{GraphFile, NodeId, Registry};
 
 use crate::i18n::{t, t_or, t_with};
@@ -22,6 +23,9 @@ pub(crate) struct Properties {
     /// The node the fields belong to: `(graph index, node id)`.
     shown: Option<(usize, NodeId)>,
     fields: Vec<Field>,
+    /// The prop holding the shown node's command options, if it has one (D-076).
+    options_prop: Option<String>,
+    options: Vec<OptionRow>,
     /// The next change starts a new undo step: set when a field gains the focus.
     fresh: bool,
     bot: Option<BotForm>,
@@ -34,6 +38,14 @@ struct Field {
     templates: bool,
     input: Entity<InputState>,
     _changes: Subscription,
+}
+
+/// The editable parts of one command option; its "required" box is drawn from the graph.
+struct OptionRow {
+    name: Entity<InputState>,
+    description: Entity<InputState>,
+    ty: Entity<SelectState<Vec<SharedString>>>,
+    _changes: [Subscription; 3],
 }
 
 struct BotForm {
@@ -58,6 +70,8 @@ impl Properties {
             state,
             shown: None,
             fields: Vec::new(),
+            options_prop: None,
+            options: Vec::new(),
             fresh: true,
             bot: None,
         };
@@ -93,6 +107,7 @@ impl Properties {
                         .update(cx, |input, cx| input.set_value(value, window, cx));
                 }
             }
+            self.sync_options(window, cx);
         }
         if self.shown.is_none() && self.bot.is_none() {
             self.bot = Some(self.build_bot_form(window, cx));
@@ -102,6 +117,8 @@ impl Properties {
 
     fn build_fields(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
         self.fields.clear();
+        self.options_prop = None;
+        self.options.clear();
         let Some((_, node)) = self.shown.clone() else {
             return;
         };
@@ -121,10 +138,14 @@ impl Properties {
                     templates,
                     prop_text(file, &node, &prop.name),
                 )),
-                // shortcut: the options list gets its editor in the next commit (D-076).
                 PropKind::Options => None,
             })
             .collect();
+        self.options_prop = kind
+            .props
+            .iter()
+            .find(|prop| prop.kind == PropKind::Options)
+            .map(|prop| prop.name.clone());
         for (prop, templates, value) in props {
             let input = cx.new(|cx| InputState::new(window, cx).default_value(value));
             let name = prop.clone();
@@ -148,6 +169,217 @@ impl Properties {
                 _changes: changes,
             });
         }
+        self.build_options(window, cx);
+    }
+
+    /// The shown node's command options, as the graph has them.
+    fn current_options(&self, cx: &gpui_kit::App) -> Vec<CommandOption> {
+        let (Some((_, node)), Some(prop)) = (&self.shown, &self.options_prop) else {
+            return Vec::new();
+        };
+        let state = self.state.read(cx);
+        let value = state
+            .open_file()
+            .and_then(|file| file.graph.nodes.get(node))
+            .and_then(|node| node.props.get(prop));
+        CommandOption::list(value)
+    }
+
+    fn build_options(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let names = type_names();
+        self.options = self
+            .current_options(cx)
+            .into_iter()
+            .enumerate()
+            .map(|(ix, option)| {
+                let mut text = |value: String, placeholder: &str, cx: &mut Context<'_, Self>| {
+                    let placeholder = t(placeholder);
+                    cx.new(|cx| {
+                        InputState::new(window, cx)
+                            .default_value(value)
+                            .placeholder(placeholder)
+                    })
+                };
+                let name = text(option.name, "option-name-placeholder", cx);
+                let description = text(option.description, "option-description-placeholder", cx);
+                let selected = type_index(option.ty).map(IndexPath::new);
+                let ty = cx.new(|cx| SelectState::new(names.clone(), selected, window, cx));
+                let typing =
+                    |input: &Entity<InputState>,
+                     set: fn(&mut CommandOption, String),
+                     cx: &mut Context<'_, Self>| {
+                        cx.subscribe_in(input, window, move |this, input, event, _, cx| match event
+                        {
+                            InputEvent::Focus => this.fresh = true,
+                            InputEvent::Change => {
+                                let value = input.read(cx).value().to_string();
+                                let undoable = std::mem::take(&mut this.fresh);
+                                this.edit_options(undoable, cx, |options| {
+                                    set(&mut options[ix], value);
+                                });
+                            }
+                            _ => {}
+                        })
+                    };
+                let name_changes = typing(&name, |option, value| option.name = value, cx);
+                let description_changes =
+                    typing(&description, |option, value| option.description = value, cx);
+                let type_changes = cx.subscribe_in(&ty, window, move |this, _, event, _, cx| {
+                    let SelectEvent::Confirm(Some(chosen)) = event else {
+                        return;
+                    };
+                    let Some(ty) = type_names()
+                        .iter()
+                        .position(|name| name == chosen)
+                        .map(|i| CommandOption::TYPES[i])
+                    else {
+                        return;
+                    };
+                    this.edit_options(true, cx, |options| options[ix].ty = ty);
+                });
+                OptionRow {
+                    name,
+                    description,
+                    ty,
+                    _changes: [name_changes, description_changes, type_changes],
+                }
+            })
+            .collect();
+    }
+
+    /// Rebuilds the rows when options were added or removed, e.g. by undo, and otherwise
+    /// brings their text and type up to date.
+    fn sync_options(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let options = self.current_options(cx);
+        if options.len() != self.options.len() {
+            self.build_options(window, cx);
+            return;
+        }
+        for (row, option) in self.options.iter().zip(options) {
+            for (input, value) in [
+                (&row.name, option.name),
+                (&row.description, option.description),
+            ] {
+                if input.read(cx).value() != value.as_str() {
+                    input.update(cx, |input, cx| input.set_value(value, window, cx));
+                }
+            }
+            let selected = type_index(option.ty).map(IndexPath::new);
+            if row.ty.read(cx).selected_index(cx) != selected {
+                row.ty.update(cx, |select, cx| {
+                    select.set_selected_index(selected, window, cx);
+                });
+            }
+        }
+    }
+
+    /// Changes the shown node's command options with `change`.
+    fn edit_options(
+        &mut self,
+        undoable: bool,
+        cx: &mut Context<'_, Self>,
+        change: impl FnOnce(&mut Vec<CommandOption>),
+    ) {
+        let (Some((_, node)), Some(prop)) = (self.shown.clone(), self.options_prop.clone()) else {
+            return;
+        };
+        self.state.update(cx, |state, cx| {
+            state.edit(undoable, cx, |file, _| {
+                let Some(node) = file.graph.nodes.get_mut(&node) else {
+                    return;
+                };
+                let mut options = CommandOption::list(node.props.get(&prop));
+                change(&mut options);
+                let value = serde_json::to_value(options).expect("options serialize");
+                node.props.insert(prop, value);
+            });
+        });
+    }
+
+    /// Adds an option with the first free name, `option1`, `option2`, … in the app's
+    /// language. Its description is left for the user; Problems asks for it.
+    fn add_option(&mut self, cx: &mut Context<'_, Self>) {
+        self.edit_options(true, cx, |options| {
+            let base = t("option-default-name");
+            // One of the first len + 1 names is always free.
+            let name = (1..=options.len() + 1)
+                .map(|n| format!("{base}{n}"))
+                .find(|name| options.iter().all(|option| &option.name != name))
+                .expect("a free name");
+            options.push(CommandOption {
+                name,
+                ty: DataType::Text,
+                description: String::new(),
+                required: false,
+            });
+        });
+    }
+
+    fn render_options(
+        &self,
+        label_text: String,
+        cx: &Context<'_, Self>,
+    ) -> impl IntoElement + use<> {
+        let theme = cx.theme();
+        let options = self.current_options(cx);
+        v_flex()
+            .gap(px(6.))
+            .child(label(label_text))
+            .children(
+                self.options
+                    .iter()
+                    .zip(options)
+                    .enumerate()
+                    .map(|(ix, (row, option))| {
+                        v_flex()
+                            .gap(px(4.))
+                            .p(px(6.))
+                            .border_1()
+                            .border_color(theme.border)
+                            .rounded(px(4.))
+                            .child(
+                                h_flex()
+                                    .gap(px(4.))
+                                    .child(div().flex_1().child(Input::new(&row.name).small()))
+                                    .child(div().w(px(112.)).child(Select::new(&row.ty).small())),
+                            )
+                            .child(Input::new(&row.description).small())
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .child(
+                                        Checkbox::new(("option-required", ix))
+                                            .checked(option.required)
+                                            .label(t("option-required"))
+                                            .on_click(cx.listener(
+                                                move |this, checked: &bool, _, cx| {
+                                                    let checked = *checked;
+                                                    this.edit_options(true, cx, |options| {
+                                                        options[ix].required = checked;
+                                                    });
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new(("option-remove", ix))
+                                            .ghost()
+                                            .xsmall()
+                                            .label(t("option-remove"))
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.edit_options(true, cx, |options| {
+                                                    options.remove(ix);
+                                                });
+                                            })),
+                                    ),
+                            )
+                    }),
+            )
+            .child(
+                Button::new("option-add")
+                    .xsmall()
+                    .label(t("option-add"))
+                    .on_click(cx.listener(|this, _, _, cx| this.add_option(cx))),
+            )
     }
 
     /// Writes a field into the graph; the first change after focusing is one undo step.
@@ -313,24 +545,43 @@ fn prop_text(file: &GraphFile, node: &NodeId, prop: &str) -> String {
     }
 }
 
-/// The variables a template in `file` can use, e.g. `{user.name}`, from its trigger.
+/// The variables a template in `file` can use, e.g. `{user.name}` or `{option.reason}`.
 fn variables(file: &GraphFile, registry: &Registry) -> Vec<String> {
     let mut found = Vec::new();
-    for node in file.graph.nodes.values() {
-        let Some(kind) = registry.get(&node.kind) else {
-            continue;
-        };
-        for variable in &kind.provides {
-            found.extend(
-                variable
-                    .ty
-                    .fields()
-                    .iter()
-                    .map(|field| format!("{{{}.{field}}}", variable.name)),
-            );
+    for variable in registry.scope(&file.graph) {
+        let fields = variable.ty.fields();
+        if fields.is_empty() {
+            found.push(format!("{{{}}}", variable.name));
         }
+        found.extend(
+            fields
+                .iter()
+                .map(|field| format!("{{{}.{field}}}", variable.name)),
+        );
     }
     found
+}
+
+/// The option types' names, in the order of [`CommandOption::TYPES`].
+fn type_names() -> Vec<SharedString> {
+    CommandOption::TYPES
+        .iter()
+        .map(|ty| {
+            SharedString::from(t(match ty {
+                DataType::Text => "type-text",
+                DataType::Number => "type-number",
+                DataType::Bool => "type-bool",
+                DataType::User => "type-user",
+                DataType::Channel => "type-channel",
+                DataType::Role => "type-role",
+                DataType::Server => "type-server",
+            }))
+        })
+        .collect()
+}
+
+fn type_index(ty: DataType) -> Option<usize> {
+    CommandOption::TYPES.iter().position(|t| *t == ty)
 }
 
 impl Render for Properties {
@@ -342,6 +593,10 @@ impl Render for Properties {
                 let kind = &file.graph.nodes[node].kind;
                 let node_id = kind.replace('.', "-");
                 let hint = variables(file, &state.registry).join(" ");
+                let options = self.options_prop.as_ref().map(|prop| {
+                    let name = t_or(&format!("prop-{node_id}-{prop}"), prop);
+                    self.render_options(name, cx)
+                });
                 v_flex()
                     .gap(px(6.))
                     .child(div().text_sm().child(super::editor::node_name(kind)))
@@ -358,6 +613,7 @@ impl Render for Properties {
                                     .child(t_with("props-variables", &[("list", &hint)]))
                             }))
                     }))
+                    .children(options)
                     .into_any_element()
             }
             _ => match &self.bot {
@@ -374,9 +630,76 @@ mod tests {
     use gpui_kit::test::TestWindowExt as _;
     use gpui_kit::{AppContext as _, TestAppContext};
     use rustbot_core::NodeId;
+    use rustbot_core::registry::{CommandOption, DataType};
 
     use super::Properties;
     use crate::state::AppState;
+
+    /// "+ Add option" adds a text option with a free name; typing its description writes it,
+    /// undo takes the option back out, and "Remove" deletes it (D-076).
+    #[gpui_kit::test]
+    fn the_options_list_edits_the_command(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (properties, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, _| {
+                app.selected_node = Some(NodeId("n1".to_owned()));
+            });
+            state = Some(app.clone());
+            Properties::new(app, window, cx)
+        });
+        let state = state.unwrap();
+        let options = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.read(|cx| {
+                let file = state.read(cx).open_file().unwrap();
+                CommandOption::list(
+                    file.graph.nodes[&NodeId("n1".to_owned())]
+                        .props
+                        .get("options"),
+                )
+            })
+        };
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            window.click("option-add", cx);
+        });
+        let name = format!("{}1", crate::i18n::t("option-default-name"));
+        assert_eq!(
+            options(cx),
+            vec![CommandOption {
+                name: name.clone(),
+                ty: DataType::Text,
+                description: String::new(),
+                required: false,
+            }]
+        );
+
+        cx.update(|window, cx| {
+            let field = properties.read(cx).options[0].description.clone();
+            field.update(cx, |input, cx| input.focus(window, cx));
+            window.render_frame(cx);
+        });
+        cx.update(|window, cx| window.input("Who to ban", cx));
+        assert_eq!(options(cx)[0].description, "Who to ban");
+
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.undo(false, cx));
+            window.render_frame(cx);
+        });
+        assert_eq!(options(cx)[0].description, "");
+        let shown = cx.read(|cx| properties.read(cx).options[0].description.read(cx).value());
+        assert_eq!(shown.as_str(), "");
+
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            window.click(("option-remove", 0usize), cx);
+        });
+        assert_eq!(options(cx), Vec::new());
+        assert_eq!(cx.read(|cx| properties.read(cx).options.len()), 0);
+    }
 
     /// Typing into the reply's field changes the graph; Ctrl+Z in the canvas puts the old
     /// text back into the field too.

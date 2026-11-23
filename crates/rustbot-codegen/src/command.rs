@@ -50,8 +50,17 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         }
         body.push(match graph.nodes[&id].kind.as_str() {
             "core.reply" => {
-                let content = template_expr(text(graph, &id, "content"), &options, &mut vars);
-                quote!(cmd.reply(&ctx, #content).await?;)
+                let template = text(graph, &id, "content");
+                let content = template_expr(template, &options, &mut vars);
+                let mentions = allowed_mentions(template, &options);
+                quote! {
+                    cmd.reply(
+                        &ctx,
+                        djs_rs::model::interaction::MessageCallbackData::from(#content)
+                            .allowed_mentions(#mentions),
+                    )
+                    .await?;
+                }
             }
             _ => return Err(no_codegen(&id)),
         });
@@ -152,6 +161,55 @@ fn template_expr(
     } else {
         quote!(format!(#format, #(#args),*))
     }
+}
+
+/// Who a message may notify: only the mentions its author wrote. A `{….mention}` variable
+/// notifies its user or role, and `@everyone`/`@here` work only typed into the template. Text
+/// from users, such as a text option or a nickname, never notifies anyone, so
+/// `/ban reason:@everyone` cannot ping the server.
+fn allowed_mentions(template: &str, options: &[CommandOption]) -> TokenStream {
+    let segments = template::parse(template).expect("validated templates parse");
+    let mut add = Vec::new();
+    let mut everyone = false;
+    for segment in &segments {
+        match segment {
+            Segment::Text(text) => everyone |= text.contains("@everyone") || text.contains("@here"),
+            Segment::Var(path) if path.join(".") == "user.mention" => {
+                add.push(quote!(mentions.users.push(author.id);));
+            }
+            Segment::Var(path) => {
+                let path = path.join(".");
+                if let Some((_, option, Some("mention"))) = option_path(&path, options) {
+                    let name = &option.name;
+                    add.push(match option.ty {
+                        DataType::User => {
+                            quote!(mentions.users.extend(cmd.get_user(#name).map(|user| user.id));)
+                        }
+                        DataType::Role => {
+                            quote!(mentions.roles.extend(cmd.get_role(#name).map(|role| role.id));)
+                        }
+                        // Channel mentions notify no one.
+                        _ => continue,
+                    });
+                }
+            }
+        }
+    }
+    if everyone {
+        add.push(quote! {
+            mentions
+                .parse
+                .push(djs_rs::model::message::AllowedMentionType::Everyone);
+        });
+    }
+    if add.is_empty() {
+        return quote!(djs_rs::model::message::AllowedMentions::default());
+    }
+    quote!({
+        let mut mentions = djs_rs::model::message::AllowedMentions::default();
+        #(#add)*
+        mentions
+    })
 }
 
 /// The local holding a variable: `user.name` → `user_name`. Paths are validated against the

@@ -35,7 +35,7 @@ fn ban() -> GraphFile {
         "{option.cel.name} {option.cel.id} {option.cel.username} {option.cel.display_name} \
          {option.cel.mention} | {option.powód} {option.dni} {option.cicho} | \
          {option.kanał.id} {option.kanał.name} {option.kanał.mention} | \
-         {option.rola.id} {option.rola.name} {option.rola.mention}",
+         {option.rola.id} {option.rola.name} {option.rola.mention} {user.mention} @here",
     );
     let options = serde_json::json!([
         { "name": "cel", "type": "user", "description": "Who", "required": true },
@@ -109,6 +109,34 @@ fn options_snapshot() {
         "options",
         &output.files[Path::new("generated/src/commands/ban.rs")]
     );
+}
+
+/// Only the mentions the template's author wrote notify anyone (C-016).
+#[test]
+fn replies_notify_only_what_the_author_wrote() {
+    let reply = |content: &str| {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = ban();
+        file.graph
+            .nodes
+            .get_mut(&rustbot_core::NodeId("n2".to_owned()))
+            .unwrap()
+            .props
+            .insert("content".to_owned(), content.into());
+        let p = project(dir.path(), Manifest::new("Ban Bot"), &[file]);
+        let output = generate(&p, &Registry::with_core()).unwrap();
+        output.files[Path::new("generated/src/commands/ban.rs")].replace(char::is_whitespace, "")
+    };
+    let none = reply("{option.powód} {user.name}");
+    assert!(none.contains(".allowed_mentions(djs_rs::model::message::AllowedMentions::default(),"));
+    assert!(!none.contains("letmutmentions"));
+    let some =
+        reply("{user.mention} {option.cel.mention} {option.rola.mention} {option.kanał.mention}");
+    assert!(some.contains("mentions.users.push(author.id);"));
+    assert!(some.contains(r#"mentions.users.extend(cmd.get_user("cel").map(|user|user.id));"#));
+    assert!(some.contains(r#"mentions.roles.extend(cmd.get_role("rola").map(|role|role.id));"#));
+    assert!(!some.contains("AllowedMentionType::Everyone"));
+    assert!(reply("@here {option.powód}").contains("AllowedMentionType::Everyone"));
 }
 
 #[test]

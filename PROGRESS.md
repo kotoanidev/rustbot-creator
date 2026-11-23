@@ -105,14 +105,16 @@ The owner finds the console hard to read and wants it improved later. Colour cod
 gone, but selecting and copying text, levels and wrapping are still open.
 
 ## Exact next step
-**Phase 3, step 2a, the rest: the options editor in the Properties panel (D-076).** The
-registry and codegen side is done (C-015). It covers the options prop, its validation as
-problems, `{option.<name>}` variables, and generated definitions and values, built against
-djs-rs by the `compiles` test.
+**Phase 3, step 2b: the variable picker (D-078).** Step 2a, command options, is done:
+- registry and codegen (C-015);
+- the editor in Properties, tested headlessly;
+- replies that notify only what their author wrote (C-016, from a security review).
 
-The editor is missing: the Properties panel skips the `options` prop (a `shortcut:` in
-`properties.rs`). It needs a list with "+ Add option" and per option a name, a type
-(drop-down), a description, "required" and remove. Then 2b, the variable picker (D-078).
+2b covers two things. Fields of type user, channel or role become drop-downs of the
+variables that fit; `Registry::scope` already lists them with their types. Text fields get
+an {x} button that inserts a variable at the cursor. The nodes that need typed fields
+(moderation, D-073) come in 2c–2d, so 2b may build the typed field together with the first
+such node.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

@@ -61,6 +61,19 @@ prop-core-slash_command-name = Command name
 prop-core-slash_command-description = Description
 prop-core-slash_command-options = Options
 prop-core-reply-content = Message
+option-add = + Add option
+option-remove = Remove
+option-required = Required
+option-name-placeholder = name
+option-description-placeholder = What users see as a hint
+option-default-name = option
+type-text = Text
+type-number = Number
+type-bool = Yes/no
+type-user = User
+type-channel = Channel
+type-role = Role
+type-server = Server
 
 ## The properties panel and the bot's settings.
 props-variables = Variables: { $list }
