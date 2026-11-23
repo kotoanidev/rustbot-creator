@@ -48,6 +48,7 @@ problem-private-outside-command = Only a command's reply can be seen by its auth
 problem-empty-message = The message has no text and no embed title or description.
 problem-bad-color = The field “{ $prop }” must be a colour like #5865F2, or a variable.
 problem-no-permission-check = Warning: an action that needs “{ $permission }” runs without “Has permission?” checking the command author first.
+problem-anyone-can-click = Warning: anyone who clicks can make an action that needs “{ $permission }” run. Tick “Only the user who started it can click” on the message.
 problem-option-name = Option { $option }: the name needs 1–32 lower-case letters, digits, - or _.
 problem-option-duplicate = Option { $option }: another option has the same name.
 problem-option-description = Option { $option }: the description needs 1–100 characters.

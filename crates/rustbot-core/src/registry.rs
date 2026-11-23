@@ -512,6 +512,13 @@ pub enum ProblemKind {
         /// The permission, as a [`Choices::Permission`] value.
         permission: String,
     },
+    /// A warning: after a click waited for that anyone may make, an action that needs
+    /// `permission` runs for whoever clicked; a check of `user` checks who started it, not
+    /// the clicker, and Discord's gate covers only the command (D-085, D-100).
+    AnyoneCanClick {
+        /// The permission, as a [`Choices::Permission`] value.
+        permission: String,
+    },
     /// A warning: a path through the command can end without "Reply", so Discord shows
     /// "The application did not respond" (D-089).
     NoReply,
@@ -579,6 +586,10 @@ impl fmt::Display for Problem {
                 write!(f, "{prop:?}: {{{path}}} has the wrong type")
             }
             ProblemKind::NoReply => write!(f, "the command may end without a reply"),
+            ProblemKind::AnyoneCanClick { permission } => write!(
+                f,
+                "anyone who clicks can make an action needing {permission} run"
+            ),
             ProblemKind::EmptyMessage => write!(f, "the message has no text and no embed"),
             ProblemKind::WrongTrigger { allowed } => {
                 write!(f, "the node works only under {}", allowed.join(", "))
@@ -706,29 +717,47 @@ impl Registry {
                 kind: ProblemKind::NoReply,
             });
         }
-        // (node, guarded) pairs, so loops and joins end.
+        // (node, guarded, anyone) triples, so loops and joins end. `anyone`: after a click
+        // waited for that anyone may make, so `user` is not necessarily who clicked.
         let mut seen = BTreeSet::new();
-        let mut next = vec![(trigger.clone(), false)];
-        while let Some((id, guarded)) = next.pop() {
-            if !seen.insert((id.clone(), guarded)) {
+        let mut next = vec![(trigger.clone(), false, false)];
+        while let Some((id, guarded, anyone)) = next.pop() {
+            if !seen.insert((id.clone(), guarded, anyone)) {
                 continue;
             }
             let Some(node) = graph.nodes.get(&id) else {
                 continue;
             };
-            if !guarded && let Some(permission) = self.needed_permission(node) {
-                warnings.push(Problem {
+            if let Some(permission) = self.needed_permission(node) {
+                let permission = permission.to_owned();
+                let kind = if anyone {
+                    Some(ProblemKind::AnyoneCanClick { permission })
+                } else {
+                    (!guarded).then_some(ProblemKind::NoPermissionCheck { permission })
+                };
+                warnings.extend(kind.map(|kind| Problem {
                     node: Some(id.clone()),
-                    kind: ProblemKind::NoPermissionCheck {
-                        permission: permission.to_owned(),
-                    },
-                });
+                    kind,
+                }));
             }
             let checks_author = node.kind == "core.has_permission"
                 && node.props.get("user").and_then(serde_json::Value::as_str) == Some("user");
+            let clicks = click_items(node);
+            let waits = waits_for_click(node);
+            let only_author = node.props.get("only_author") == Some(&serde_json::Value::Bool(true));
             for edge in graph.edges.iter().filter(|edge| edge.from.node == id) {
-                let guarded = guarded || (checks_author && edge.from.pin == "yes");
-                next.push((edge.to.node.clone(), guarded));
+                let (guarded, anyone) = if !clicks.contains(&edge.from.pin) {
+                    (guarded || (checks_author && edge.from.pin == "yes"), anyone)
+                } else if !waits {
+                    // A new run by the clicker, who is `user`; nothing was checked yet
+                    // (D-097).
+                    (false, false)
+                } else if only_author {
+                    (guarded, anyone)
+                } else {
+                    (false, true)
+                };
+                next.push((edge.to.node.clone(), guarded, anyone));
             }
         }
         warnings

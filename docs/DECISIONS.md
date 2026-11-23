@@ -1268,6 +1268,12 @@ alternatives that were considered, and why.
     the menu has options, and the answer to others once "only the author" is ticked.
   - **Palette:** in a graph with buttons or a menu, it also offers nodes that work after
     a click, such as "Reply" in an event graph.
+  - **Permissions after a click (security review):** Discord's gate (D-085) covers only
+    using the command, not clicking. A click that always works starts unchecked, and
+    "Has permission?" after it checks the clicker. After a click waited for that anyone
+    may make, a check of `user` checks who started it, not the clicker, so an action that
+    needs a permission gets the warning "anyone who clicks can make it run" until "only
+    the user who started it" is ticked.
 ---
 
 ## Open questions (to ask the owner when relevant)

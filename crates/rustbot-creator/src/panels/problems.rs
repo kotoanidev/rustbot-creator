@@ -140,6 +140,13 @@ pub(crate) fn describe(problem: &Problem) -> String {
         ProblemKind::PrivateOutsideCommand => t("problem-private-outside-command"),
         ProblemKind::EmptyMessage => t("problem-empty-message"),
         ProblemKind::BadColor(prop) => t_with("problem-bad-color", &[("prop", prop)]),
+        ProblemKind::AnyoneCanClick { permission } => t_with(
+            "problem-anyone-can-click",
+            &[(
+                "permission",
+                &crate::i18n::t_or(&format!("choice-permission-{permission}"), permission),
+            )],
+        ),
         ProblemKind::NoPermissionCheck { permission } => t_with(
             "problem-no-permission-check",
             &[(

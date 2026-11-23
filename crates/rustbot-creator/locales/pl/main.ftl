@@ -48,6 +48,7 @@ problem-private-outside-command = Tylko odpowiedź na komendę może być widocz
 problem-empty-message = Wiadomość nie ma tekstu ani tytułu lub opisu embeda.
 problem-bad-color = Pole „{ $prop }” musi być kolorem, np. #5865F2, albo zmienną.
 problem-no-permission-check = Ostrzeżenie: akcja wymagająca uprawnienia „{ $permission }” działa bez sprawdzenia „Ma uprawnienie?” u autora komendy.
+problem-anyone-can-click = Ostrzeżenie: każdy, kto kliknie, może uruchomić akcję wymagającą uprawnienia „{ $permission }”. Zaznacz w wiadomości „Kliknąć może tylko ten, kto to uruchomił”.
 problem-option-name = Opcja { $option }: nazwa musi mieć 1–32 znaki: małe litery, cyfry, - lub _.
 problem-option-duplicate = Opcja { $option }: inna opcja ma tę samą nazwę.
 problem-option-description = Opcja { $option }: opis musi mieć 1–100 znaków.

@@ -864,3 +864,44 @@ fn clicks_let_events_reply_and_need_a_user_to_limit() {
     );
     assert_eq!(event("core.ready", "10", false), Vec::new());
 }
+
+/// A check of the author does not cover a click anyone may make (D-085, D-100).
+#[test]
+fn a_waited_click_by_anyone_is_not_covered_by_the_authors_check() {
+    let confirm = |only_author: bool| {
+        let message = serde_json::json!({ "type": "core.reply", "props": { "content": "Sure?",
+            "wait": "5", "only_author": only_author,
+            "buttons": [ { "id": "b1", "label": "Yes", "style": "danger" } ] } });
+        let after = serde_json::json!({
+            "n3": { "type": "core.has_permission", "props": { "user": "user",
+                "permission": "ban_members" } },
+            "n4": { "type": "core.ban", "props": { "user": "option.target",
+                "delete_messages": "none" } }
+        });
+        let edges = serde_json::json!([
+            { "from": "n1.then", "to": "n3.run" },
+            { "from": "n3.yes", "to": "n2.run" },
+            { "from": "n2.b1", "to": "n4.run" }
+        ]);
+        let mut graph = clicks(&message, &after, &edges);
+        // `clicks` wires the trigger to the message; here the check comes first.
+        graph
+            .edges
+            .retain(|edge| edge.from.to_string() != "n1.then" || edge.to.node.0 == "n3");
+        let registry = Registry::with_core();
+        assert_eq!(registry.validate(&graph), Vec::new());
+        registry
+            .warnings(&graph)
+            .into_iter()
+            .map(|w| w.kind)
+            .filter(|kind| *kind != ProblemKind::NoReply)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        confirm(false),
+        vec![ProblemKind::AnyoneCanClick {
+            permission: "ban_members".to_owned()
+        }]
+    );
+    assert_eq!(confirm(true), Vec::new());
+}
