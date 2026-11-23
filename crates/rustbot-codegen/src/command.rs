@@ -1144,19 +1144,26 @@ impl<'a> Body<'a> {
             "core.timeout" => {
                 let minutes = self.template(text(graph, id, "minutes"), false);
                 // Discord's longest timeout, as `core.timeout` allows (D-084).
-                quote! {{
-                    let minutes = #minutes
-                        .trim()
-                        .parse::<f64>()
-                        .ok()
-                        .filter(|minutes| *minutes > 0.0 && *minutes <= 40_320.0)
-                        .ok_or("a timeout is more than 0 and at most 40320 minutes (28 days)")?;
-                    let until = djs_rs::model::util::Timestamp::from_unix_micros(
-                        djs_rs::model::util::Timestamp::now().as_unix_micros()
-                            + (minutes * 60_000_000.0) as i64,
-                    );
-                    members.timeout(user, Some(until), #reason)
-                }}
+                // One expression, not a block: a reason from a template is a temporary that
+                // must live until the call is awaited.
+                quote! {
+                    members.timeout(
+                        user,
+                        Some(djs_rs::model::util::Timestamp::from_unix_micros(
+                            djs_rs::model::util::Timestamp::now().as_unix_micros()
+                                + (#minutes
+                                    .trim()
+                                    .parse::<f64>()
+                                    .ok()
+                                    .filter(|minutes| *minutes > 0.0 && *minutes <= 40_320.0)
+                                    .ok_or(
+                                        "a timeout is more than 0 and at most 40320 minutes (28 days)",
+                                    )?
+                                    * 60_000_000.0) as i64,
+                        )),
+                        #reason,
+                    )
+                }
             }
             kind @ ("core.add_role" | "core.remove_role") => {
                 let role = match text(graph, id, "role") {

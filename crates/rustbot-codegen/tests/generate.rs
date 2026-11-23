@@ -123,7 +123,7 @@ fn moderation() -> GraphFile {
             "n5": { "type": "core.kick", "props": { "user": "option.cel", "reason": "" } },
             "n6": { "type": "core.reply", "props": { "content": "No kick" } },
             "n7": { "type": "core.timeout", "props": {
-                "user": "option.cel", "minutes": "{option.minuty}", "reason": "Spam" } },
+                "user": "option.cel", "minutes": "{option.minuty}", "reason": "{option.powód}" } },
             "n8": { "type": "core.add_role", "props": {
                 "user": "user", "role": "123456789012345678", "reason": "" } },
             "n9": { "type": "core.remove_role", "props": {

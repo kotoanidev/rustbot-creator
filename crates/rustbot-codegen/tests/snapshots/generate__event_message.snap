@@ -50,21 +50,24 @@ pub(crate) fn register(client: &Client) {
                                     .ok_or("the event did not come from a server")?,
                             );
                         let user = event.author.id;
-                        {
-                            let minutes = "10"
-                                .trim()
-                                .parse::<f64>()
-                                .ok()
-                                .filter(|minutes| *minutes > 0.0 && *minutes <= 40_320.0)
-                                .ok_or(
-                                    "a timeout is more than 0 and at most 40320 minutes (28 days)",
-                                )?;
-                            let until = djs_rs::model::util::Timestamp::from_unix_micros(
-                                djs_rs::model::util::Timestamp::now().as_unix_micros()
-                                    + (minutes * 60_000_000.0) as i64,
-                            );
-                            members.timeout(user, Some(until), None)
-                        }
+                        members
+                            .timeout(
+                                user,
+                                Some(
+                                    djs_rs::model::util::Timestamp::from_unix_micros(
+                                        djs_rs::model::util::Timestamp::now().as_unix_micros()
+                                            + ("10"
+                                                .trim()
+                                                .parse::<f64>()
+                                                .ok()
+                                                .filter(|minutes| *minutes > 0.0 && *minutes <= 40_320.0)
+                                                .ok_or(
+                                                    "a timeout is more than 0 and at most 40320 minutes (28 days)",
+                                                )? * 60_000_000.0) as i64,
+                                    ),
+                                ),
+                                None,
+                            )
                             .await?;
                         Ok(())
                     }

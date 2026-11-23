@@ -186,22 +186,25 @@ pub(crate) fn register(client: &Client) {
                         .get_user("cel")
                         .map(|user| user.id)
                         .ok_or("the option cel was not given")?;
-                    {
-                        let minutes = option_2
-                            .to_string()
-                            .trim()
-                            .parse::<f64>()
-                            .ok()
-                            .filter(|minutes| *minutes > 0.0 && *minutes <= 40_320.0)
-                            .ok_or(
-                                "a timeout is more than 0 and at most 40320 minutes (28 days)",
-                            )?;
-                        let until = djs_rs::model::util::Timestamp::from_unix_micros(
-                            djs_rs::model::util::Timestamp::now().as_unix_micros()
-                                + (minutes * 60_000_000.0) as i64,
-                        );
-                        members.timeout(user, Some(until), Some("Spam"))
-                    }
+                    members
+                        .timeout(
+                            user,
+                            Some(
+                                djs_rs::model::util::Timestamp::from_unix_micros(
+                                    djs_rs::model::util::Timestamp::now().as_unix_micros()
+                                        + (option_2
+                                            .to_string()
+                                            .trim()
+                                            .parse::<f64>()
+                                            .ok()
+                                            .filter(|minutes| *minutes > 0.0 && *minutes <= 40_320.0)
+                                            .ok_or(
+                                                "a timeout is more than 0 and at most 40320 minutes (28 days)",
+                                            )? * 60_000_000.0) as i64,
+                                ),
+                            ),
+                            Some(option_1.to_string()).as_deref(),
+                        )
                         .await?;
                 }
                 {
