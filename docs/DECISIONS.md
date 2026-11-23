@@ -1124,6 +1124,46 @@ alternatives that were considered, and why.
 - **Alternatives:** commit it as it is; commit a shortened version without prices,
   forecasts and the application.
 
+### D-127 — Themes in gpui-component's JSON format (details D-034)
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Themes use the JSON theme-set format of gpui-component, which gpui-kit is
+  built on. The app ships a dark and a light theme and can follow the system. The user's
+  own themes are loaded from `~/.config/rustbot-creator/themes` as soon as they change, so
+  gpui-component's existing themes work unchanged.
+- **Alternatives:** the app's own JSON schema, translated into gpui-kit's colours.
+
+### D-128 — A first-run wizard on the first start
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The first start opens a wizard with these steps:
+  1. language and theme;
+  2. installing Rust and gcc, with consent (D-017, D-039);
+  3. the bot in the Discord Developer Portal (D-129);
+  4. a first project from a template.
+
+  Each step can be skipped, and the wizard can be opened again from Settings.
+- **Alternatives:** a wizard when the first project is made; no wizard, with only a
+  Developer Portal guide in the bot settings.
+
+### D-129 — A Developer Portal guide whose steps are checked
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Each step has a short text and a button that opens the right page of the
+  portal. The app checks the token by asking Discord who the bot is, makes the invite
+  link with the permissions the bot needs, and checks that the bot is on the test server.
+  There are no screenshots of Discord.
+- **Alternatives:** text and links only, with no checks; the same with pictures of the
+  portal, which need updating whenever Discord changes it.
+
+### D-130 — Settings as an editor tab, in `settings.toml`
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** As in VS Code, Settings open as a tab in the editor and are saved in
+  `~/.config/rustbot-creator/settings.toml`. The first settings are:
+  - language;
+  - theme;
+  - font size;
+  - the toolchain: its state, its disk use, and installing it again;
+  - opening the first-run wizard again.
+- **Alternatives:** a separate dialog with tabs, using the same file.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

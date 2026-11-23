@@ -68,12 +68,15 @@ layer, before the scope widens.
 - [x] Bot templates: empty, moderation, welcome, roles from a menu, reports, levels
       (D-115–D-119)
 
-## Phase 5 — Themes + first run (D-034, D-017)
-- [ ] JSON themes, built-in dark and light, theme switching
-- [ ] First-run wizard: toolchain installation, system packages with consent
-- [ ] The wizard guides a non-programmer through the Discord Developer Portal: the
-      application, the token and the invite
-- [ ] Settings
+## Phase 5 — Themes + first run (D-034, D-017, D-127–D-130)
+- [ ] Settings as an editor tab, saved in `settings.toml`: language, theme, font size,
+      toolchain (D-130)
+- [ ] JSON themes in gpui-component's format: built-in dark and light, following the
+      system, and the user's own from a folder (D-127)
+- [ ] First-run wizard: language and theme, Rust and gcc with consent, a first project
+      from a template (D-128)
+- [ ] The wizard's Developer Portal guide, with checks: the token, the invite link, the
+      bot on the test server (D-129)
 
 ## Phase 6 — Export
 - [ ] Source code (MIT-0 templates, the user's chosen license, D-023)
