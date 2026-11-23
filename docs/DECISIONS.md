@@ -924,6 +924,40 @@ alternatives that were considered, and why.
 - **Alternatives:** picking an earlier message node of the graph; also a message by its
   ID and channel.
 
+### D-104 — The bot's memory comes next in the catalog
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** After the actions of D-102, the catalog continues with the bot's memory:
+  variables that last across runs and restarts.
+- **Alternatives:** modals; bot templates; a pause for the owner's live test.
+
+### D-105 — Memory is a JSON file in the bot's folder
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The running bot keeps its memory in one `data.json` in its folder, held in
+  memory and written atomically after each change. The generated bot gets `serde_json`
+  as a direct dependency, which djs-rs already brings. Hosting without a disk (e.g.
+  Cloudflare) will need another store later.
+- **Alternatives:** the embedded database redb; SQLite through rusqlite.
+
+### D-106 — Memory variables are declared in a "Memory" list
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** The project tree gets a "Memory" branch with "+". Each variable has a name,
+  a type (number or text), a scope and a starting value, kept in `project.toml`. Nodes
+  pick a variable from a list, so a typo cannot create a new one.
+- **Alternatives:** a variable comes into being when a node first names it.
+
+### D-107 — Four scopes
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** A memory variable is global (one for the bot), per server (e.g. a log
+  channel), per user (e.g. a balance) or per user on a server (e.g. warnings, XP).
+- **Alternatives:** only global and per user on a server, for now.
+
+### D-108 — "Set", "Change by" and "Reset", read as `{memory.name}`
+- **Date:** 2026-11-23 · **Decided by:** Owner
+- **Decision:** Three nodes: "Set" (a value or a template), "Change by" (add or subtract a
+  number, e.g. one more warning) and "Reset" (back to the starting value). Templates and
+  "Compare" read a variable as `{memory.name}`.
+- **Alternatives:** also a "Ranking" node: the top 10 users by a number variable.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
