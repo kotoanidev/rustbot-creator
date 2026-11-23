@@ -318,6 +318,85 @@ fn clicks() -> Vec<GraphFile> {
     ]
 }
 
+/// The actions of D-102 on the messages of D-103: a command that reacts to, pins, edits
+/// and unpins its own reply, sends DMs and renames, and an event working on its message.
+#[allow(clippy::too_many_lines)] // the graphs, as data
+fn actions() -> Vec<GraphFile> {
+    vec![
+        command_graph(
+            "tools",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "tools", "description": "Uses every action", "options": [
+                            { "name": "target", "type": "user", "description": "Who", "required": true },
+                            { "name": "emoji", "type": "text", "description": "Which" },
+                            { "name": "nick", "type": "text", "description": "Name" } ] } },
+                    "n2": { "type": "core.reply", "props": { "content": "Working…" } },
+                    "n3": { "type": "core.react", "props": { "message": "last", "emoji": "👍" } },
+                    "n4": { "type": "core.react", "props": { "message": "last", "emoji": "{option.emoji}" } },
+                    "n5": { "type": "core.pin", "props": { "message": "last" } },
+                    "n6": { "type": "core.wait", "props": { "seconds": "2" } },
+                    "n7": { "type": "core.edit_message", "props": { "message": "last",
+                        "content": "Done, {user.name}", "embed_title": "Result" } },
+                    "n8": { "type": "core.send_dm", "props": { "user": "option.target",
+                        "content": "Hello from {server.name}",
+                        "buttons": [ { "id": "b1", "label": "Thanks", "style": "success" } ] } },
+                    "n9": { "type": "core.reply", "props": { "content": "Their DMs are closed",
+                        "private": true } },
+                    "n10": { "type": "core.set_nickname", "props": { "user": "option.target",
+                        "nickname": "{option.nick}", "reason": "Asked by {user.name}" } },
+                    "n11": { "type": "core.unpin", "props": { "message": "last" } },
+                    "n12": { "type": "core.reply", "props": { "content": "You're welcome" } },
+                    "n13": { "type": "core.wait", "props": { "seconds": "{option.nick}" } },
+                    "n14": { "type": "core.send_dm", "props": { "user": "user", "content": "Bye",
+                        "wait": "1", "menu": [ { "id": "o1", "label": "Again" } ] } },
+                    "n15": { "type": "core.set_nickname", "props": { "user": "user", "nickname": "" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n4.then", "to": "n5.run" },
+                    { "from": "n5.then", "to": "n6.run" },
+                    { "from": "n6.then", "to": "n7.run" },
+                    { "from": "n7.then", "to": "n8.run" },
+                    { "from": "n8.error", "to": "n9.run" },
+                    { "from": "n8.then", "to": "n10.run" },
+                    { "from": "n10.then", "to": "n11.run" },
+                    { "from": "n8.b1", "to": "n12.run" },
+                    { "from": "n11.then", "to": "n13.run" },
+                    { "from": "n13.then", "to": "n14.run" },
+                    { "from": "n14.o1", "to": "n15.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "starboard",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.reaction_add" },
+                    "n2": { "type": "core.compare", "props": {
+                        "left": "{emoji}", "operator": "equals", "right": "⭐" } },
+                    "n3": { "type": "core.pin", "props": { "message": "event" } },
+                    "n4": { "type": "core.react", "props": { "message": "event",
+                        "emoji": "<:star:123456789012345678>" } },
+                    "n5": { "type": "core.send_dm", "props": { "user": "user",
+                        "content": "Pinned, {user.name}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.yes", "to": "n3.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n3.error", "to": "n5.run" }
+                ]
+            }),
+        ),
+    ]
+}
+
 /// An event graph from JSON.
 fn event_graph(name: &str, graph: serde_json::Value) -> GraphFile {
     GraphFile {
@@ -633,6 +712,23 @@ fn clicks_snapshot() {
 }
 
 #[test]
+fn actions_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = project(dir.path(), Manifest::new("Tool Bot"), &actions());
+    let registry = Registry::with_core();
+    for file in &p.graphs {
+        assert_eq!(registry.validate(&file.graph), Vec::new(), "{}", file.name);
+    }
+    let output = generate(&p, &registry).unwrap();
+    for (name, path) in [
+        ("action_tools", "commands/tools.rs"),
+        ("action_starboard", "events/starboard.rs"),
+    ] {
+        insta::assert_snapshot!(name, &output.files[&Path::new("generated/src").join(path)]);
+    }
+}
+
+#[test]
 fn events_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let p = project(dir.path(), Manifest::new("Event Bot"), &events());
@@ -839,6 +935,7 @@ fn generated_bot_compiles() {
     graphs.push(messages());
     graphs.extend(events());
     graphs.extend(clicks());
+    graphs.extend(actions());
     let p = project(dir.path(), Manifest::new("Ping Bot"), &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
 

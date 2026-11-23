@@ -905,3 +905,26 @@ fn a_waited_click_by_anyone_is_not_covered_by_the_authors_check() {
     );
     assert_eq!(confirm(true), Vec::new());
 }
+
+/// "The event's message" exists only in "New message" and reactions (D-103).
+#[test]
+fn message_actions_need_a_message() {
+    let react = |message: &str| {
+        serde_json::json!({ "type": "core.react",
+            "props": { "message": message, "emoji": "👍" } })
+    };
+    assert_eq!(event_graph("core.message", &react("event")), Vec::new());
+    assert_eq!(
+        event_graph("core.reaction_add", &react("event")),
+        Vec::new()
+    );
+    assert_eq!(
+        event_graph("core.member_join", &react("event")),
+        vec![ProblemKind::NoEventMessage]
+    );
+    assert_eq!(event_graph("core.member_join", &react("last")), Vec::new());
+    // A new node starts with the last message sent, which every graph has.
+    let registry = Registry::with_core();
+    let react = registry.get("core.react").unwrap();
+    assert_eq!(react.props[0].kind.default_value(), "last");
+}

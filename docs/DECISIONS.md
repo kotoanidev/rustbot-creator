@@ -1298,6 +1298,28 @@ alternatives that were considered, and why.
     may make, a check of `user` checks who started it, not the clicker, so an action that
     needs a permission gets the warning "anyone who clicks can make it run" until "only
     the user who started it" is ticked.
+
+### C-025 — How the actions of D-102 work
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Failures:** "Send a DM", "Add a reaction", "Pin", "Unpin", "Edit message" and
+    "Change nickname" have an "error" output, as moderation has (D-082). A DM fails when
+    the user takes none from the server; an unwired "error" ends the run with a line in
+    Logs.
+  - **Which message:** "Last sent by the bot" is the last message any "Reply", "Send to a
+    channel" or "Send a DM" sent in this run, kept only when some node uses it. It costs
+    one more request per reply, since Discord does not return the reply. Before any
+    message was sent, it is an error. "The event's message" is the problem
+    `NoEventMessage` outside "New message" and reactions, and after a click that always
+    works. Private replies cannot be pinned, reacted to or edited.
+  - **Emoji:** a Unicode emoji as typed, or a custom one as Discord writes it,
+    `<:name:id>` or `<a:name:id>`; `{variables}` are allowed, e.g. `{emoji}`.
+  - **Edit message:** new text and embed; an empty text keeps the old one, and buttons
+    stay.
+  - **Change nickname:** an empty nickname, or a template that comes out empty, gives the
+    user back their own name. It needs "Manage nicknames" on others (D-085).
+  - **Wait:** up to 900 seconds (15 minutes), as long as a command can still follow up;
+    a `{variable}` is checked when the bot runs.
 ---
 
 ## Open questions (to ask the owner when relevant)

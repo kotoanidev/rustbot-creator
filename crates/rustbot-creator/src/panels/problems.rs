@@ -174,6 +174,7 @@ pub(crate) fn describe(problem: &Problem) -> String {
             t_with(id, &[("item", &(item + 1).to_string())])
         }
         ProblemKind::OnlyAuthorWithoutUser => t("problem-only-author-without-user"),
+        ProblemKind::NoEventMessage => t("problem-no-event-message"),
         ProblemKind::BadOption { option, problem } => {
             let id = match problem {
                 OptionProblem::Name => "problem-option-name",

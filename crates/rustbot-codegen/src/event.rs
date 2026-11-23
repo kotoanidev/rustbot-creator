@@ -92,6 +92,18 @@ impl Event {
         }
     }
 
+    /// The event's message, `(ChannelId, MessageId)`; only "New message" and reactions come
+    /// with one (D-103).
+    pub(crate) fn message_ids(self) -> TokenStream {
+        match self {
+            Self::Message => quote!((event.channel_id, event.id)),
+            Self::ReactionAdd | Self::ReactionRemove => {
+                quote!((event.channel_id, event.message_id))
+            }
+            _ => unreachable!("{self:?} comes with no message"),
+        }
+    }
+
     /// The `let` that computes a variable from the event.
     fn binding(self, path: &str) -> TokenStream {
         let name = format_ident!("{}", path.replace('.', "_"));
@@ -176,8 +188,9 @@ pub(crate) fn module(
     let node = &file.graph.nodes[trigger];
     let mut code = Body::for_event(file, event);
     let body = code.after(trigger, "then")?;
-    let (vars, needs_quiet, routes) = code.finish();
-    let (handlers, routes_quiet) = crate::command::route_handlers(file, routes)?;
+    let (vars, mut helpers, routes) = code.finish();
+    let (handlers, routes_helpers) = crate::command::route_handlers(file, routes)?;
+    helpers.add(routes_helpers);
     // shortcut: every variable is computed first, so a name used in one branch is fetched
     // for each event; compute them where they are used if a busy server hits rate limits.
     let bindings = vars.iter().map(|path| event.binding(path));
@@ -197,7 +210,8 @@ pub(crate) fn module(
             }
         }
     });
-    let body = quote!(#skip #(#bindings)* #body);
+    let last_sent = crate::command::last_sent(&body);
+    let body = quote!(#skip #(#bindings)* #last_sent #body);
     // Parameters the code does not use would be warnings.
     let ctx = if uses(&body, "ctx") {
         quote!(ctx)
@@ -209,7 +223,7 @@ pub(crate) fn module(
     } else {
         quote!(_event)
     };
-    let quiet = (needs_quiet || routes_quiet).then(crate::command::quiet_fn);
+    let helpers = helpers.code();
     let djs = event.djs();
     let doc = format!(
         " The `{}` event graph, from `graphs/events/{}.json`.",
@@ -223,7 +237,7 @@ pub(crate) fn module(
 
         use djs_rs::prelude::*;
 
-        #quiet
+        #helpers
 
         pub(crate) fn register(client: &Client) {
             client.on(Events::#djs, |#ctx, #payload| async move {

@@ -172,6 +172,8 @@ impl PropKind {
             }
             // Deleting nothing is the safe start (D-083).
             Self::Choice(Choices::DeleteMessages) => serde_json::Value::String("none".to_owned()),
+            // The event's message exists only in some graphs.
+            Self::Choice(Choices::MessageTarget) => serde_json::Value::String("last".to_owned()),
             Self::Bool => serde_json::Value::Bool(false),
             Self::Text { .. }
             | Self::Variable(_)
@@ -192,6 +194,8 @@ pub enum Choices {
     Comparison,
     /// How far back "Ban" deletes the user's messages (D-083).
     DeleteMessages,
+    /// Which message a message action works on (D-103).
+    MessageTarget,
 }
 
 impl Choices {
@@ -216,6 +220,7 @@ impl Choices {
             ],
             Self::Comparison => &["equals", "not_equals", "contains", "greater", "less"],
             Self::DeleteMessages => &["none", "hour", "day", "week"],
+            Self::MessageTarget => &["last", "event"],
         }
     }
 }
@@ -551,6 +556,9 @@ pub enum ProblemKind {
     },
     /// "Only the command author can click" where no user started the graph (D-100).
     OnlyAuthorWithoutUser,
+    /// "The event's message" where no message came with the event: outside "New message"
+    /// and reactions, or after a click that always works (D-103).
+    NoEventMessage,
     /// A command option breaks Discord's rules.
     BadOption {
         /// Its position in the list, from 0.
@@ -623,6 +631,7 @@ impl fmt::Display for Problem {
             ProblemKind::OnlyAuthorWithoutUser => {
                 f.write_str("only the author can click, but no user started this")
             }
+            ProblemKind::NoEventMessage => f.write_str("this event comes with no message"),
             ProblemKind::BadOption { option, problem } => {
                 let why = match problem {
                     OptionProblem::Name => "a name needs 1-32 lower-case letters, digits, - or _",
@@ -1070,6 +1079,20 @@ fn check_node(
     }
     for prop in &node_type.props {
         problems.extend(check_prop(prop, node.props.get(&prop.name), scope));
+    }
+    let event_message = matches!(
+        base,
+        Some("core.message" | "core.reaction_add" | "core.reaction_remove")
+    );
+    if node
+        .props
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        == Some("event")
+        && base.is_some()
+        && !event_message
+    {
+        problems.push(ProblemKind::NoEventMessage);
     }
     if node.props.get("only_author") == Some(&serde_json::Value::Bool(true))
         && !click_items(node).is_empty()

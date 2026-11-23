@@ -108,7 +108,7 @@ pub(crate) fn register(client: &Client) {
                     };
                     let mut clicks = sent
                         .component_collector(&ctx)
-                        .time(std::time::Duration::from_secs_f64(5f64 * 60.0))
+                        .time(std::time::Duration::from_secs_f64(300f64))
                         .build();
                     let allowed = interaction
                         .author()

@@ -1359,6 +1359,7 @@ fn choice_label(choices: rustbot_core::registry::Choices, value: &str) -> String
         rustbot_core::registry::Choices::Permission => "permission",
         rustbot_core::registry::Choices::Comparison => "comparison",
         rustbot_core::registry::Choices::DeleteMessages => "delete_messages",
+        rustbot_core::registry::Choices::MessageTarget => "message_target",
     };
     t_or(&format!("choice-{list}-{value}"), value)
 }

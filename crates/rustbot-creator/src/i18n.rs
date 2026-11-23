@@ -137,6 +137,10 @@ mod tests {
                 "delete_messages",
                 rustbot_core::registry::Choices::DeleteMessages,
             ),
+            (
+                "message_target",
+                rustbot_core::registry::Choices::MessageTarget,
+            ),
         ] {
             for value in choices.values() {
                 let id = format!("choice-{list}-{value}");

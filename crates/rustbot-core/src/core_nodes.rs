@@ -32,6 +32,94 @@ pub(crate) fn all() -> Vec<NodeType> {
         timeout(),
         role_action("core.add_role"),
         role_action("core.remove_role"),
+        send_dm(),
+        message_action("core.react", vec![text("emoji", true)]),
+        message_action("core.pin", Vec::new()),
+        message_action("core.unpin", Vec::new()),
+        edit_message(),
+        moderation(
+            "core.set_nickname",
+            "manage_nicknames",
+            // Empty: back to the user's own name.
+            vec![prop("nickname", PropKind::Text { templates: true }, false)],
+        ),
+        wait(),
+    ]
+}
+
+/// Sends a private message to a user (D-102), with the form of "Send to a channel". It may
+/// fail, e.g. when the user does not take DMs.
+fn send_dm() -> NodeType {
+    let mut props = vec![prop("user", PropKind::Variable(DataType::User), true)];
+    props.extend(message(Vec::new()));
+    NodeType {
+        id: "core.send_dm".to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props,
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+        triggers: Vec::new(),
+    }
+}
+
+/// An action on a message: the event's or the last one the bot sent (D-103).
+fn message_action(id: &str, extra: Vec<Prop>) -> NodeType {
+    let mut props = vec![prop(
+        "message",
+        PropKind::Choice(Choices::MessageTarget),
+        true,
+    )];
+    props.extend(extra);
+    NodeType {
+        id: id.to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props,
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+        triggers: Vec::new(),
+    }
+}
+
+/// New text and embed for a message the bot sent (D-102).
+fn edit_message() -> NodeType {
+    let template = |name| prop(name, PropKind::Text { templates: true }, false);
+    message_action(
+        "core.edit_message",
+        vec![
+            template("content"),
+            template("embed_title"),
+            template("embed_description"),
+            prop("embed_color", PropKind::Color, false),
+            template("embed_image"),
+            template("embed_footer"),
+        ],
+    )
+}
+
+/// Waits, then goes on (D-102). At most 15 minutes, as long as a command can still reply.
+fn wait() -> NodeType {
+    NodeType {
+        id: "core.wait".to_owned(),
+        category: Category::Logic,
+        pins: vec![flow("run", Direction::In), flow("then", Direction::Out)],
+        props: vec![prop("seconds", PropKind::Number { max: 900 }, true)],
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+        triggers: Vec::new(),
+    }
+}
+
+/// "run" in, "then" out, and "error" when Discord refuses (D-082).
+fn fallible_pins() -> Vec<Pin> {
+    vec![
+        flow("run", Direction::In),
+        flow("then", Direction::Out),
+        flow("error", Direction::Out),
     ]
 }
 
@@ -232,11 +320,7 @@ fn moderation(id: &str, permission: &str, mut props: Vec<Prop>) -> NodeType {
     NodeType {
         id: id.to_owned(),
         category: Category::Action,
-        pins: vec![
-            flow("run", Direction::In),
-            flow("then", Direction::Out),
-            flow("error", Direction::Out),
-        ],
+        pins: fallible_pins(),
         props,
         provides: Vec::new(),
         intents: Vec::new(),

@@ -59,24 +59,22 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         path: Vec::new(),
         clicked: false,
         routes: Vec::new(),
+        track_last: tracks_last(file),
+        reaction: false,
     };
     let body = code.after(trigger, "then")?;
-    let Body {
-        vars,
-        quiet: needs_quiet,
-        interaction: needs_interaction,
-        routes,
-        ..
-    } = code;
+    let needs_interaction = code.interaction;
+    let (vars, mut helpers, routes) = code.finish();
     let prologue = prologue(
         &vars,
         &options,
         needs_interaction,
         follow_ups && uses(&body, "replied"),
     );
-    let (handlers, routes_quiet) = route_handlers(file, routes)?;
-    // With @everyone allowed in a message, the same text from users must not trigger it.
-    let quiet = (needs_quiet || routes_quiet).then(quiet_fn);
+    let last_sent = last_sent(&body);
+    let (handlers, routes_helpers) = route_handlers(file, routes)?;
+    helpers.add(routes_helpers);
+    let helpers = helpers.code();
     let doc = format!(
         " The `/{name}` command, from `graphs/commands/{}.json`.",
         file.name
@@ -98,11 +96,12 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
                 .build()
         }
 
-        #quiet
+        #helpers
 
         pub(crate) fn register(client: &Client) {
             client.command(#name, |ctx, cmd| async move {
                 #prologue
+                #last_sent
                 #body
                 Ok(())
             });
@@ -159,10 +158,10 @@ fn route_name(file: &GraphFile, id: &NodeId) -> String {
 pub(crate) fn route_handlers(
     file: &GraphFile,
     mut routes: Vec<NodeId>,
-) -> Result<(Vec<TokenStream>, bool), Error> {
+) -> Result<(Vec<TokenStream>, Helpers), Error> {
     let mut done = BTreeSet::new();
     let mut handlers = Vec::new();
-    let mut quiet = false;
+    let mut helpers = Helpers::default();
     while let Some(id) = routes.pop() {
         if !done.insert(id.clone()) {
             continue;
@@ -185,19 +184,16 @@ pub(crate) fn route_handlers(
             }
         });
         let route = route_name(file, &id);
-        let Body {
-            vars,
-            quiet: needs_quiet,
-            interaction,
-            routes: more,
-            ..
-        } = body;
+        let interaction = body.interaction;
+        let (vars, needs, more) = body.finish();
         routes.extend(more);
-        quiet |= needs_quiet;
+        helpers.add(needs);
         let prologue = prologue(&vars, &[], interaction, true);
+        let last_sent = last_sent(&dispatch);
         handlers.push(quote! {
             client.component(#route, |ctx, cmd| async move {
                 #prologue
+                #last_sent
                 #check
                 #item
                 #dispatch
@@ -209,7 +205,7 @@ pub(crate) fn route_handlers(
             });
         });
     }
-    Ok((handlers, quiet))
+    Ok((handlers, helpers))
 }
 
 /// `.default_member_permissions(…)`: members without the permissions of the command's
@@ -265,6 +261,76 @@ pub(crate) struct Body<'a> {
     clicked: bool,
     /// Messages whose clicks "always work", which need a handler of their own (D-097).
     routes: Vec<NodeId>,
+    /// Some node works on "the last message sent", so message nodes keep theirs (D-103).
+    track_last: bool,
+    /// Some node needs `reaction()`, which reads an emoji typed in the form.
+    reaction: bool,
+}
+
+/// The helper functions a module's handlers need.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct Helpers {
+    /// `quiet()`, for messages with `@everyone` typed in (C-016).
+    pub(crate) quiet: bool,
+    /// `reaction()` (C-025).
+    pub(crate) reaction: bool,
+}
+
+impl Helpers {
+    pub(crate) fn add(&mut self, other: Self) {
+        self.quiet |= other.quiet;
+        self.reaction |= other.reaction;
+    }
+
+    /// The functions themselves.
+    pub(crate) fn code(self) -> TokenStream {
+        let quiet = self.quiet.then(quiet_fn);
+        let reaction = self.reaction.then(|| {
+            quote! {
+                /// An emoji typed in the form: a Unicode one, or a custom one as Discord
+                /// writes it, `<:name:id>` or `<a:name:id>` (C-025).
+                fn reaction(text: &str) -> djs_rs::rest::ReactionEmoji<'_> {
+                    let text = text.trim();
+                    let custom = text
+                        .strip_prefix('<')
+                        .and_then(|inner| inner.strip_suffix('>'))
+                        .and_then(|inner| {
+                            let (rest, id) = inner.rsplit_once(':')?;
+                            let id = id.parse::<u64>().ok().filter(|id| *id != 0)?;
+                            let name = rest.rsplit(':').next()?;
+                            Some((name, id))
+                        });
+                    match custom {
+                        Some((name, id)) => djs_rs::rest::ReactionEmoji::Custom {
+                            name,
+                            id: djs_rs::model::id::EmojiId::new(id),
+                        },
+                        None => djs_rs::rest::ReactionEmoji::Unicode(text),
+                    }
+                }
+            }
+        });
+        quote!(#quiet #reaction)
+    }
+}
+
+/// Whether a node of the graph works on "the last message sent" (D-103).
+fn tracks_last(file: &GraphFile) -> bool {
+    file.graph
+        .nodes
+        .values()
+        .any(|node| node.props.get("message").and_then(Value::as_str) == Some("last"))
+}
+
+/// The `last_sent` cell, if `body` uses it: the channel and ID of the last message sent.
+pub(crate) fn last_sent(body: &TokenStream) -> Option<TokenStream> {
+    uses(body, "last_sent").then(|| {
+        quote! {
+            let last_sent: std::cell::Cell<
+                Option<(djs_rs::model::id::ChannelId, djs_rs::model::id::MessageId)>,
+            > = std::cell::Cell::new(None);
+        }
+    })
 }
 
 impl<'a> Body<'a> {
@@ -282,6 +348,8 @@ impl<'a> Body<'a> {
             path: Vec::new(),
             clicked: false,
             routes: Vec::new(),
+            track_last: tracks_last(file),
+            reaction: false,
         }
     }
 
@@ -300,13 +368,19 @@ impl<'a> Body<'a> {
             path: Vec::new(),
             clicked: false,
             routes: Vec::new(),
+            track_last: tracks_last(file),
+            reaction: false,
         }
     }
 
-    /// The variables the code uses, whether it needs `quiet()`, and the messages whose
-    /// clicks need a handler.
-    pub(crate) fn finish(self) -> (BTreeSet<String>, bool, Vec<NodeId>) {
-        (self.vars, self.quiet, self.routes)
+    /// The variables the code uses, the helpers it needs, and the messages whose clicks
+    /// need a handler.
+    pub(crate) fn finish(self) -> (BTreeSet<String>, Helpers, Vec<NodeId>) {
+        let helpers = Helpers {
+            quiet: self.quiet,
+            reaction: self.reaction,
+        };
+        (self.vars, helpers, self.routes)
     }
 
     /// The code of the nodes wired to `pin` of `id`, one after another in edge order.
@@ -361,7 +435,15 @@ impl<'a> Body<'a> {
     fn node(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
         let graph = &self.file.graph;
         let code = match graph.nodes[id].kind.as_str() {
-            "core.reply" | "core.send_message" => self.message_node(id)?,
+            "core.reply" | "core.send_message" | "core.send_dm" => self.message_node(id)?,
+            "core.react" | "core.pin" | "core.unpin" | "core.edit_message" => {
+                let action = self.message_action(id);
+                self.fallible(id, &action)?
+            }
+            "core.wait" => {
+                let duration = self.duration(text(graph, id, "seconds"), 1, 900.0);
+                (quote!(tokio::time::sleep(#duration).await;), true)
+            }
             // Validation allows it only after "New message" (D-094).
             "core.delete_message" => (
                 quote!(ctx.messages(event.channel_id).delete(event.id).await?;),
@@ -388,9 +470,8 @@ impl<'a> Body<'a> {
                 };
                 (code, false)
             }
-            "core.ban" | "core.kick" | "core.timeout" | "core.add_role" | "core.remove_role" => {
-                self.moderate(id)?
-            }
+            "core.ban" | "core.kick" | "core.timeout" | "core.add_role" | "core.remove_role"
+            | "core.set_nickname" => self.moderate(id)?,
             _ => {
                 return Err(Error::NoCodegen {
                     graph: self.file.name.clone(),
@@ -402,8 +483,9 @@ impl<'a> Body<'a> {
         Ok(code)
     }
 
-    /// "Reply" or "Send to a channel", with its buttons and menu (D-097–D-100). Clicks that
-    /// "always work" go to a handler of their own; a click waited for continues here.
+    /// "Reply", "Send to a channel" or "Send a DM", with its buttons and menu (D-097–D-100).
+    /// Clicks that "always work" go to a handler of their own; a click waited for continues
+    /// here. The sent message is kept when a later node works on "the last one" (D-103).
     fn message_node(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
         let node = &self.file.graph.nodes[id];
         let has_components = !Button::list(node.props.get("buttons")).is_empty()
@@ -411,18 +493,49 @@ impl<'a> Body<'a> {
         let clicks = !click_items(node).is_empty();
         let wait = clicks && waits_for_click(node);
         let only_author = clicks && node.props.get("only_author") == Some(&Value::Bool(true));
+        // A DM may fail, e.g. when the user takes none; with "error" wired it is handled.
+        let fallible = node.kind == "core.send_dm" && !self.next(id, "error").is_empty();
         let mut message = self.message(id);
         if has_components {
             message.extend(self.components(id, wait, only_author));
         }
-        if !wait {
-            if clicks && !self.routes.contains(id) {
-                self.routes.push(id.clone());
-            }
-            return Ok((self.send(id, message, false), true));
+        if clicks && !wait && !self.routes.contains(id) {
+            self.routes.push(id.clone());
         }
-        let send = self.send(id, message, true);
-        let duration = self.duration(text(&self.file.graph, id, "wait"));
+        let keep_sent = wait || self.track_last;
+        let send = self.send(id, message, keep_sent, !fallible);
+        let keep = self
+            .track_last
+            .then(|| quote!(last_sent.set(Some((sent.channel_id, sent.id)));));
+        let waiting = if wait {
+            self.wait_for_click(id, only_author)?
+        } else {
+            TokenStream::new()
+        };
+        if fallible {
+            let then = self.after(id, "then")?;
+            let error = self.after(id, "error")?;
+            let log = self.log();
+            let pattern = if keep_sent { quote!(sent) } else { quote!(_) };
+            return Ok((
+                quote! {
+                    match #send {
+                        Ok(#pattern) => { #keep #waiting #then }
+                        Err(error) => { #log #error }
+                    }
+                },
+                false,
+            ));
+        }
+        if keep_sent {
+            return Ok((quote!({ let sent = #send; #keep #waiting }), true));
+        }
+        Ok((send, true))
+    }
+
+    /// Waits for a click on `sent` (D-097), then runs the clicked output, or "timeout".
+    fn wait_for_click(&mut self, id: &NodeId, only_author: bool) -> Result<TokenStream, Error> {
+        let duration = self.duration(text(&self.file.graph, id, "wait"), 60, 1440.0);
         let wait_for = if only_author {
             let allowed = self.author_id();
             let not_yours = self.not_yours(id, &quote!(next));
@@ -449,42 +562,112 @@ impl<'a> Body<'a> {
             .then(|| quote!(let item = click.custom_id.strip_prefix("wait:").unwrap_or_default();));
         let timeout = self.after(id, "timeout")?;
         let timeout = (!timeout.is_empty()).then(|| quote!(else { #timeout }));
-        Ok((
-            quote! {
-                {
-                    let sent = #send;
-                    let mut clicks = sent.component_collector(&ctx).time(#duration).build();
-                    #wait_for
-                    // The wait is over, and the buttons would do nothing now (C-024). An
-                    // ephemeral reply cannot be edited this way, and keeps them.
-                    let _ = ctx
-                        .messages(sent.channel_id)
-                        .edit(
-                            sent.id,
-                            &djs_rs::model::rest::EditMessage::default().components([]),
-                        )
-                        .await;
-                    if let Some(click) = click {
-                        let click_replied = std::cell::Cell::new(false);
-                        #item
-                        #dispatch
-                        // A click must be answered, or Discord says it failed.
-                        if !click_replied.get() {
-                            click.defer_update(&ctx).await?;
-                        }
-                    } #timeout
+        Ok(quote! {
+            let mut clicks = sent.component_collector(&ctx).time(#duration).build();
+            #wait_for
+            // The wait is over, and the buttons would do nothing now (C-024). An
+            // ephemeral reply cannot be edited this way, and keeps them.
+            let _ = ctx
+                .messages(sent.channel_id)
+                .edit(
+                    sent.id,
+                    &djs_rs::model::rest::EditMessage::default().components([]),
+                )
+                .await;
+            if let Some(click) = click {
+                let click_replied = std::cell::Cell::new(false);
+                #item
+                #dispatch
+                // A click must be answered, or Discord says it failed.
+                if !click_replied.get() {
+                    click.defer_update(&ctx).await?;
                 }
-            },
-            true,
-        ))
+            } #timeout
+        })
+    }
+
+    /// The line a handled failure leaves in Logs: `WARN /ban: …` or `WARN <event graph>: …`
+    /// (D-082).
+    fn log(&self) -> TokenStream {
+        let slash = if self.file.kind == GraphKind::Command {
+            "/"
+        } else {
+            ""
+        };
+        let log = format!(
+            "WARN {slash}{}: {{error}}",
+            self.command.replace('{', "{{").replace('}', "}}")
+        );
+        quote!(eprintln!(#log);)
+    }
+
+    /// "Add a reaction", "Pin", "Unpin" or "Edit message", on the event's message or the
+    /// last one sent (D-102, D-103).
+    fn message_action(&mut self, id: &NodeId) -> TokenStream {
+        let graph = &self.file.graph;
+        let target = if text(graph, id, "message") == "event" {
+            self.event
+                .expect("validated: the event's message")
+                .message_ids()
+        } else {
+            quote!(
+                last_sent
+                    .get()
+                    .ok_or("no message was sent before this node")?
+            )
+        };
+        let mut prepare = TokenStream::new();
+        let call = match graph.nodes[id].kind.as_str() {
+            "core.react" => {
+                self.reaction = true;
+                let template = text(graph, id, "emoji");
+                let emoji = template_expr(template, self.options, false, &mut self.vars);
+                if is_literal(template) {
+                    quote!(ctx.messages(channel).react(message, reaction(#emoji)))
+                } else {
+                    prepare = quote!(let emoji = #emoji;);
+                    quote!(ctx.messages(channel).react(message, reaction(&emoji)))
+                }
+            }
+            "core.pin" => quote!(ctx.messages(channel).pin(message, None)),
+            "core.unpin" => quote!(ctx.messages(channel).unpin(message, None)),
+            "core.edit_message" => {
+                let edit = self.message(id);
+                quote! {
+                    ctx.messages(channel)
+                        .edit(message, &djs_rs::model::rest::EditMessage::default() #edit)
+                }
+            }
+            other => unreachable!("{other} is not a message action"),
+        };
+        quote! {
+            let (channel, message) = #target;
+            #prepare
+            #call.await?;
+        }
     }
 
     /// The call sending a message node's message: an expression giving the sent message
     /// if `want`, else a statement. A reply answers the click waited for, the message of
     /// "New message" (D-094) or the command, following up if it replied already (D-086).
-    fn send(&mut self, id: &NodeId, mut message: TokenStream, want: bool) -> TokenStream {
+    fn send(
+        &mut self,
+        id: &NodeId,
+        mut message: TokenStream,
+        want: bool,
+        try_: bool,
+    ) -> TokenStream {
         let graph = &self.file.graph;
         let end = (!want).then(|| quote!(;));
+        if graph.nodes[id].kind == "core.send_dm" {
+            let user = self.user_id(text(graph, id, "user"));
+            let question = try_.then(|| quote!(?));
+            return quote! {
+                ctx.users()
+                    .send(#user, djs_rs::model::rest::CreateMessage::default() #message)
+                    .await #question #end
+            };
+        }
         if graph.nodes[id].kind == "core.send_message" {
             let channel = self.channel(text(graph, id, "channel"));
             return quote! {
@@ -678,21 +861,28 @@ impl<'a> Body<'a> {
     }
 
     /// How long a message waits for a click, a `Duration` (D-097).
-    fn duration(&mut self, minutes: &str) -> TokenStream {
-        if is_literal(minutes) {
-            let minutes: f64 = minutes.trim().parse().expect("validated number");
-            return quote!(std::time::Duration::from_secs_f64(#minutes * 60.0));
+    /// A `Duration` of `value` units of `unit` seconds, at most `max` units: a click's wait
+    /// in minutes (D-097), or "Wait" in seconds (D-102).
+    fn duration(&mut self, value: &str, unit: u32, max: f64) -> TokenStream {
+        if is_literal(value) {
+            let seconds = value.trim().parse::<f64>().expect("validated number") * f64::from(unit);
+            return quote!(std::time::Duration::from_secs_f64(#seconds));
         }
-        let minutes = template_expr(minutes, self.options, false, &mut self.vars);
+        let value = template_expr(value, self.options, false, &mut self.vars);
+        let error = format!("a wait is more than 0 and at most {max} units of {unit} seconds");
+        let scale = (unit != 1).then(|| {
+            let unit = f64::from(unit);
+            quote!(* #unit)
+        });
         quote! {
             std::time::Duration::from_secs_f64(
-                #minutes
+                #value
                     .trim()
                     .parse::<f64>()
                     .ok()
-                    .filter(|minutes| *minutes > 0.0 && *minutes <= 1440.0)
-                    .ok_or("a wait is more than 0 and at most 1440 minutes (a day)")?
-                    * 60.0,
+                    .filter(|value| *value > 0.0 && *value <= #max)
+                    .ok_or(#error)?
+                    #scale,
             )
         }
     }
@@ -701,44 +891,40 @@ impl<'a> Body<'a> {
     fn moderate(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
         self.interaction = true;
         let action = self.action(id);
+        self.fallible(id, &action)
+    }
+
+    /// `action`, which may fail with `?`, then "then" or, on failure, "error" (D-082).
+    fn fallible(
+        &mut self,
+        id: &NodeId,
+        action: &TokenStream,
+    ) -> Result<(TokenStream, bool), Error> {
         let error = self.after(id, "error")?;
-        let command = self.command;
         if error.is_empty() {
-            // A failure ends the command, and djs-rs logs it (D-082).
+            // A failure ends the handler, and djs-rs logs it (D-082).
             return Ok((quote!({ #action }), true));
         }
         let then = self.after(id, "then")?;
-        Ok((
-            {
-                // A command is `/ban`, an event graph its file name.
-                let slash = if self.file.kind == GraphKind::Command {
-                    "/"
-                } else {
-                    ""
-                };
-                let log = format!(
-                    "WARN {slash}{}: {{error}}",
-                    command.replace('{', "{{").replace('}', "}}")
-                );
-                let log = quote!(eprintln!(#log););
-                let handle = if then.is_empty() {
-                    quote!(if let Err(error) = result { #log #error })
-                } else {
-                    quote! {
-                        match result {
-                            Ok(()) => { #then }
-                            Err(error) => { #log #error }
-                        }
-                    }
-                };
-                quote! {
-                    let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
-                        #action
-                        Ok(())
-                    }
-                    .await;
-                    #handle
+        let log = self.log();
+        let handle = if then.is_empty() {
+            quote!(if let Err(error) = result { #log #error })
+        } else {
+            quote! {
+                match result {
+                    Ok(()) => { #then }
+                    Err(error) => { #log #error }
                 }
+            }
+        };
+        Ok((
+            quote! {
+                let result: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                    #action
+                    Ok(())
+                }
+                .await;
+                #handle
             },
             false,
         ))
@@ -810,23 +996,7 @@ impl<'a> Body<'a> {
     /// A moderation action's call to Discord, which `?` ends on failure (D-073, D-082).
     fn action(&mut self, id: &NodeId) -> TokenStream {
         let graph = &self.file.graph;
-        let user = match text(graph, id, "user") {
-            "user" if self.event.is_some() => self.event.expect("checked").user_id(),
-            "user" => quote!(
-                interaction
-                    .author()
-                    .map(|user| user.id)
-                    .ok_or("the command has no user")?
-            ),
-            option => {
-                let (_, option, _) = option_path(option, self.options).expect("validated variable");
-                let (name, missing) = (
-                    &option.name,
-                    format!("the option {} was not given", option.name),
-                );
-                quote!(cmd.get_user(#name).map(|user| user.id).ok_or(#missing)?)
-            }
-        };
+        let user = self.user_id(text(graph, id, "user"));
         let reason = self.reason(text(graph, id, "reason"));
         let call = match graph.nodes[id].kind.as_str() {
             "core.ban" => {
@@ -848,6 +1018,18 @@ impl<'a> Body<'a> {
                 quote!(members.ban(user, &#ban, #reason))
             }
             "core.kick" => quote!(members.kick(user, #reason)),
+            // Empty: back to the user's own name.
+            "core.set_nickname" => {
+                let template = text(graph, id, "nickname");
+                let nickname = self.reason(template.trim());
+                // A template may come out empty, which also means the user's own name.
+                let nickname = if is_literal(template) {
+                    nickname
+                } else {
+                    quote!(#nickname.filter(|nickname| !nickname.trim().is_empty()))
+                };
+                quote!(members.set_nickname(user, #nickname, #reason))
+            }
             "core.timeout" => {
                 let minutes = template_expr(
                     text(graph, id, "minutes"),
@@ -909,6 +1091,20 @@ impl<'a> Body<'a> {
             let user = #user;
             #call.await?;
         }
+    }
+
+    /// A user field's user, a `UserId`: who started this (the command's author, the event's
+    /// user, or the clicker) or a user option.
+    fn user_id(&mut self, user: &str) -> TokenStream {
+        if user == "user" {
+            return self.author_id();
+        }
+        let (_, option, _) = option_path(user, self.options).expect("validated variable");
+        let (name, missing) = (
+            &option.name,
+            format!("the option {} was not given", option.name),
+        );
+        quote!(cmd.get_user(#name).map(|user| user.id).ok_or(#missing)?)
     }
 
     /// A message's builder calls: its text with the mentions it may make (C-016), and its

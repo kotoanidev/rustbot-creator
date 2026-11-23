@@ -149,13 +149,23 @@ Step 5, buttons and select menus (D-096–D-100, C-024), is ✅ done in code:
 - "Only the user who started it can click" limits clicks, and others get a private
   answer.
 
+A security review of step 5 found that the author's "Has permission?" was carried over
+clicks, which Discord's gate does not cover. Fixed in `15faff4`: an action that needs a
+permission after a click anyone may make is now a warning (C-024).
+
+Step 6, more actions (D-101–D-103, C-025), is ✅ done in code: "Send a DM" (with the full
+message form), "Add a reaction", "Pin", "Unpin", "Edit message", "Change nickname" and
+"Wait". Message actions work on "Last sent by the bot" or "The event's message", and the
+ones that can fail have an "error" output.
+
 Every generated bot builds against djs-rs with `clippy -D warnings` (the `compiles`
-test), but nothing from steps 2, 4 and 5 has run live yet. Next:
-1. The owner tries `/ban`, an event (e.g. a welcome message in "Member joined") and a
-   button (e.g. `/confirm` with "Wait for a click") on the test server; fix what they
-   find. They asked to continue without their tests for now, so this waits for them.
-2. The next part of the catalog: ask the owner which first, e.g. more actions (edit or
-   pin a message, nicknames, channels), modals, or bot templates.
+test), but nothing from steps 2, 4, 5 and 6 has run live yet. Next:
+1. The owner tries `/ban`, an event (e.g. a welcome message in "Member joined"), a
+   button (e.g. `/confirm` with "Wait for a click") and the new actions on the test
+   server; fix what they find. They asked to continue without their tests for now, so
+   this waits for them.
+2. The next part of the catalog: ask the owner which first, e.g. modals, the bot's
+   memory (lasting variables), or bot templates.
 
 ## Blocked on the owner
 Nothing right now. The open questions in `docs/DECISIONS.md` belong to later phases.

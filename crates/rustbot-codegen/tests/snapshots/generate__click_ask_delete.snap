@@ -43,10 +43,10 @@ pub(crate) fn register(client: &Client) {
                                     .trim()
                                     .parse::<f64>()
                                     .ok()
-                                    .filter(|minutes| *minutes > 0.0 && *minutes <= 1440.0)
+                                    .filter(|value| *value > 0.0 && *value <= 1440f64)
                                     .ok_or(
-                                        "a wait is more than 0 and at most 1440 minutes (a day)",
-                                    )? * 60.0,
+                                        "a wait is more than 0 and at most 1440 units of 60 seconds",
+                                    )? * 60f64,
                             ),
                         )
                         .build();
