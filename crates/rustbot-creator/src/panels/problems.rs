@@ -92,6 +92,7 @@ impl Render for Problems {
 }
 
 /// The problem in the app's language.
+#[allow(clippy::too_many_lines)] // one arm per problem
 pub(crate) fn describe(problem: &Problem) -> String {
     let pin = |pin: &rustbot_core::PinRef| pin.to_string();
     let text = match &problem.kind {
@@ -175,6 +176,11 @@ pub(crate) fn describe(problem: &Problem) -> String {
         }
         ProblemKind::OnlyAuthorWithoutUser => t("problem-only-author-without-user"),
         ProblemKind::NoEventMessage => t("problem-no-event-message"),
+        ProblemKind::UnknownMemory(name) => t_with("problem-unknown-memory", &[("name", name)]),
+        ProblemKind::MemoryNeedsServer => t("problem-memory-needs-server"),
+        ProblemKind::MemoryNeedsUser => t("problem-memory-needs-user"),
+        ProblemKind::NotANumber(prop) if prop == "variable" => t("problem-memory-not-number"),
+        ProblemKind::NotANumber(prop) => t_with("problem-not-a-number", &[("prop", prop)]),
         ProblemKind::BadOption { option, problem } => {
             let id = match problem {
                 OptionProblem::Name => "problem-option-name",

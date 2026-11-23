@@ -1354,6 +1354,34 @@ alternatives that were considered, and why.
     user back their own name. It needs "Manage nicknames" on others (D-085).
   - **Wait:** up to 900 seconds (15 minutes), as long as a command can still follow up;
     a `{variable}` is checked when the bot runs.
+
+### C-026 — How the bot's memory works
+- **Date:** 2026-11-23
+- **Choice:**
+  - **Where:** `data.json` in the folder the bot runs in. For the app, that is the bot's
+    folder in the app's data (`bots/<project id>/`, beside `test-server`), so a
+    `cargo clean` never wipes it. A bot built by hand keeps it in its working folder.
+  - **Layout:** `{ "<variable>": { "<key>": value } }`. The key is empty for a global
+    variable, a server's ID, a user's ID, or `server:user` for a user on a server. Whole
+    numbers are kept without `.0`.
+  - **Safety:** each change writes a new `data.json.tmp`, syncs it and renames it over
+    `data.json`, so a crash leaves one whole file. If saving fails, the old value stays
+    and the node's "error" output runs. A damaged `data.json` stops the bot at start, so
+    it is never overwritten. Changes take a lock, so two "+1"s at once both count.
+  - **Reading:** `{memory.<name>}` is the value of whoever and wherever this run is.
+    `{memory.<name>.<user variable>}` (e.g. `{memory.warnings.option.target}`) is another
+    user's. Values are read where they are used, so a message after "Change by" shows the
+    new value.
+  - **Nodes:** "Set", "Change by" and "Reset" have "Whose": empty means the user who
+    started the run. They also have an "error" output. "Change by" on a text variable,
+    or a typed value that is not a number for a number, is a problem. A `{variable}` is
+    checked when the bot runs. A variable kept per server or per user where none is known
+    (e.g. in "Bot is ready") is a problem.
+  - **The list:** a new variable starts as a number per user on each server (warnings,
+    XP). Its name follows the rules for a command's name and is fixed once added. Its
+    type, scope and starting value are edited in the Properties panel. A number variable
+    refuses a starting value that is not a number. Deleting a variable asks first, and
+    its saved values stay in `data.json`. Memory changes have no undo yet.
 ---
 
 ## Open questions (to ask the owner when relevant)

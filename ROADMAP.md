@@ -59,7 +59,8 @@ layer, before the scope widens.
   - [x] Adding commands and events from the project tree, deleting graphs (D-092)
   - [x] Buttons and select menus: clicks that always work or are waited for (D-096–D-100)
   - [x] More actions: DM, reactions, pins, editing, nicknames, waiting (D-101–D-103)
-  - [ ] Modals, the bot's memory
+  - [x] The bot's memory: lasting variables in four scopes (D-104–D-108)
+  - [ ] Modals
 - [x] Validation and errors shown on the graph
 - [ ] Bot templates
 

@@ -44,7 +44,34 @@ pub(crate) fn all() -> Vec<NodeType> {
             vec![prop("nickname", PropKind::Text { templates: true }, false)],
         ),
         wait(),
+        memory_node("core.memory_set", vec![text_template("value", false)]),
+        memory_node("core.memory_change", vec![text_template("amount", true)]),
+        memory_node("core.memory_reset", Vec::new()),
     ]
+}
+
+/// A node changing a memory variable (D-108): which one, whose value (the user who started
+/// this when empty), then `extra`.
+fn memory_node(id: &str, extra: Vec<Prop>) -> NodeType {
+    let mut props = vec![
+        prop("variable", PropKind::Memory, true),
+        prop("user", PropKind::Variable(DataType::User), false),
+    ];
+    props.extend(extra);
+    NodeType {
+        id: id.to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props,
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+        triggers: Vec::new(),
+    }
+}
+
+fn text_template(name: &str, required: bool) -> Prop {
+    prop(name, PropKind::Text { templates: true }, required)
 }
 
 /// Sends a private message to a user (D-102), with the form of "Send to a channel". It may

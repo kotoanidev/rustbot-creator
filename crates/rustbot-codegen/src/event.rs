@@ -184,12 +184,13 @@ pub(crate) fn module(
     file: &GraphFile,
     trigger: &NodeId,
     event: Event,
+    memory: &[rustbot_core::MemoryVar],
 ) -> Result<TokenStream, Error> {
     let node = &file.graph.nodes[trigger];
-    let mut code = Body::for_event(file, event);
+    let mut code = Body::for_event(file, event, memory);
     let body = code.after(trigger, "then")?;
     let (vars, mut helpers, routes) = code.finish();
-    let (handlers, routes_helpers) = crate::command::route_handlers(file, routes)?;
+    let (handlers, routes_helpers) = crate::command::route_handlers(file, memory, routes)?;
     helpers.add(routes_helpers);
     // shortcut: every variable is computed first, so a name used in one branch is fetched
     // for each event; compute them where they are used if a busy server hits rate limits.

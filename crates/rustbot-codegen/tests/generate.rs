@@ -1,5 +1,6 @@
 //! Code generation from a project (D-012, D-057–D-059).
 
+use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
@@ -397,6 +398,116 @@ fn actions() -> Vec<GraphFile> {
     ]
 }
 
+/// The memory of D-105-D-108: one variable of each scope.
+fn memory() -> Vec<rustbot_core::MemoryVar> {
+    use rustbot_core::{MemoryScope, MemoryType, MemoryVar};
+    let var = |name: &str, ty, scope, initial: &str| MemoryVar {
+        name: name.to_owned(),
+        ty,
+        scope,
+        initial: initial.to_owned(),
+    };
+    vec![
+        var("warnings", MemoryType::Number, MemoryScope::Member, ""),
+        var("balance", MemoryType::Number, MemoryScope::User, "100"),
+        var("motd", MemoryType::Text, MemoryScope::Global, "Welcome!"),
+        var("log", MemoryType::Text, MemoryScope::Server, ""),
+    ]
+}
+
+/// Graphs that read and change memory: warnings with a "Forgive" button, a shop, and events.
+#[allow(clippy::too_many_lines)] // the graphs, as data
+fn remembering() -> Vec<GraphFile> {
+    vec![
+        command_graph(
+            "warn",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "warn", "description": "Warns a user", "options": [
+                            { "name": "target", "type": "user", "description": "Who", "required": true } ] } },
+                    "n2": { "type": "core.memory_change", "props": {
+                        "variable": "warnings", "user": "option.target", "amount": "1" } },
+                    "n3": { "type": "core.reply", "props": { "private": true,
+                        "content": "Could not save the warning" } },
+                    "n4": { "type": "core.reply", "props": {
+                        "content": "{option.target.mention} has {memory.warnings.option.target} warnings. {memory.log}",
+                        "wait": "5",
+                        "buttons": [ { "id": "b1", "label": "Forgive", "style": "secondary" } ] } },
+                    "n5": { "type": "core.memory_reset", "props": {
+                        "variable": "warnings", "user": "option.target" } },
+                    "n6": { "type": "core.reply", "props": { "content": "Forgiven" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.error", "to": "n3.run" },
+                    { "from": "n2.then", "to": "n4.run" },
+                    { "from": "n4.b1", "to": "n5.run" },
+                    { "from": "n5.then", "to": "n6.run" }
+                ]
+            }),
+        ),
+        command_graph(
+            "shop",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "shop", "description": "Buys a greeting", "options": [
+                            { "name": "text", "type": "text", "description": "The greeting" },
+                            { "name": "price", "type": "number", "description": "How much" } ] } },
+                    "n2": { "type": "core.compare", "props": {
+                        "left": "{memory.balance}", "operator": "greater", "right": "{option.price}" } },
+                    "n3": { "type": "core.memory_change", "props": {
+                        "variable": "balance", "amount": "-{option.price}" } },
+                    "n4": { "type": "core.memory_set", "props": {
+                        "variable": "motd", "value": "{option.text}" } },
+                    "n5": { "type": "core.memory_set", "props": {
+                        "variable": "log", "value": "Bought by {user.name}" } },
+                    "n6": { "type": "core.reply", "props": {
+                        "content": "Done, {memory.balance} left. @everyone {memory.motd}" } },
+                    "n7": { "type": "core.reply", "props": { "content": "You have {memory.balance}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.yes", "to": "n3.run" },
+                    { "from": "n2.no", "to": "n7.run" },
+                    { "from": "n3.then", "to": "n4.run" },
+                    { "from": "n4.then", "to": "n5.run" },
+                    { "from": "n5.then", "to": "n6.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "startup",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.ready" },
+                    "n2": { "type": "core.memory_set", "props": { "variable": "motd", "value": "Hello" } }
+                },
+                "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+            }),
+        ),
+        event_graph(
+            "earn",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.message" },
+                    "n2": { "type": "core.memory_change", "props": { "variable": "balance", "amount": "0.5" } },
+                    "n3": { "type": "core.memory_set", "props": { "variable": "warnings", "value": "{memory.balance}" } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" }
+                ]
+            }),
+        ),
+    ]
+}
+
 /// An event graph from JSON.
 fn event_graph(name: &str, graph: serde_json::Value) -> GraphFile {
     GraphFile {
@@ -729,6 +840,26 @@ fn actions_snapshot() {
 }
 
 #[test]
+fn memory_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut manifest = Manifest::new("Shop Bot");
+    manifest.memory = memory();
+    let p = project(dir.path(), manifest, &remembering());
+    // The caller's registry knows no memory; generate checks against the project's.
+    let output = generate(&p, &Registry::with_core()).unwrap();
+    for (name, path) in [
+        ("memory_warn", "src/commands/warn.rs"),
+        ("memory_shop", "src/commands/shop.rs"),
+        ("memory_earn", "src/events/earn.rs"),
+        ("memory_module", "src/memory.rs"),
+        ("memory_main", "src/main.rs"),
+        ("memory_cargo", "Cargo.toml"),
+    ] {
+        insta::assert_snapshot!(name, &output.files[&Path::new("generated").join(path)]);
+    }
+}
+
+#[test]
 fn events_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let p = project(dir.path(), Manifest::new("Event Bot"), &events());
@@ -936,7 +1067,10 @@ fn generated_bot_compiles() {
     graphs.extend(events());
     graphs.extend(clicks());
     graphs.extend(actions());
-    let p = project(dir.path(), Manifest::new("Ping Bot"), &graphs);
+    graphs.extend(remembering());
+    let mut manifest = Manifest::new("Ping Bot");
+    manifest.memory = memory();
+    let p = project(dir.path(), manifest, &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
 
     // One target folder for every run, so djs-rs is built only once.
@@ -1029,5 +1163,89 @@ fn write_owns_all_of_generated() {
             "generated/src/settings.rs",
             "generated/target/debug/x",
         ]
+    );
+}
+
+/// The generated `memory.rs` keeps values across restarts and never overwrites a damaged
+/// file (D-105). Named for the CI job that runs `--ignored compiles`.
+#[test]
+#[ignore = "builds and runs a crate: needs network or a filled cargo cache"]
+fn generated_memory_compiles_and_keeps_values() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut manifest = Manifest::new("Shop Bot");
+    manifest.memory = memory();
+    let p = project(dir.path(), manifest, &remembering());
+    let output = generate(&p, &Registry::with_core()).unwrap();
+    let krate = dir.path().join("check");
+    fs::create_dir_all(krate.join("src")).unwrap();
+    fs::write(
+        krate.join("Cargo.toml"),
+        "[package]\nname = \"check\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n\
+         [workspace]\n\n[dependencies]\nserde_json = \"1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        krate.join("src/memory.rs"),
+        &output.files[Path::new("generated/src/memory.rs")],
+    )
+    .unwrap();
+    fs::write(
+        krate.join("src/main.rs"),
+        r#"mod memory;
+fn main() {
+    let step = std::env::args().nth(1).unwrap();
+    if let Err(error) = memory::load() {
+        println!("{error}");
+        std::process::exit(2);
+    }
+    match step.as_str() {
+        "first" => {
+            assert_eq!(memory::read("balance", "7", "100"), "100");
+            memory::change("balance", "7", -2.5, 100.0).unwrap();
+            memory::change("balance", "7", 0.5, 100.0).unwrap();
+            memory::set("motd", "", serde_json::Value::String("Hi".into())).unwrap();
+            memory::change("warnings", "1:7", 1.0, 0.0).unwrap();
+            memory::reset("warnings", "1:7").unwrap();
+            memory::change("warnings", "1:7", 1.0, 0.0).unwrap();
+            assert!(memory::change("warnings", "1:7", f64::MAX, 0.0).is_ok());
+            assert!(memory::change("warnings", "1:7", f64::MAX, 0.0).is_err());
+            memory::set("warnings", "1:7", memory::number(1.0)).unwrap();
+        }
+        "second" => {
+            assert_eq!(memory::read("balance", "7", "100"), "98");
+            assert_eq!(memory::read("motd", "", "Welcome!"), "Hi");
+            assert_eq!(memory::read("warnings", "1:7", "0"), "1");
+        }
+        other => panic!("{other}"),
+    }
+}
+"#,
+    )
+    .unwrap();
+    let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/generated-bots");
+    let run = |step: &str| {
+        std::process::Command::new(env!("CARGO"))
+            .args(["run", "--quiet", "--", step])
+            .current_dir(&krate)
+            .env("CARGO_TARGET_DIR", &target)
+            .output()
+            .unwrap()
+    };
+    for step in ["first", "second"] {
+        let out = run(step);
+        assert!(out.status.success(), "{step}: {out:?}");
+    }
+    let data = fs::read_to_string(krate.join("data.json")).unwrap();
+    assert!(data.contains("\"1:7\": 1"), "{data}");
+    assert!(!krate.join("data.json.tmp").exists());
+
+    // A damaged file stops the bot and stays as it was.
+    fs::write(krate.join("data.json"), "{ \"balance\": ").unwrap();
+    let out = run("second");
+    assert_eq!(out.status.code(), Some(2), "{out:?}");
+    assert!(String::from_utf8_lossy(&out.stdout).contains("data.json is damaged"));
+    assert_eq!(
+        fs::read_to_string(krate.join("data.json")).unwrap(),
+        "{ \"balance\": "
     );
 }

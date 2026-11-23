@@ -18,6 +18,77 @@ pub struct Manifest {
     /// Gateway settings.
     #[serde(default)]
     pub gateway: Gateway,
+    /// The bot's memory: variables that last across runs and restarts (D-106).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memory: Vec<MemoryVar>,
+}
+
+/// A variable of the bot's memory, as `project.toml` declares it (D-106).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct MemoryVar {
+    /// Its name, read as `{memory.<name>}`: see [`crate::registry::valid_memory_name`].
+    pub name: String,
+    /// What it holds.
+    #[serde(rename = "type")]
+    pub ty: MemoryType,
+    /// Whose value it is (D-107).
+    pub scope: MemoryScope,
+    /// Its value until something sets it; empty means `0` or empty text.
+    #[serde(default)]
+    pub initial: String,
+}
+
+impl MemoryVar {
+    /// The starting value as text: `initial`, or `0` for an empty number.
+    #[must_use]
+    pub fn start(&self) -> &str {
+        match (self.ty, self.initial.trim()) {
+            (MemoryType::Number, "") => "0",
+            _ => &self.initial,
+        }
+    }
+}
+
+/// What a memory variable holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MemoryType {
+    /// A number, which "Change by" adds to.
+    Number,
+    /// Text.
+    Text,
+}
+
+/// Whose value a memory variable is (D-107).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MemoryScope {
+    /// One value for the bot.
+    Global,
+    /// One value per server.
+    Server,
+    /// One value per user, the same on every server.
+    User,
+    /// One value per user on each server.
+    Member,
+}
+
+impl MemoryScope {
+    /// Every scope, in the order a form lists them.
+    pub const ALL: [Self; 4] = [Self::Global, Self::Server, Self::User, Self::Member];
+
+    /// Whether a value belongs to a user.
+    #[must_use]
+    pub fn has_user(self) -> bool {
+        matches!(self, Self::User | Self::Member)
+    }
+
+    /// Whether a value belongs to a server.
+    #[must_use]
+    pub fn has_server(self) -> bool {
+        matches!(self, Self::Server | Self::Member)
+    }
 }
 
 /// The `[bot]` table.
@@ -74,6 +145,7 @@ impl Manifest {
                 features: Vec::new(),
             },
             gateway: Gateway::default(),
+            memory: Vec::new(),
         }
     }
 }

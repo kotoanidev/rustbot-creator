@@ -40,6 +40,9 @@ struct Dependencies<'a> {
     tokio: Dependency<'a>,
     #[serde(rename = "tracing-subscriber")]
     tracing_subscriber: Dependency<'a>,
+    /// For the bot's memory (D-105); djs-rs brings it anyway.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    serde_json: Option<Dependency<'a>>,
 }
 
 #[derive(Serialize)]
@@ -79,6 +82,10 @@ pub(crate) fn manifest(manifest: &Manifest) -> String {
                 version: "0.3".to_owned(),
                 features: &tracing,
             },
+            serde_json: (!manifest.memory.is_empty()).then(|| Dependency {
+                version: "1".to_owned(),
+                features: &[],
+            }),
         },
     };
     let body = toml::to_string(&cargo).expect("the bot's manifest always serializes to TOML");

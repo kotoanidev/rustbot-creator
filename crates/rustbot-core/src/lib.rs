@@ -21,7 +21,7 @@ pub mod registry;
 pub mod template;
 
 pub use graph::{Edge, Graph, GraphKind, Layout, Node, NodeId, PinRef, PinRefError};
-pub use manifest::{BotSettings, DjsRs, Gateway, Manifest};
+pub use manifest::{BotSettings, DjsRs, Gateway, Manifest, MemoryScope, MemoryType, MemoryVar};
 pub use project::{Error, GraphFile, Project};
 pub use registry::Registry;
 

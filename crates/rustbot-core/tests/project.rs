@@ -281,3 +281,23 @@ fn a_deleted_graph_leaves_no_files() {
     assert!(commands.join("ping.json").exists());
     assert_eq!(Project::open(&project.root).unwrap(), project);
 }
+
+#[test]
+fn memory_variables_are_kept_in_the_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = Project::create(dir.path().join("bot"), Manifest::new("Bot")).unwrap();
+    let before = fs::read_to_string(project.root.join("project.toml")).unwrap();
+    assert!(!before.contains("memory"), "no memory, no section");
+    project.manifest.memory.push(rustbot_core::MemoryVar {
+        name: "warnings".to_owned(),
+        ty: rustbot_core::MemoryType::Number,
+        scope: rustbot_core::MemoryScope::Member,
+        initial: String::new(),
+    });
+    project.save_manifest().unwrap();
+    let text = fs::read_to_string(project.root.join("project.toml")).unwrap();
+    assert!(text.contains("[[memory]]"), "{text}");
+    assert!(text.contains("scope = \"member\""), "{text}");
+    assert_eq!(Project::open(&project.root).unwrap(), project);
+    assert_eq!(project.manifest.memory[0].start(), "0");
+}

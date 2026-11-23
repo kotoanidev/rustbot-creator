@@ -1,6 +1,6 @@
 //! One slash command graph → one module (D-057).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -8,7 +8,9 @@ use rustbot_core::registry::{
     Button, ButtonStyle, CommandOption, DataType, MenuOption, click_items, is_id, waits_for_click,
 };
 use rustbot_core::template::{self, Segment};
-use rustbot_core::{Graph, GraphFile, GraphKind, NodeId, PinRef, Registry};
+use rustbot_core::{
+    Graph, GraphFile, GraphKind, MemoryScope, MemoryType, MemoryVar, NodeId, PinRef, Registry,
+};
 use serde_json::Value;
 
 use crate::Error;
@@ -61,6 +63,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         routes: Vec::new(),
         track_last: tracks_last(file),
         reaction: false,
+        memory: registry.memory(),
     };
     let body = code.after(trigger, "then")?;
     let needs_interaction = code.interaction;
@@ -72,7 +75,7 @@ pub(crate) fn module(file: &GraphFile, registry: &Registry) -> Result<TokenStrea
         follow_ups && uses(&body, "replied"),
     );
     let last_sent = last_sent(&body);
-    let (handlers, routes_helpers) = route_handlers(file, routes)?;
+    let (handlers, routes_helpers) = route_handlers(file, registry.memory(), routes)?;
     helpers.add(routes_helpers);
     let helpers = helpers.code();
     let doc = format!(
@@ -157,6 +160,7 @@ fn route_name(file: &GraphFile, id: &NodeId) -> String {
 /// they need `quiet()`. A click's handler works like a command's, run by the clicker.
 pub(crate) fn route_handlers(
     file: &GraphFile,
+    memory: &[MemoryVar],
     mut routes: Vec<NodeId>,
 ) -> Result<(Vec<TokenStream>, Helpers), Error> {
     let mut done = BTreeSet::new();
@@ -166,7 +170,7 @@ pub(crate) fn route_handlers(
         if !done.insert(id.clone()) {
             continue;
         }
-        let mut body = Body::for_route(file);
+        let mut body = Body::for_route(file, memory);
         let dispatch = body.dispatch(&id, &quote!(cmd))?;
         let item = (!dispatch.is_empty())
             .then(|| quote!(let item = cmd.args().split(':').next().unwrap_or_default();));
@@ -265,6 +269,8 @@ pub(crate) struct Body<'a> {
     track_last: bool,
     /// Some node needs `reaction()`, which reads an emoji typed in the form.
     reaction: bool,
+    /// The project's memory variables (D-106).
+    memory: &'a [MemoryVar],
 }
 
 /// The helper functions a module's handlers need.
@@ -335,7 +341,7 @@ pub(crate) fn last_sent(body: &TokenStream) -> Option<TokenStream> {
 
 impl<'a> Body<'a> {
     /// The body of an event graph (D-091).
-    pub(crate) fn for_event(file: &'a GraphFile, event: Event) -> Self {
+    pub(crate) fn for_event(file: &'a GraphFile, event: Event, memory: &'a [MemoryVar]) -> Self {
         Body {
             follow_ups: false,
             file,
@@ -350,12 +356,13 @@ impl<'a> Body<'a> {
             routes: Vec::new(),
             track_last: tracks_last(file),
             reaction: false,
+            memory,
         }
     }
 
     /// The body of a click's handler (D-097): like a command's, without options. Every
     /// reply checks `replied`, so the handler can answer the click when none did.
-    fn for_route(file: &'a GraphFile) -> Self {
+    fn for_route(file: &'a GraphFile, memory: &'a [MemoryVar]) -> Self {
         Body {
             follow_ups: true,
             file,
@@ -370,6 +377,7 @@ impl<'a> Body<'a> {
             routes: Vec::new(),
             track_last: tracks_last(file),
             reaction: false,
+            memory,
         }
     }
 
@@ -438,6 +446,10 @@ impl<'a> Body<'a> {
             "core.reply" | "core.send_message" | "core.send_dm" => self.message_node(id)?,
             "core.react" | "core.pin" | "core.unpin" | "core.edit_message" => {
                 let action = self.message_action(id);
+                self.fallible(id, &action)?
+            }
+            "core.memory_set" | "core.memory_change" | "core.memory_reset" => {
+                let action = self.memory_action(id);
                 self.fallible(id, &action)?
             }
             "core.wait" => {
@@ -621,7 +633,7 @@ impl<'a> Body<'a> {
             "core.react" => {
                 self.reaction = true;
                 let template = text(graph, id, "emoji");
-                let emoji = template_expr(template, self.options, false, &mut self.vars);
+                let emoji = self.template(template, false);
                 if is_literal(template) {
                     quote!(ctx.messages(channel).react(message, reaction(#emoji)))
                 } else {
@@ -868,7 +880,7 @@ impl<'a> Body<'a> {
             let seconds = value.trim().parse::<f64>().expect("validated number") * f64::from(unit);
             return quote!(std::time::Duration::from_secs_f64(#seconds));
         }
-        let value = template_expr(value, self.options, false, &mut self.vars);
+        let value = self.template(value, false);
         let error = format!("a wait is more than 0 and at most {max} units of {unit} seconds");
         let scale = (unit != 1).then(|| {
             let unit = f64::from(unit);
@@ -951,14 +963,8 @@ impl<'a> Body<'a> {
                 quote!(#roles.zip(#role).is_some_and(|(roles, role)| roles.contains(&role)))
             }
             "core.compare" => {
-                let left =
-                    template_expr(text(graph, id, "left"), self.options, false, &mut self.vars);
-                let right = template_expr(
-                    text(graph, id, "right"),
-                    self.options,
-                    false,
-                    &mut self.vars,
-                );
+                let left = self.template(text(graph, id, "left"), false);
+                let right = self.template(text(graph, id, "right"), false);
                 // Letter case does not matter (D-081); numbers compare as numbers.
                 let number = |op: TokenStream| {
                     quote! {
@@ -1031,12 +1037,7 @@ impl<'a> Body<'a> {
                 quote!(members.set_nickname(user, #nickname, #reason))
             }
             "core.timeout" => {
-                let minutes = template_expr(
-                    text(graph, id, "minutes"),
-                    self.options,
-                    false,
-                    &mut self.vars,
-                );
+                let minutes = self.template(text(graph, id, "minutes"), false);
                 // Discord's longest timeout, as `core.timeout` allows (D-084).
                 quote! {{
                     let minutes = #minutes
@@ -1073,23 +1074,138 @@ impl<'a> Body<'a> {
             }
             other => unreachable!("{other} is not a moderation action"),
         };
-        let guild = self.event.map_or_else(
-            || {
-                quote!(
-                    interaction
-                        .guild_id
-                        .ok_or("the command was not used on a server")?
-                )
-            },
-            |event| {
-                let guild = event.guild_id();
-                quote!(#guild.ok_or("the event did not come from a server")?)
-            },
-        );
+        let guild = self.guild_id();
         quote! {
             let members = ctx.members(#guild);
             let user = #user;
             #call.await?;
+        }
+    }
+
+    /// This run's server, a `GuildId`, or an error outside a server.
+    fn guild_id(&mut self) -> TokenStream {
+        if let Some(event) = self.event {
+            let guild = event.guild_id();
+            return quote!(#guild.ok_or("the event did not come from a server")?);
+        }
+        self.interaction = true;
+        quote!(
+            interaction
+                .guild_id
+                .ok_or("the command was not used on a server")?
+        )
+    }
+
+    /// A template as a Rust expression. Memory variables are read where they are used, so
+    /// a change made earlier in the run shows (D-108).
+    fn template(&mut self, text: &str, quiet: bool) -> TokenStream {
+        let mut memory = BTreeMap::new();
+        for segment in template::parse(text).expect("validated templates parse") {
+            if let Segment::Var(path) = segment
+                && path.first().is_some_and(|first| first == "memory")
+            {
+                let read = self.memory_read(&path);
+                memory.insert(path.join("."), read);
+            }
+        }
+        template_expr(text, self.options, quiet, &mut self.vars, &memory)
+    }
+
+    /// `{memory.<name>}`, or `{memory.<name>.<user variable>}` for another user, as text.
+    fn memory_read(&mut self, path: &[String]) -> TokenStream {
+        let var = self.memory_var(&path[1]);
+        let user = if path.len() > 2 {
+            path[2..].join(".")
+        } else {
+            "user".to_owned()
+        };
+        let key = self.memory_key(&var, &user);
+        let (name, start) = (&var.name, var.start());
+        quote!(crate::memory::read(#name, #key, #start))
+    }
+
+    fn memory_var(&self, name: &str) -> MemoryVar {
+        self.memory
+            .iter()
+            .find(|var| var.name == name)
+            .cloned()
+            .expect("validated memory variable")
+    }
+
+    /// The key of `var`'s value, a `&str`, for `user` (a user variable) and this run's
+    /// server (C-026): empty for a global variable, else the server's ID, the user's, or
+    /// both as `server:user`.
+    fn memory_key(&mut self, var: &MemoryVar, user: &str) -> TokenStream {
+        match var.scope {
+            MemoryScope::Global => quote!(""),
+            MemoryScope::Server => {
+                let guild = self.guild_id();
+                quote!(&#guild.to_string())
+            }
+            MemoryScope::User => {
+                let user = self.user_id(user);
+                quote!(&#user.to_string())
+            }
+            MemoryScope::Member => {
+                let guild = self.guild_id();
+                let user = self.user_id(user);
+                quote!(&format!("{}:{}", #guild, #user))
+            }
+        }
+    }
+
+    /// "Set", "Change by" or "Reset" on a memory variable (D-108).
+    fn memory_action(&mut self, id: &NodeId) -> TokenStream {
+        let graph = &self.file.graph;
+        let var = self.memory_var(text(graph, id, "variable"));
+        let user = match text(graph, id, "user") {
+            "" => "user",
+            user => user,
+        };
+        let key = self.memory_key(&var, user);
+        let name = &var.name;
+        match graph.nodes[id].kind.as_str() {
+            "core.memory_set" => {
+                let template = text(graph, id, "value");
+                let value = match var.ty {
+                    MemoryType::Number => {
+                        let number = self.number(template);
+                        quote!(crate::memory::number(#number))
+                    }
+                    MemoryType::Text if is_literal(template) => {
+                        quote!(serde_json::Value::String(#template.to_owned()))
+                    }
+                    MemoryType::Text => {
+                        let value = self.template(template, false);
+                        quote!(serde_json::Value::String(#value))
+                    }
+                };
+                quote!(crate::memory::set(#name, #key, #value)?;)
+            }
+            "core.memory_change" => {
+                let amount = self.number(text(graph, id, "amount"));
+                let start: f64 = var.start().trim().parse().unwrap_or(0.0);
+                quote!(crate::memory::change(#name, #key, #amount, #start)?;)
+            }
+            "core.memory_reset" => quote!(crate::memory::reset(#name, #key)?;),
+            other => unreachable!("{other} is not a memory action"),
+        }
+    }
+
+    /// A number field as an `f64`: typed in, or from a template when the bot runs.
+    fn number(&mut self, template: &str) -> TokenStream {
+        if is_literal(template) {
+            let number: f64 = template.trim().parse().expect("validated number");
+            return quote!(#number);
+        }
+        let value = self.template(template, false);
+        quote! {
+            #value
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|number| number.is_finite())
+                .ok_or("a value meant to be a number is not one")?
         }
     }
 
@@ -1116,7 +1232,7 @@ impl<'a> Body<'a> {
         if !template.trim().is_empty() {
             let everyone = mentions_everyone(template);
             self.quiet |= everyone;
-            let content = template_expr(template, self.options, everyone, &mut self.vars);
+            let content = self.template(template, everyone);
             let event = self.event;
             let author = || event.map_or_else(|| quote!(author.id), Event::user_id);
             let mentions = allowed_mentions(template, self.options, everyone, &author);
@@ -1146,7 +1262,7 @@ impl<'a> Body<'a> {
                 continue;
             }
             let literal = is_literal(template);
-            let value = template_expr(template, self.options, false, &mut self.vars);
+            let value = self.template(template, false);
             let set = |value: TokenStream| {
                 let method = format_ident!("{method}");
                 if method == "footer" {
@@ -1171,7 +1287,7 @@ impl<'a> Body<'a> {
             let color = u32::from_str_radix(hex, 16).expect("validated colour");
             steps.push(quote!(let embed = embed.color(#color);));
         } else if !color.is_empty() {
-            let value = template_expr(color, self.options, false, &mut self.vars);
+            let value = self.template(color, false);
             steps.push(quote! {
                 let embed = match u32::from_str_radix(#value.trim().trim_start_matches('#'), 16) {
                     Ok(color) if color <= 0xFF_FFFF => embed.color(color),
@@ -1215,7 +1331,7 @@ impl<'a> Body<'a> {
             "" => quote!(None),
             reason => {
                 let literal = is_literal(reason);
-                let reason = template_expr(reason, self.options, false, &mut self.vars);
+                let reason = self.template(reason, false);
                 if literal {
                     quote!(Some(#reason))
                 } else {
@@ -1282,6 +1398,7 @@ fn template_expr(
     options: &[CommandOption],
     quiet: bool,
     vars: &mut BTreeSet<String>,
+    memory: &BTreeMap<String, TokenStream>,
 ) -> TokenStream {
     let segments = template::parse(text).expect("validated templates parse");
     let mut format = String::new();
@@ -1292,6 +1409,14 @@ fn template_expr(
             Segment::Var(path) => {
                 let path = path.join(".");
                 format.push_str("{}");
+                if let Some(read) = memory.get(&path) {
+                    args.push(if quiet {
+                        quote!(quiet(&#read))
+                    } else {
+                        read.clone()
+                    });
+                    continue;
+                }
                 let var = ident(&path, options);
                 // Mentions are `<@id>` built by the bot, and must stay intact to notify.
                 args.push(if quiet && !is_mention(&path, options) {

@@ -1,6 +1,6 @@
-//! The side bar's form (D-066): the selected node's fields, or the bot's settings when no
-//! node is selected: its token, kept in the system keyring (D-020), and the test server
-//! (D-055, D-065).
+//! The side bar's form (D-066): the selected node's fields, a memory variable chosen in
+//! the project tree (D-106), or else the bot's settings: its token, kept in the system
+//! keyring (D-020), and the test server (D-055, D-065).
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::checkbox::Checkbox;
@@ -16,7 +16,7 @@ use gpui_kit::{
     SharedString, Styled as _, Subscription, Window, div, px,
 };
 use rustbot_core::registry::{ButtonStyle, CommandOption, DataType, MenuOption, PropKind, is_id};
-use rustbot_core::{GraphFile, NodeId, Registry};
+use rustbot_core::{GraphFile, MemoryScope, MemoryType, NodeId, Registry};
 
 use crate::i18n::{t, t_or, t_with};
 use crate::state::AppState;
@@ -45,7 +45,22 @@ pub(crate) struct Properties {
     /// The next change starts a new undo step: set when a field gains the focus.
     fresh: bool,
     bot: Option<BotForm>,
+    memory: Option<MemoryForm>,
 }
+
+/// A memory variable's form (D-106, D-107); its name is fixed once added.
+struct MemoryForm {
+    ix: usize,
+    ty: Entity<SelectState<Vec<SharedString>>>,
+    scope: Entity<SelectState<Vec<SharedString>>>,
+    initial: Entity<InputState>,
+    /// The starting value typed for a number is not one, so it is not saved.
+    bad_initial: bool,
+    _changes: [Subscription; 3],
+}
+
+/// The memory types, in the order the form lists them.
+const MEMORY_TYPES: [MemoryType; 2] = [MemoryType::Number, MemoryType::Text];
 
 super::dock_panel!(Properties, "Properties", "panel-properties");
 
@@ -140,6 +155,7 @@ impl Properties {
             options: Vec::new(),
             fresh: true,
             bot: None,
+            memory: None,
         };
         this.sync(window, cx);
         this
@@ -184,7 +200,156 @@ impl Properties {
         if self.shown.is_none() && self.bot.is_none() {
             self.bot = Some(self.build_bot_form(window, cx));
         }
+        let state = self.state.read(cx);
+        let memory = state
+            .selected_memory
+            .filter(|ix| self.shown.is_none() && *ix < state.project.manifest.memory.len());
+        if memory != self.memory.as_ref().map(|form| form.ix) {
+            self.memory = memory.map(|ix| self.build_memory_form(ix, window, cx));
+        }
         cx.notify();
+    }
+
+    fn build_memory_form(
+        &self,
+        ix: usize,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) -> MemoryForm {
+        let var = self.state.read(cx).project.manifest.memory[ix].clone();
+        let types: Vec<SharedString> = MEMORY_TYPES.map(|ty| memory_type_name(ty).into()).into();
+        let scopes: Vec<SharedString> = MemoryScope::ALL.map(|s| scope_name(s).into()).into();
+        let at = |found: Option<usize>| found.map(IndexPath::new);
+        let ty_at = at(MEMORY_TYPES.iter().position(|ty| *ty == var.ty));
+        let scope_at = at(MemoryScope::ALL.iter().position(|s| *s == var.scope));
+        let ty = cx.new(|cx| SelectState::new(types, ty_at, window, cx));
+        let scope = cx.new(|cx| SelectState::new(scopes, scope_at, window, cx));
+        let initial = cx.new(|cx| InputState::new(window, cx).default_value(var.initial));
+        let changes = [
+            cx.subscribe_in(&ty, window, move |this, _, event, window, cx| {
+                let SelectEvent::Confirm(Some(label)) = event else {
+                    return;
+                };
+                let Some(ty) = MEMORY_TYPES
+                    .into_iter()
+                    .find(|ty| memory_type_name(*ty) == label.as_ref())
+                else {
+                    return;
+                };
+                // A starting value that is not a number goes when the variable becomes one.
+                let clear = ty == MemoryType::Number
+                    && this
+                        .memory
+                        .as_ref()
+                        .is_some_and(|form| !is_number_or_empty(&form.initial.read(cx).value()));
+                if clear && let Some(form) = &this.memory {
+                    form.initial
+                        .update(cx, |input, cx| input.set_value("", window, cx));
+                }
+                this.state.update(cx, |state, cx| {
+                    state.change_memory(
+                        ix,
+                        |var| {
+                            var.ty = ty;
+                            if clear {
+                                var.initial.clear();
+                            }
+                        },
+                        cx,
+                    );
+                });
+            }),
+            cx.subscribe_in(&scope, window, move |this, _, event, _, cx| {
+                let SelectEvent::Confirm(Some(label)) = event else {
+                    return;
+                };
+                if let Some(scope) = MemoryScope::ALL
+                    .into_iter()
+                    .find(|scope| scope_name(*scope) == label.as_ref())
+                {
+                    this.state.update(cx, |state, cx| {
+                        state.change_memory(ix, |var| var.scope = scope, cx);
+                    });
+                }
+            }),
+            cx.subscribe_in(&initial, window, move |this, input, event, _, cx| {
+                if !matches!(event, InputEvent::Change) {
+                    return;
+                }
+                let value = input.read(cx).value().to_string();
+                let number = this
+                    .state
+                    .read(cx)
+                    .project
+                    .manifest
+                    .memory
+                    .get(ix)
+                    .is_some_and(|var| var.ty == MemoryType::Number);
+                let bad = number && !is_number_or_empty(&value);
+                if let Some(form) = &mut this.memory {
+                    form.bad_initial = bad;
+                }
+                if !bad {
+                    this.state.update(cx, |state, cx| {
+                        state.change_memory(ix, |var| var.initial = value, cx);
+                    });
+                }
+                cx.notify();
+            }),
+        ];
+        MemoryForm {
+            ix,
+            ty,
+            scope,
+            initial,
+            bad_initial: false,
+            _changes: changes,
+        }
+    }
+
+    fn render_memory_form(
+        &self,
+        form: &MemoryForm,
+        cx: &Context<'_, Self>,
+    ) -> gpui_kit::AnyElement {
+        let name = self
+            .state
+            .read(cx)
+            .project
+            .manifest
+            .memory
+            .get(form.ix)
+            .map_or_else(String::new, |var| var.name.clone());
+        let theme = cx.theme();
+        let note = |text: String, error: bool| {
+            div()
+                .text_xs()
+                .text_color(if error {
+                    theme.danger
+                } else {
+                    theme.muted_foreground
+                })
+                .child(text)
+        };
+        v_flex()
+            .gap(px(6.))
+            .child(
+                div()
+                    .text_sm()
+                    .child(t_with("memory-title", &[("name", &name)])),
+            )
+            .child(label(t("memory-type")))
+            .child(Select::new(&form.ty).small())
+            .child(label(t("memory-scope")))
+            .child(Select::new(&form.scope).small())
+            .child(label(t("memory-initial")))
+            .child(Input::new(&form.initial).small())
+            .children(
+                form.bad_initial
+                    .then(|| note(t("memory-initial-not-number"), true)),
+            )
+            .child(note(t_with("memory-read-hint", &[("name", &name)]), false))
+            .into_any_element()
     }
 
     fn build_fields(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
@@ -234,7 +399,7 @@ impl Properties {
                     let field = Self::text_field(prop, templates, value, window, cx);
                     self.fields.push(field);
                 }
-                PropKind::Variable(_) | PropKind::Choice(_) => {
+                PropKind::Variable(_) | PropKind::Choice(_) | PropKind::Memory => {
                     self.layout.push(Slot::Pick(self.pickers.len()));
                     let picker = self.picker(prop, kind, &value, window, cx);
                     self.pickers.push(picker);
@@ -483,6 +648,10 @@ impl Properties {
                     })
             }
             PropKind::Choice(choices) => choices.values().iter().map(|&v| v.to_owned()).collect(),
+            PropKind::Memory => {
+                let memory = self.state.read(cx).registry.memory();
+                memory.iter().map(|var| var.name.clone()).collect()
+            }
             PropKind::Text { .. }
             | PropKind::Options
             | PropKind::Number { .. }
@@ -502,7 +671,8 @@ impl Properties {
                 | PropKind::Bool
                 | PropKind::Color
                 | PropKind::Buttons
-                | PropKind::MenuOptions => value.clone().into(),
+                | PropKind::MenuOptions
+                | PropKind::Memory => value.clone().into(),
             })
             .collect();
         match kind {
@@ -1323,9 +1493,16 @@ fn prop_text(file: &GraphFile, node: &NodeId, prop: &str) -> String {
     }
 }
 
-/// The variables a template of `node` can use, e.g. `{user.name}` or `{option.reason}`.
+/// The variables a template of `node` can use, e.g. `{user.name}` or `{option.reason}`, and
+/// the memory (D-108).
 fn variables(file: &GraphFile, registry: &Registry, node: &NodeId) -> Vec<String> {
     let mut found = Vec::new();
+    found.extend(
+        registry
+            .memory()
+            .iter()
+            .map(|var| format!("{{memory.{}}}", var.name)),
+    );
     for variable in registry.scope_at(&file.graph, node) {
         let fields = variable.ty.fields();
         if fields.is_empty() {
@@ -1338,6 +1515,26 @@ fn variables(file: &GraphFile, registry: &Registry, node: &NodeId) -> Vec<String
         );
     }
     found
+}
+
+fn memory_type_name(ty: MemoryType) -> String {
+    t(match ty {
+        MemoryType::Number => "type-number",
+        MemoryType::Text => "type-text",
+    })
+}
+
+fn scope_name(scope: MemoryScope) -> String {
+    t(match scope {
+        MemoryScope::Global => "memory-scope-global",
+        MemoryScope::Server => "memory-scope-server",
+        MemoryScope::User => "memory-scope-user",
+        MemoryScope::Member => "memory-scope-member",
+    })
+}
+
+fn is_number_or_empty(text: &str) -> bool {
+    text.trim().is_empty() || text.trim().parse::<f64>().is_ok_and(f64::is_finite)
 }
 
 /// A variable as a picker lists it: "Command author", "Option: target" (D-078).
@@ -1503,9 +1700,10 @@ impl Render for Properties {
                     .children(notes)
                     .into_any_element()
             }
-            _ => match &self.bot {
-                Some(bot) => Self::render_bot_form(bot, cx).into_any_element(),
-                None => super::placeholder(t("properties-empty"), cx).into_any_element(),
+            _ => match (&self.memory, &self.bot) {
+                (Some(form), _) => self.render_memory_form(form, cx),
+                (None, Some(bot)) => Self::render_bot_form(bot, cx).into_any_element(),
+                (None, None) => super::placeholder(t("properties-empty"), cx).into_any_element(),
             },
         };
         div().size_full().p(px(12.)).child(body)
@@ -1877,5 +2075,44 @@ mod tests {
         assert_eq!(content(cx), "Pong, {user.name}!");
         let shown = cx.read(|cx| properties.read(cx).fields[0].input.read(cx).value());
         assert_eq!(shown.as_str(), "Pong, {user.name}!");
+    }
+
+    /// A memory variable's form saves its starting value, but not a number variable's
+    /// starting text (D-106).
+    #[gpui_kit::test]
+    fn the_memory_form_keeps_numbers_numbers(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (properties, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, cx| app.add_memory("xp", cx));
+            state = Some(app.clone());
+            Properties::new(app, window, cx)
+        });
+        let state = state.unwrap();
+        let initial = |cx: &mut gpui_kit::VisualTestContext| {
+            cx.read(|cx| state.read(cx).project.manifest.memory[0].initial.clone())
+        };
+        cx.update(|window, cx| {
+            let field = properties.read(cx).memory.as_ref().unwrap().initial.clone();
+            field.update(cx, |input, cx| input.focus(window, cx));
+            window.render_frame(cx);
+        });
+        cx.update(|window, cx| window.input("5", cx));
+        assert_eq!(initial(cx), "5");
+        cx.update(|window, cx| window.input("x", cx));
+        assert_eq!(initial(cx), "5");
+        assert!(cx.read(|cx| properties.read(cx).memory.as_ref().unwrap().bad_initial));
+
+        // A node selected on the canvas takes the form's place.
+        cx.update(|_, cx| {
+            state.update(cx, |state, cx| {
+                state.selected_node = Some(NodeId("n1".to_owned()));
+                cx.notify();
+            });
+        });
+        assert!(cx.read(|cx| properties.read(cx).memory.is_none()));
     }
 }

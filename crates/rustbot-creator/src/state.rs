@@ -5,7 +5,10 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use gpui_kit::{Context, Task};
-use rustbot_core::{Graph, GraphFile, GraphKind, Layout, NodeId, Project, Registry};
+use rustbot_core::{
+    Graph, GraphFile, GraphKind, Layout, MemoryScope, MemoryType, MemoryVar, NodeId, Project,
+    Registry,
+};
 
 use crate::i18n::t_with;
 
@@ -85,6 +88,9 @@ pub(crate) struct AppState {
     pub(crate) open_graph: Option<usize>,
     /// The node whose form the properties panel shows.
     pub(crate) selected_node: Option<NodeId>,
+    /// The memory variable whose form the properties panel shows when no node is selected,
+    /// as an index into the manifest's `memory` (D-106).
+    pub(crate) selected_memory: Option<usize>,
     /// Requests for the editor to bring the selected node into view, counted (D-090).
     pub(crate) reveal: u64,
     /// What the app, the build and the bot printed, oldest first.
@@ -111,11 +117,14 @@ impl AppState {
         .detach();
         // The first command is open, so a new project starts on its /ping graph.
         let open_graph = (!project.graphs.is_empty()).then_some(0);
+        let mut registry = Registry::with_core();
+        registry.set_memory(project.manifest.memory.clone());
         Self {
             project,
-            registry: Registry::with_core(),
+            registry,
             open_graph,
             selected_node: None,
+            selected_memory: None,
             reveal: 0,
             logs: Vec::new(),
             toolchain: rustbot_toolchain::Toolchain::locate().ok(),
@@ -306,6 +315,63 @@ impl AppState {
             _ => (!self.project.graphs.is_empty()).then_some(0),
         };
         self.selected_node = None;
+        cx.notify();
+    }
+
+    /// Adds the memory variable `name` and shows its form (D-106). It starts as a number per
+    /// user on a server, the most common kind (warnings, XP).
+    pub(crate) fn add_memory(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+        self.project.manifest.memory.push(MemoryVar {
+            name: name.to_owned(),
+            ty: MemoryType::Number,
+            scope: MemoryScope::Member,
+            initial: String::new(),
+        });
+        self.selected_node = None;
+        self.selected_memory = Some(self.project.manifest.memory.len() - 1);
+        self.memory_changed(cx);
+    }
+
+    /// Changes memory variable `ix`.
+    pub(crate) fn change_memory(
+        &mut self,
+        ix: usize,
+        change: impl FnOnce(&mut MemoryVar),
+        cx: &mut Context<'_, Self>,
+    ) {
+        if let Some(var) = self.project.manifest.memory.get_mut(ix) {
+            change(var);
+            self.memory_changed(cx);
+        }
+    }
+
+    /// Deletes memory variable `ix`. The values the bot kept stay in its `data.json`, and
+    /// nodes that use it show a problem.
+    pub(crate) fn delete_memory(&mut self, ix: usize, cx: &mut Context<'_, Self>) {
+        if ix >= self.project.manifest.memory.len() {
+            return;
+        }
+        self.project.manifest.memory.remove(ix);
+        self.selected_memory = match self.selected_memory {
+            Some(shown) if shown > ix => Some(shown - 1),
+            Some(shown) if shown == ix => None,
+            other => other,
+        };
+        self.memory_changed(cx);
+    }
+
+    /// Checks graphs against the new memory and writes `project.toml`.
+    // shortcut: memory changes have no undo, unlike graphs; add it if people ask.
+    fn memory_changed(&mut self, cx: &mut Context<'_, Self>) {
+        self.registry
+            .set_memory(self.project.manifest.memory.clone());
+        if let Err(e) = self.project.save_manifest() {
+            let error = e.to_string();
+            self.log_error(t_with(
+                "error-save",
+                &[("file", "project.toml"), ("error", &error)],
+            ));
+        }
         cx.notify();
     }
 

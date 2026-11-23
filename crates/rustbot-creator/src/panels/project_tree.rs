@@ -1,16 +1,16 @@
-//! The project tree in the side bar: the project's commands and events.
+//! The project tree in the side bar: the project's commands, events and memory.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::tree::{TreeItem, TreeState, tree};
 use gpui_kit::component::{ActiveTheme as _, Sizable as _, v_flex};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FocusHandle, IntoElement, ParentElement as _,
     PromptLevel, Render, Styled as _, Subscription, Window, div, px,
 };
-use rustbot_core::registry::{Category, valid_command_name};
+use rustbot_core::registry::{Category, valid_command_name, valid_memory_name};
 use rustbot_core::{GraphKind, Project};
 
 use crate::i18n::{t, t_with};
@@ -21,12 +21,22 @@ pub(crate) struct ProjectTree {
     focus: FocusHandle,
     state: Entity<AppState>,
     tree: Entity<TreeState>,
-    /// The name field of a command being added (D-092).
-    adding: Option<(Entity<InputState>, Subscription)>,
+    /// The name field of a command (D-092) or memory variable (D-106) being added.
+    adding: Option<(Adding, Entity<InputState>, Subscription)>,
     error: Option<String>,
 }
 
 super::dock_panel!(ProjectTree, "ProjectTree", "panel-project");
+
+/// What a name typed in the tree is for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Adding {
+    Command,
+    Memory,
+}
+
+/// The tree's folder of memory variables; a variable's id is `memory:<index>`.
+const MEMORY: &str = "memory";
 
 impl ProjectTree {
     pub(crate) fn new(state: Entity<AppState>, cx: &mut Context<'_, Self>) -> Self {
@@ -46,25 +56,35 @@ impl ProjectTree {
         }
     }
 
-    /// Shows the name field for a new command.
-    fn start_adding(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
-        let input =
-            cx.new(|cx| InputState::new(window, cx).placeholder(t("new-command-placeholder")));
-        input.update(cx, |input, cx| input.focus(window, cx));
-        let changes = cx.subscribe_in(&input, window, |this, input, event, _, cx| match event {
-            InputEvent::PressEnter { .. } => {
-                let name = input.read(cx).value().trim().to_owned();
-                this.add_command(&name, cx);
-            }
-            // Leaving an empty field gives up.
-            InputEvent::Blur if input.read(cx).value().trim().is_empty() => {
-                this.adding = None;
-                this.error = None;
-                cx.notify();
-            }
-            _ => {}
+    /// Shows the name field for a new command or memory variable.
+    fn start_adding(&mut self, what: Adding, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let placeholder = t(match what {
+            Adding::Command => "new-command-placeholder",
+            Adding::Memory => "new-memory-placeholder",
         });
-        self.adding = Some((input, changes));
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
+        input.update(cx, |input, cx| input.focus(window, cx));
+        let changes = cx.subscribe_in(
+            &input,
+            window,
+            move |this, input, event, _, cx| match event {
+                InputEvent::PressEnter { .. } => {
+                    let name = input.read(cx).value().trim().to_owned();
+                    match what {
+                        Adding::Command => this.add_command(&name, cx),
+                        Adding::Memory => this.add_memory(&name, cx),
+                    }
+                }
+                // Leaving an empty field gives up.
+                InputEvent::Blur if input.read(cx).value().trim().is_empty() => {
+                    this.adding = None;
+                    this.error = None;
+                    cx.notify();
+                }
+                _ => {}
+            },
+        );
+        self.adding = Some((what, input, changes));
         self.error = None;
         cx.notify();
     }
@@ -90,6 +110,30 @@ impl ProjectTree {
     }
 }
 
+impl ProjectTree {
+    fn add_memory(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+        let taken = self
+            .state
+            .read(cx)
+            .project
+            .manifest
+            .memory
+            .iter()
+            .any(|var| var.name == name);
+        self.error = if !valid_memory_name(name) {
+            Some(t("new-memory-invalid"))
+        } else if taken {
+            Some(t("new-memory-taken"))
+        } else {
+            self.state
+                .update(cx, |state, cx| state.add_memory(name, cx));
+            self.adding = None;
+            None
+        };
+        cx.notify();
+    }
+}
+
 /// Adds a graph for the event `trigger`, named after it (D-092).
 fn add_event(state: &Entity<AppState>, trigger: &str, cx: &mut App) {
     state.update(cx, |state, cx| {
@@ -100,36 +144,38 @@ fn add_event(state: &Entity<AppState>, trigger: &str, cx: &mut App) {
     });
 }
 
-/// Asks before deleting graph `graph`, which cannot be undone (D-092).
+/// Asks before deleting `name`, which cannot be undone (D-092): a graph, whose file goes,
+/// or a memory variable (`detail` says which), then runs `delete`.
 fn confirm_delete(
     state: &Entity<AppState>,
-    graph: usize,
     name: &str,
+    detail: &str,
+    delete: impl FnOnce(&mut AppState, &mut Context<'_, AppState>) + 'static,
     window: &mut Window,
     cx: &mut App,
 ) {
-    let (delete, cancel) = (t("delete"), t("cancel"));
+    let (yes, cancel) = (t("delete"), t("cancel"));
     let answer = window.prompt(
         PromptLevel::Warning,
         &t_with("delete-graph-title", &[("name", name)]),
-        Some(&t("delete-graph-detail")),
-        &[delete.as_str(), cancel.as_str()],
+        Some(&t(detail)),
+        &[yes.as_str(), cancel.as_str()],
         cx,
     );
     let state = state.clone();
     window
         .spawn(cx, async move |cx| {
             if answer.await == Ok(0) {
-                let _ =
-                    cx.update(|_, cx| state.update(cx, |state, cx| state.delete_graph(graph, cx)));
+                let _ = cx.update(|_, cx| state.update(cx, delete));
             }
         })
         .detach();
 }
 
-/// A folder per graph kind; a graph's id is its index in `project.graphs`.
+/// A folder per graph kind, where a graph's id is its index in `project.graphs`, and the
+/// memory (D-106).
 fn items(project: &Project) -> Vec<TreeItem> {
-    [
+    let mut items: Vec<TreeItem> = [
         (GraphKind::Command, "tree-commands"),
         (GraphKind::Event, "tree-events"),
     ]
@@ -142,7 +188,65 @@ fn items(project: &Project) -> Vec<TreeItem> {
                 .map(|(ix, file)| TreeItem::new(ix.to_string(), file.name.clone())),
         )
     })
-    .collect()
+    .collect();
+    let memory = project.manifest.memory.iter().enumerate();
+    items.push(
+        TreeItem::new(MEMORY, t("tree-memory"))
+            .expanded(true)
+            .children(
+                memory.map(|(ix, var)| TreeItem::new(format!("{MEMORY}:{ix}"), var.name.clone())),
+            ),
+    );
+    items
+}
+
+/// The index of the memory variable a tree id names.
+fn memory_ix(id: &str) -> Option<usize> {
+    id.strip_prefix(MEMORY)?.strip_prefix(':')?.parse().ok()
+}
+
+/// The events "+" by Events offers, by name (D-092).
+fn event_menu(state: &Entity<AppState>, mut menu: PopupMenu, cx: &App) -> PopupMenu {
+    let mut events: Vec<(String, String)> = state
+        .read(cx)
+        .registry
+        .iter()
+        .filter(|t| t.category == Category::Trigger && t.id != "core.slash_command")
+        .map(|t| (node_name(&t.id), t.id.clone()))
+        .collect();
+    events.sort();
+    for (name, id) in events {
+        let state = state.clone();
+        menu = menu
+            .item(PopupMenuItem::new(name).on_click(move |_, _, cx| add_event(&state, &id, cx)));
+    }
+    menu
+}
+
+/// The right-click menu of a graph or memory variable: "Delete", after asking.
+fn delete_menu(state: &Entity<AppState>, item: &TreeItem, menu: PopupMenu) -> PopupMenu {
+    let (state, name) = (state.clone(), item.label.to_string());
+    if let Ok(graph) = item.id.parse::<usize>() {
+        return menu.item(
+            PopupMenuItem::new(t("delete")).on_click(move |_, window, cx| {
+                let delete = move |state: &mut AppState, cx: &mut Context<'_, AppState>| {
+                    state.delete_graph(graph, cx);
+                };
+                confirm_delete(&state, &name, "delete-graph-detail", delete, window, cx);
+            }),
+        );
+    }
+    let Some(var) = memory_ix(&item.id) else {
+        return menu;
+    };
+    menu.item(
+        PopupMenuItem::new(t("delete")).on_click(move |_, window, cx| {
+            let delete = move |state: &mut AppState, cx: &mut Context<'_, AppState>| {
+                state.delete_memory(var, cx);
+            };
+            confirm_delete(&state, &name, "delete-memory-detail", delete, window, cx);
+        }),
+    )
 }
 
 impl Render for ProjectTree {
@@ -165,20 +269,38 @@ impl Render for ProjectTree {
                     state.update(cx, |state, cx| {
                         state.open_graph = Some(graph);
                         state.selected_node = None;
+                        state.selected_memory = None;
                         cx.notify();
                     });
                 });
-            } else if item.id.as_ref() == GraphKind::Command.dir() {
+            } else if let Some(var) = memory_ix(&item.id) {
+                let state = state.clone();
+                row = row.on_click(move |_, _, cx| {
+                    state.update(cx, |state, cx| {
+                        state.selected_node = None;
+                        state.selected_memory = Some(var);
+                        cx.notify();
+                    });
+                });
+            } else if let Some((_, what)) = [
+                (GraphKind::Command.dir(), Adding::Command),
+                (MEMORY, Adding::Memory),
+            ]
+            .into_iter()
+            .find(|(dir, _)| item.id.as_ref() == *dir)
+            {
                 let this = this.clone();
                 row = row.suffix(move |_, _| {
                     let this = this.clone();
-                    Button::new("add-command")
-                        .ghost()
-                        .xsmall()
-                        .label("+")
-                        .on_click(move |_, window, cx| {
-                            let _ = this.update(cx, |this, cx| this.start_adding(window, cx));
-                        })
+                    let button = match what {
+                        Adding::Command => "add-command",
+                        Adding::Memory => "add-memory",
+                    };
+                    Button::new(button).ghost().xsmall().label("+").on_click(
+                        move |_, window, cx| {
+                            let _ = this.update(cx, |this, cx| this.start_adding(what, window, cx));
+                        },
+                    )
                 });
             } else if item.id.as_ref() == GraphKind::Event.dir() {
                 let state = state.clone();
@@ -188,47 +310,17 @@ impl Render for ProjectTree {
                         .ghost()
                         .xsmall()
                         .label("+")
-                        .dropdown_menu(move |mut menu, _, cx| {
-                            let mut events: Vec<(String, String)> = state
-                                .read(cx)
-                                .registry
-                                .iter()
-                                .filter(|t| {
-                                    t.category == Category::Trigger && t.id != "core.slash_command"
-                                })
-                                .map(|t| (node_name(&t.id), t.id.clone()))
-                                .collect();
-                            events.sort();
-                            for (name, id) in events {
-                                let state = state.clone();
-                                menu = menu.item(
-                                    PopupMenuItem::new(name)
-                                        .on_click(move |_, _, cx| add_event(&state, &id, cx)),
-                                );
-                            }
-                            menu
-                        })
+                        .dropdown_menu(move |menu, _, cx| event_menu(&state, menu, cx))
                 });
             }
             row
         })
         .context_menu({
             let state = self.state.clone();
-            move |_, entry, menu, _, _| {
-                let item = entry.item();
-                let Ok(graph) = item.id.parse::<usize>() else {
-                    return menu;
-                };
-                let (state, name) = (state.clone(), item.label.to_string());
-                menu.item(
-                    PopupMenuItem::new(t("delete")).on_click(move |_, window, cx| {
-                        confirm_delete(&state, graph, &name, window, cx);
-                    }),
-                )
-            }
+            move |_, entry, menu, _, _| delete_menu(&state, entry.item(), menu)
         })
         .size_full();
-        let adding = self.adding.as_ref().map(|(input, _)| {
+        let adding = self.adding.as_ref().map(|(_, input, _)| {
             v_flex()
                 .p(px(6.))
                 .gap(px(4.))
@@ -327,5 +419,54 @@ mod tests {
         });
         assert!(!root.join("graphs/commands/ping.json").exists());
         assert!(root.join("graphs/events/member_join_2.json").exists());
+    }
+
+    /// "+" by Memory adds a variable under a valid, free name, keeps it in `project.toml`
+    /// and shows its form; deleting it takes it out again (D-106).
+    #[gpui_kit::test]
+    fn plus_adds_a_memory_variable(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        let root = project.root.clone();
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (tree, cx) = cx.add_window_view(|_, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            state = Some(app.clone());
+            ProjectTree::new(app, cx)
+        });
+        let state = state.unwrap();
+        for (name, error) in [("Warnings", true), ("warnings", false), ("warnings", true)] {
+            cx.update(|window, cx| {
+                window.render_frame(cx);
+                window.click("add-memory", cx);
+            });
+            cx.update(|window, cx| {
+                window.input(name, cx);
+                window.press("enter", cx);
+            });
+            let shown = cx.read(|cx| tree.read(cx).error.is_some());
+            assert_eq!(shown, error, "{name}");
+            cx.update(|_, cx| tree.update(cx, |tree, _| tree.adding = None));
+        }
+        cx.read(|cx| {
+            let state = state.read(cx);
+            assert_eq!(state.selected_memory, Some(0));
+            assert_eq!(
+                state.registry.memory(),
+                state.project.manifest.memory.as_slice()
+            );
+        });
+        let toml = std::fs::read_to_string(root.join("project.toml")).unwrap();
+        assert!(toml.contains("name = \"warnings\""), "{toml}");
+
+        cx.update(|_, cx| state.update(cx, |state, cx| state.delete_memory(0, cx)));
+        cx.read(|cx| {
+            let state = state.read(cx);
+            assert_eq!(state.selected_memory, None);
+            assert_eq!(state.registry.memory(), []);
+        });
+        let toml = std::fs::read_to_string(root.join("project.toml")).unwrap();
+        assert!(!toml.contains("warnings"), "{toml}");
     }
 }

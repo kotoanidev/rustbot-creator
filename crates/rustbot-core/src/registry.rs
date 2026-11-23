@@ -10,7 +10,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::template::{self, Segment, TemplateError};
-use crate::{Graph, Node, NodeId, PinRef};
+use crate::{Graph, MemoryType, MemoryVar, Node, NodeId, PinRef};
 
 /// What a node type is: its pins, its form fields, and what it provides and needs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,6 +160,8 @@ pub enum PropKind {
     Buttons,
     /// A message's select menu: a list of [`MenuOption`] (D-099).
     MenuOptions,
+    /// A memory variable of the project, by its name (D-106).
+    Memory,
 }
 
 impl PropKind {
@@ -179,7 +181,8 @@ impl PropKind {
             | Self::Variable(_)
             | Self::Choice(_)
             | Self::Number { .. }
-            | Self::Color => serde_json::Value::String(String::new()),
+            | Self::Color
+            | Self::Memory => serde_json::Value::String(String::new()),
         }
     }
 }
@@ -559,6 +562,14 @@ pub enum ProblemKind {
     /// "The event's message" where no message came with the event: outside "New message"
     /// and reactions, or after a click that always works (D-103).
     NoEventMessage,
+    /// A memory variable the project does not declare (D-106).
+    UnknownMemory(String),
+    /// A memory variable kept per server where no server is known, e.g. "Bot is ready".
+    MemoryNeedsServer,
+    /// A memory variable kept per user where no user is known and none is chosen.
+    MemoryNeedsUser,
+    /// A field that must hold a number, or a variable that is not a number for "Change by".
+    NotANumber(String),
     /// A command option breaks Discord's rules.
     BadOption {
         /// Its position in the list, from 0.
@@ -632,6 +643,14 @@ impl fmt::Display for Problem {
                 f.write_str("only the author can click, but no user started this")
             }
             ProblemKind::NoEventMessage => f.write_str("this event comes with no message"),
+            ProblemKind::UnknownMemory(name) => write!(f, "no memory variable {name:?}"),
+            ProblemKind::MemoryNeedsServer => {
+                f.write_str("the variable is kept per server, and no server is known here")
+            }
+            ProblemKind::MemoryNeedsUser => {
+                f.write_str("the variable is kept per user, and no user is known here")
+            }
+            ProblemKind::NotANumber(prop) => write!(f, "{prop:?} is not a number"),
             ProblemKind::BadOption { option, problem } => {
                 let why = match problem {
                     OptionProblem::Name => "a name needs 1-32 lower-case letters, digits, - or _",
@@ -649,10 +668,12 @@ impl fmt::Display for Problem {
     }
 }
 
-/// Every node type the app knows, built-in and from plugins.
+/// Every node type the app knows, built-in and from plugins, and the open project's memory
+/// variables, which graphs check against (D-106).
 #[derive(Debug, Clone, Default)]
 pub struct Registry {
     types: BTreeMap<String, NodeType>,
+    memory: Vec<MemoryVar>,
 }
 
 impl Registry {
@@ -664,7 +685,21 @@ impl Registry {
             .into_iter()
             .map(|t| (t.id.clone(), t))
             .collect();
-        Self { types }
+        Self {
+            types,
+            memory: Vec::new(),
+        }
+    }
+
+    /// Sets the project's memory variables, which graphs are checked against.
+    pub fn set_memory(&mut self, memory: Vec<MemoryVar>) {
+        self.memory = memory;
+    }
+
+    /// The project's memory variables.
+    #[must_use]
+    pub fn memory(&self) -> &[MemoryVar] {
+        &self.memory
     }
 
     /// Adds a node type.
@@ -865,7 +900,7 @@ impl Registry {
                     trigger
                 };
                 let scope = &scopes[usize::from(context.routed)];
-                for kind in check_node(node, node_type, base, context, scope) {
+                for kind in check_node(node, node_type, base, context, scope, &self.memory) {
                     if !found.contains(&kind) {
                         found.push(kind);
                     }
@@ -1057,6 +1092,7 @@ fn check_node(
     base: Option<&str>,
     context: Context,
     scope: &[Variable],
+    memory: &[MemoryVar],
 ) -> Vec<ProblemKind> {
     let mut problems = Vec::new();
     // After any click, "Reply" answers it.
@@ -1078,8 +1114,9 @@ fn check_node(
         problems.push(ProblemKind::PrivateOutsideCommand);
     }
     for prop in &node_type.props {
-        problems.extend(check_prop(prop, node.props.get(&prop.name), scope));
+        problems.extend(check_prop(prop, node.props.get(&prop.name), scope, memory));
     }
+    problems.extend(check_memory_node(node, scope, memory));
     let event_message = matches!(
         base,
         Some("core.message" | "core.reaction_add" | "core.reaction_remove")
@@ -1103,11 +1140,47 @@ fn check_node(
     problems
 }
 
+/// What is wrong with a node changing memory (D-108): whose value it is, and its numbers.
+fn check_memory_node(node: &Node, scope: &[Variable], memory: &[MemoryVar]) -> Vec<ProblemKind> {
+    let text = |name: &str| node.props.get(name).and_then(serde_json::Value::as_str);
+    let Some(var) = text("variable").and_then(|name| memory.iter().find(|m| m.name == name)) else {
+        return Vec::new();
+    };
+    let mut problems = Vec::new();
+    let known = |name: &str| scope.iter().any(|v| v.name == name);
+    if var.scope.has_server() && !known("server") {
+        problems.push(ProblemKind::MemoryNeedsServer);
+    }
+    if var.scope.has_user() && text("user").is_none_or(str::is_empty) && !known("user") {
+        problems.push(ProblemKind::MemoryNeedsUser);
+    }
+    // A number typed in must be one; a template is checked when the bot runs.
+    let not_number = |value: &str| !value.contains('{') && value.trim().parse::<f64>().is_err();
+    match (node.kind.as_str(), var.ty) {
+        ("core.memory_change", MemoryType::Text) => {
+            problems.push(ProblemKind::NotANumber("variable".to_owned()));
+        }
+        ("core.memory_change", MemoryType::Number)
+            if not_number(text("amount").unwrap_or_default()) =>
+        {
+            problems.push(ProblemKind::NotANumber("amount".to_owned()));
+        }
+        ("core.memory_set", MemoryType::Number)
+            if not_number(text("value").unwrap_or_default()) =>
+        {
+            problems.push(ProblemKind::NotANumber("value".to_owned()));
+        }
+        _ => {}
+    }
+    problems
+}
+
 /// What is wrong with one form field's value.
 fn check_prop(
     prop: &Prop,
     value: Option<&serde_json::Value>,
     scope: &[Variable],
+    memory: &[MemoryVar],
 ) -> Vec<ProblemKind> {
     let wrong_type = || vec![ProblemKind::WrongPropType(prop.name.clone())];
     match (prop.kind, value) {
@@ -1117,7 +1190,7 @@ fn check_prop(
             if prop.required && text.trim().is_empty() {
                 vec![ProblemKind::MissingProp(prop.name.clone())]
             } else if templates {
-                check_template(&prop.name, text, scope)
+                check_template(&prop.name, text, scope, memory)
             } else {
                 Vec::new()
             }
@@ -1132,13 +1205,21 @@ fn check_prop(
             serde_json::from_value::<Vec<CommandOption>>(value.clone())
                 .map_or_else(|_| wrong_type(), |options| check_options(&options))
         }
-        (PropKind::Variable(_) | PropKind::Choice(_), Some(serde_json::Value::String(text)))
-            if text.is_empty() =>
-        {
+        (
+            PropKind::Variable(_) | PropKind::Choice(_) | PropKind::Memory,
+            Some(serde_json::Value::String(text)),
+        ) if text.is_empty() => {
             if prop.required {
                 vec![ProblemKind::MissingProp(prop.name.clone())]
             } else {
                 Vec::new()
+            }
+        }
+        (PropKind::Memory, Some(serde_json::Value::String(name))) => {
+            if memory.iter().any(|var| &var.name == name) {
+                Vec::new()
+            } else {
+                vec![ProblemKind::UnknownMemory(name.clone())]
             }
         }
         (PropKind::Variable(ty), Some(serde_json::Value::String(name))) => {
@@ -1162,7 +1243,7 @@ fn check_prop(
                 vec![ProblemKind::MissingProp(prop.name.clone())]
             } else if text.trim().is_empty() || text.contains('{') {
                 // A template: its number is only known when the bot runs.
-                check_template(&prop.name, text, scope)
+                check_template(&prop.name, text, scope, memory)
             } else if text
                 .trim()
                 .parse::<f64>()
@@ -1179,7 +1260,7 @@ fn check_prop(
         (PropKind::Color, Some(serde_json::Value::String(text))) => {
             let hex = text.trim().strip_prefix('#').unwrap_or_default();
             if text.trim().is_empty() || text.contains('{') {
-                check_template(&prop.name, text, scope)
+                check_template(&prop.name, text, scope, memory)
             } else if hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
                 Vec::new()
             } else {
@@ -1197,7 +1278,12 @@ fn check_prop(
     }
 }
 
-fn check_template(prop: &str, text: &str, scope: &[Variable]) -> Vec<ProblemKind> {
+fn check_template(
+    prop: &str,
+    text: &str,
+    scope: &[Variable],
+    memory: &[MemoryVar],
+) -> Vec<ProblemKind> {
     let segments = match template::parse(text) {
         Ok(segments) => segments,
         Err(error) => {
@@ -1210,10 +1296,12 @@ fn check_template(prop: &str, text: &str, scope: &[Variable]) -> Vec<ProblemKind
     segments
         .iter()
         .filter_map(|segment| match segment {
-            Segment::Var(path) if !resolves(path, scope) => Some(ProblemKind::UnknownVariable {
-                prop: prop.to_owned(),
-                path: path.join("."),
-            }),
+            Segment::Var(path) if !resolves(path, scope, memory) => {
+                Some(ProblemKind::UnknownVariable {
+                    prop: prop.to_owned(),
+                    path: path.join("."),
+                })
+            }
             _ => None,
         })
         .collect()
@@ -1221,7 +1309,31 @@ fn check_template(prop: &str, text: &str, scope: &[Variable]) -> Vec<ProblemKind
 
 /// Whether `user.name` names a variable in scope and one of its fields. Objects need a field;
 /// plain values are used whole. A variable's name may have dots itself, as `option.target`.
-fn resolves(path: &[String], scope: &[Variable]) -> bool {
+/// `memory.<name>` reads a memory variable for who and where this runs, and
+/// `memory.<name>.<user variable>` for another user (D-108, C-026).
+fn resolves(path: &[String], scope: &[Variable], memory: &[MemoryVar]) -> bool {
+    if path.first().is_some_and(|first| first == "memory") {
+        let Some(var) = path
+            .get(1)
+            .and_then(|name| memory.iter().find(|m| &m.name == name))
+        else {
+            return false;
+        };
+        let known = |name: &str| scope.iter().any(|v| v.name == name);
+        let user = match &path[2..] {
+            [] => known("user"),
+            rest => {
+                let name = rest.join(".");
+                var.scope.has_user()
+                    && scope
+                        .iter()
+                        .any(|v| v.name == name && v.ty == DataType::User)
+            }
+        };
+        return (!var.scope.has_user() || user)
+            && (!var.scope.has_server() || known("server"))
+            && (var.scope.has_user() || path.len() == 2);
+    }
     scope.iter().any(|var| {
         let name: Vec<&str> = var.name.split('.').collect();
         if path.len() < name.len() || path.iter().zip(&name).any(|(a, b)| a != b) {
@@ -1328,6 +1440,13 @@ fn check_items<'a>(
 /// Whether `name` can be a slash command's name: the same rule as an option's (D-092).
 #[must_use]
 pub fn valid_command_name(name: &str) -> bool {
+    valid_option_name(name)
+}
+
+/// Whether `name` may name a memory variable (D-106): as a command's name, so it reads
+/// well in `{memory.<name>}` and never holds a `.`.
+#[must_use]
+pub fn valid_memory_name(name: &str) -> bool {
     valid_option_name(name)
 }
 

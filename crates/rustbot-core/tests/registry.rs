@@ -928,3 +928,111 @@ fn message_actions_need_a_message() {
     let react = registry.get("core.react").unwrap();
     assert_eq!(react.props[0].kind.default_value(), "last");
 }
+
+/// A registry with the memory of a moderation bot (D-106, D-107).
+fn with_memory() -> Registry {
+    let var = |name: &str, ty, scope| rustbot_core::MemoryVar {
+        name: name.to_owned(),
+        ty,
+        scope,
+        initial: String::new(),
+    };
+    let mut registry = Registry::with_core();
+    registry.set_memory(vec![
+        var(
+            "warnings",
+            rustbot_core::MemoryType::Number,
+            rustbot_core::MemoryScope::Member,
+        ),
+        var(
+            "log",
+            rustbot_core::MemoryType::Text,
+            rustbot_core::MemoryScope::Server,
+        ),
+        var(
+            "motd",
+            rustbot_core::MemoryType::Text,
+            rustbot_core::MemoryScope::Global,
+        ),
+    ]);
+    registry
+}
+
+#[test]
+fn memory_is_read_and_changed_where_its_owner_is_known() {
+    let registry = with_memory();
+    let check = |trigger: &serde_json::Value, node: &serde_json::Value| -> Vec<ProblemKind> {
+        let graph: Graph = serde_json::from_value(serde_json::json!({
+            "schema": 1,
+            "nodes": { "n1": trigger, "n2": node },
+            "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+        }))
+        .unwrap();
+        registry
+            .validate(&graph)
+            .into_iter()
+            .map(|p| p.kind)
+            .collect()
+    };
+    let warn = serde_json::json!({ "type": "core.slash_command", "props": {
+        "name": "warn", "description": "Warns", "options": [
+            { "name": "target", "type": "user", "description": "Who", "required": true } ] } });
+    let ready = serde_json::json!({ "type": "core.ready" });
+    let change = |variable: &str, amount: &str| {
+        serde_json::json!({ "type": "core.memory_change", "props": {
+            "variable": variable, "user": "option.target", "amount": amount } })
+    };
+    let reply = |content: &str| serde_json::json!({ "type": "core.reply", "props": { "content": content } });
+    assert_eq!(check(&warn, &change("warnings", "1")), Vec::new());
+    assert_eq!(
+        check(&warn, &change("warnings", "-{memory.warnings}")),
+        Vec::new()
+    );
+    assert_eq!(
+        check(
+            &warn,
+            &reply(
+                "{option.target.mention}: {memory.warnings.option.target}, mine {memory.warnings}, {memory.log} {memory.motd}"
+            )
+        ),
+        Vec::new()
+    );
+    assert_eq!(
+        check(&warn, &change("warnings", "lots")),
+        vec![ProblemKind::NotANumber("amount".to_owned())]
+    );
+    assert_eq!(
+        check(&warn, &change("log", "1")),
+        vec![ProblemKind::NotANumber("variable".to_owned())]
+    );
+    assert_eq!(
+        check(&warn, &change("nope", "1")),
+        vec![ProblemKind::UnknownMemory("nope".to_owned())]
+    );
+    // A global variable has no "for whom".
+    assert_eq!(
+        check(&warn, &reply("{memory.motd.option.target}")),
+        vec![ProblemKind::UnknownVariable {
+            prop: "content".to_owned(),
+            path: "memory.motd.option.target".to_owned()
+        }]
+    );
+    // "Bot is ready" knows no server and no user.
+    let set = |variable: &str| {
+        serde_json::json!({ "type": "core.memory_set", "props": {
+            "variable": variable, "value": "Hello" } })
+    };
+    assert_eq!(check(&ready, &set("motd")), Vec::new());
+    assert_eq!(
+        check(&ready, &set("log")),
+        vec![ProblemKind::MemoryNeedsServer]
+    );
+    assert_eq!(
+        check(&ready, &set("warnings")),
+        vec![
+            ProblemKind::MemoryNeedsServer,
+            ProblemKind::MemoryNeedsUser,
+            ProblemKind::NotANumber("value".to_owned())
+        ]
+    );
+}

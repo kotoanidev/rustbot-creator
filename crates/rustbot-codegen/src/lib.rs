@@ -16,6 +16,7 @@ use rustbot_core::{GraphKind, NodeId, Project, Registry};
 mod cargo;
 mod command;
 mod event;
+mod memory;
 
 /// The gateway intents djs-rs knows, by their `Intents` constant names (D-049).
 const INTENTS: &[&str] = &[
@@ -91,7 +92,13 @@ pub struct Output {
 /// # Errors
 /// A graph with problems or without a generator for one of its nodes, a loop in a flow, an
 /// unknown intent, or two graphs that map to one module.
+#[allow(clippy::too_many_lines)] // one pass over the project, file by file
 pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error> {
+    // Graphs are checked against this project's memory, whatever the caller's registry has.
+    let mut registry = registry.clone();
+    registry.set_memory(project.manifest.memory.clone());
+    let registry = &registry;
+    let has_memory = !project.manifest.memory.is_empty();
     let mut intents: BTreeSet<&str> = BTreeSet::new();
     for intent in &project.manifest.gateway.extra_intents {
         intents.insert(intent);
@@ -147,8 +154,13 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
     );
     output.files.insert(
         src.join("main.rs"),
-        rust(&main_rs(&intents, !events.is_empty())),
+        rust(&main_rs(&intents, !events.is_empty(), has_memory)),
     );
+    if has_memory {
+        output
+            .files
+            .insert(src.join("memory.rs"), rust(&memory::module()));
+    }
     output
         .files
         .insert(src.join("settings.rs"), rust(&settings_rs()));
@@ -180,7 +192,7 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
                 kind: node.kind.clone(),
             });
         };
-        let code = event::module(file, trigger, kind)?;
+        let code = event::module(file, trigger, kind, registry.memory())?;
         output
             .files
             .insert(src.join(format!("events/{module}.rs")), rust(&code));
@@ -266,8 +278,18 @@ fn login() -> TokenStream {
     }
 }
 
-fn main_rs(intents: &BTreeSet<&str>, has_events: bool) -> TokenStream {
+fn main_rs(intents: &BTreeSet<&str>, has_events: bool, has_memory: bool) -> TokenStream {
     let login = login();
+    let (memory_mod, memory_load) = if has_memory {
+        (
+            quote!(
+                mod memory;
+            ),
+            quote!(memory::load()?;),
+        )
+    } else {
+        (TokenStream::new(), TokenStream::new())
+    };
     let (events_mod, events_register) = if has_events {
         (
             quote!(
@@ -290,6 +312,7 @@ fn main_rs(intents: &BTreeSet<&str>, has_events: bool) -> TokenStream {
 
         mod commands;
         #events_mod
+        #memory_mod
         mod settings;
 
         use std::sync::Arc;
@@ -315,6 +338,7 @@ fn main_rs(intents: &BTreeSet<&str>, has_events: bool) -> TokenStream {
                 .transpose()
                 .map_err(|_| "DISCORD_TEST_GUILD_ID is not a server ID")?;
 
+            #memory_load
             let client = Client::builder(token).intents(#intents).build();
             let definitions = Arc::new(commands::definitions()?);
             client.on(Events::ClientReady, move |ctx, ready| {
