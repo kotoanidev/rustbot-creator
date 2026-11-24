@@ -1502,6 +1502,39 @@ alternatives that were considered, and why.
   sandbox without a token. This uses the private repository's Actions minutes.
 - **Alternatives:** check the sandbox only by hand on the VPS.
 
+### D-171 — Cloud lives in the bot settings and the status bar
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** A "RustBot Cloud" section in the bot settings, next to local hosting, has:
+  - signing in and out;
+  - "Publish";
+  - the state and memory;
+  - Start, Stop and Delete;
+  - the memory backups.
+  The status bar gets a "Publish" button and a state label, as hosting has (D-142).
+  Without a Cloud address (`RUSTBOT_CLOUD_URL` until the domain exists, D-163), all of
+  it is hidden.
+- **Alternatives:** a "Cloud" dock panel; a dialog opened from the status bar.
+
+### D-172 — Cloud logs show in the console
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** While the bot runs in Cloud, the console shows its logs, polled every 2 s
+  only while its project is open, as it shows the local hosted bot's journal (D-142).
+- **Alternatives:** a separate log list in the Cloud section.
+
+### D-173 — A bot runs in one place at a time
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** Publishing to Cloud asks to remove local hosting, and hosting locally asks
+  to remove the bot from Cloud. Run, the test, pauses the Cloud bot and resumes it
+  afterwards, as it does for local hosting (D-141).
+- **Alternatives:** only a warning, and the user keeps track.
+
+### D-174 — Cloud backups can be restored and downloaded
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The section lists the 7 memory backups with their date and size. "Restore"
+  asks for confirmation; Cloud backs up the current memory first. "Download" saves the
+  file where the user picks.
+- **Alternatives:** restore only.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
