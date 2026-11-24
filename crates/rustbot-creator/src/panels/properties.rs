@@ -1775,6 +1775,7 @@ impl Properties {
     fn render_bot_form(
         bot: &BotForm,
         hosted: &crate::host::Hosted,
+        published: &crate::publish::Published,
         cx: &Context<'_, Self>,
     ) -> impl IntoElement + use<> {
         let theme = cx.theme();
@@ -1815,6 +1816,12 @@ impl Properties {
             .child(label(t("bot-license")))
             .child(Select::new(&bot.license).small())
             .children(crate::host::AVAILABLE.then(|| hosting_section(hosted, cx)))
+            .children(
+                published
+                    .address
+                    .is_some()
+                    .then(|| cloud_section(published, cx)),
+            )
     }
 }
 
@@ -1874,6 +1881,191 @@ fn hosting_section(hosted: &crate::host::Hosted, cx: &Context<'_, Properties>) -
                     })),
             ),
     )
+}
+
+/// "RustBot Cloud" in the bot settings (D-171, D-174): signing in, publishing, the
+/// published bot's state and its memory backups.
+fn cloud_section(
+    published: &crate::publish::Published,
+    cx: &Context<'_, Properties>,
+) -> gpui_kit::Div {
+    let theme = cx.theme();
+    let hint = |text: String| {
+        div()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .child(text)
+    };
+    let section = v_flex()
+        .gap(px(6.))
+        .pt(px(8.))
+        .child(div().text_sm().child(t("cloud-section")));
+    if !published.signed_in() {
+        return cloud_sign_in(section, published, cx);
+    }
+    let who = published.user.as_ref().map_or_else(
+        || t("cloud-signed-in-unknown"),
+        |name| t_with("cloud-signed-in-as", &[("name", name)]),
+    );
+    let section = section.child(
+        h_flex().gap(px(8.)).child(hint(who)).child(
+            Button::new("cloud-sign-out")
+                .ghost()
+                .xsmall()
+                .label(t("cloud-sign-out"))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    crate::publish::sign_out(&this.state, cx);
+                })),
+        ),
+    );
+    let Some(label) = published.label() else {
+        return section.child(hint(t("cloud-none"))).child(
+            Button::new("cloud-publish")
+                .primary()
+                .label(t("cloud-publish"))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    crate::publish::publish(this.state.clone(), window, cx);
+                })),
+        );
+    };
+    let memory = published
+        .bot
+        .as_ref()
+        .and_then(|bot| bot.memory_kb)
+        .map(|kb| {
+            t_with(
+                "cloud-memory",
+                &[("mb", &format!("{}.{}", kb / 1024, kb % 1024 * 10 / 1024))],
+            )
+        });
+    // While Run tests the bot, its Cloud copy must stay stopped (D-173).
+    let switch = if published.paused {
+        None
+    } else if published.running() {
+        Some((t("stop"), false))
+    } else {
+        Some((t("host-start"), true))
+    };
+    let backups = cloud_backups(published, cx);
+    let no_backups = backups.is_empty().then(|| hint(t("cloud-no-backups")));
+    section
+        .child(label)
+        .children(memory.map(hint))
+        .child(
+            h_flex()
+                .gap(px(8.))
+                .child(
+                    Button::new("cloud-update")
+                        .primary()
+                        .label(t("host-update"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            crate::publish::publish(this.state.clone(), window, cx);
+                        })),
+                )
+                .children(switch.map(|(label, on)| {
+                    Button::new("cloud-switch")
+                        .label(label)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            crate::publish::switch(this.state.clone(), on, window, cx);
+                        }))
+                }))
+                .child(
+                    Button::new("cloud-delete")
+                        .label(t("cloud-delete-button"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            crate::publish::delete(this.state.clone(), window, cx);
+                        })),
+                ),
+        )
+        .child(div().text_xs().pt(px(4.)).child(t("cloud-backups")))
+        .children(no_backups)
+        .children(backups)
+}
+
+/// Signed out: what Cloud is, and "Sign in with Discord" (D-160).
+fn cloud_sign_in(
+    section: gpui_kit::Div,
+    published: &crate::publish::Published,
+    cx: &Context<'_, Properties>,
+) -> gpui_kit::Div {
+    let label = if published.signing_in {
+        t("cloud-signing-in")
+    } else {
+        t("cloud-sign-in")
+    };
+    section
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(t("cloud-about")),
+        )
+        .child(
+            Button::new("cloud-sign-in")
+                .label(label)
+                .disabled(published.signing_in)
+                .on_click(cx.listener(|this, _, window, cx| {
+                    crate::publish::sign_in(this.state.clone(), window, cx);
+                })),
+        )
+}
+
+/// The Cloud bot's memory backups, each with Restore and Download (D-174).
+fn cloud_backups(
+    published: &crate::publish::Published,
+    cx: &Context<'_, Properties>,
+) -> Vec<gpui_kit::Div> {
+    published
+        .backups
+        .iter()
+        .enumerate()
+        .map(|(ix, backup)| {
+            let (restore, download) = (backup.id.clone(), backup.id.clone());
+            h_flex()
+                .gap(px(8.))
+                .child(div().text_xs().flex_1().child(format!(
+                    "{} · {} KB",
+                    backup_time(&backup.time),
+                    backup.size.div_ceil(1024)
+                )))
+                .child(
+                    Button::new(("cloud-restore", ix))
+                        .ghost()
+                        .xsmall()
+                        .label(t("cloud-restore-button"))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            crate::publish::restore(
+                                this.state.clone(),
+                                restore.clone(),
+                                window,
+                                cx,
+                            );
+                        })),
+                )
+                .child(
+                    Button::new(("cloud-download", ix))
+                        .ghost()
+                        .xsmall()
+                        .label(t("cloud-download"))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            crate::publish::download(
+                                this.state.clone(),
+                                download.clone(),
+                                window,
+                                cx,
+                            );
+                        })),
+                )
+        })
+        .collect()
+}
+
+/// `2026-11-24T15:19:49Z` as `2026-11-24 15:19 UTC`.
+fn backup_time(time: &str) -> String {
+    match (time.get(..10), time.get(11..16)) {
+        (Some(day), Some(clock)) => format!("{day} {clock} UTC"),
+        _ => time.to_owned(),
+    }
 }
 
 /// A license as the bot settings show it: its SPDX expression, or "None".
@@ -2145,7 +2337,8 @@ impl Render for Properties {
             }
             _ => match &self.bot {
                 Some(bot) => {
-                    Self::render_bot_form(bot, &self.state.read(cx).hosted, cx).into_any_element()
+                    let app = self.state.read(cx);
+                    Self::render_bot_form(bot, &app.hosted, &app.published, cx).into_any_element()
                 }
                 None => super::placeholder(t("properties-empty"), cx).into_any_element(),
             },

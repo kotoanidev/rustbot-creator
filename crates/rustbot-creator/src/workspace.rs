@@ -466,13 +466,25 @@ fn run_controls(state: &Entity<AppState>, cx: &mut Context<'_, Workspace>) -> im
             .label(t("host"))
             .on_click(move |_, window, cx| crate::host::host(state.clone(), window, cx))
     });
+    // Publishing to Cloud, when signed in and not yet published (D-171).
+    let published = &state.read(cx).published;
+    let publish = (stopped && published.signed_in() && published.bot.is_none()).then(|| {
+        let state = state.clone();
+        Button::new("publish")
+            .ghost()
+            .xsmall()
+            .label(t("cloud-publish"))
+            .on_click(move |_, window, cx| crate::publish::publish(state.clone(), window, cx))
+    });
     h_flex()
         .gap(px(8.))
         .children(button)
         .children(export)
         .children(host)
+        .children(publish)
         .child(label)
         .children(hosted.label())
+        .children(published.label())
 }
 
 #[cfg(test)]
@@ -628,6 +640,75 @@ mod tests {
         });
         let manifest = std::fs::read_to_string(root.join("project.toml")).unwrap();
         assert!(manifest.contains("license = \"MIT-0\""), "{manifest}");
+    }
+
+    /// The Cloud section is hidden without Cloud's address, offers signing in when signed
+    /// out, and shows the published bot with its backups (D-171, D-174).
+    #[gpui_kit::test]
+    fn the_cloud_section_follows_the_sign_in_and_the_bot(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::test::TestWindowExt as _;
+
+        use crate::publish::Published;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("bot");
+        super::new_project(&root).unwrap();
+        cx.update(gpui_kit::init);
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| super::Workspace::new(Some(root.clone()), window, cx));
+        let set = |published: Published, cx: &mut gpui_kit::VisualTestContext| {
+            workspace.update(cx, |workspace, cx| {
+                let (state, _) = workspace.open.as_ref().unwrap();
+                state.update(cx, |state, cx| {
+                    state.published = published;
+                    cx.notify();
+                });
+            });
+        };
+        let shown = |id: &'static str, cx: &mut gpui_kit::VisualTestContext| {
+            cx.update(|window, cx| {
+                window.render_frame(cx);
+                window.try_find(id).is_some()
+            })
+        };
+        assert!(!shown("cloud-sign-in", cx));
+
+        let mut signed_out = Published::default();
+        signed_out.address = Some("https://cloud.example.com".to_owned());
+        set(signed_out, cx);
+        assert!(shown("cloud-sign-in", cx));
+
+        set(
+            Published::signed_in_for_test("https://cloud.example.com", "Alice"),
+            cx,
+        );
+        assert!(shown("cloud-publish", cx));
+        assert!(shown("publish", cx));
+        assert!(!shown("cloud-sign-in", cx));
+
+        let mut published = Published::signed_in_for_test("https://cloud.example.com", "Alice");
+        published.bot = Some(crate::cloud::Bot {
+            state: "running".to_owned(),
+            deployed_at: Some("2026-11-24T15:19:49Z".to_owned()),
+            codegen: String::new(),
+            memory_kb: Some(7168),
+            has_token: true,
+        });
+        let backup = |id: &str| crate::cloud::Backup {
+            id: id.to_owned(),
+            time: "2026-11-24T15:19:49Z".to_owned(),
+            size: 2048,
+        };
+        published.backups = vec![backup("2"), backup("1")];
+        set(published, cx);
+        for id in ["cloud-update", "cloud-switch", "cloud-delete"] {
+            assert!(shown(id, cx), "{id}");
+        }
+        assert!(!shown("publish", cx));
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            assert!(window.try_find(("cloud-restore", 1usize)).is_some());
+            assert!(window.try_find(("cloud-download", 0usize)).is_some());
+        });
     }
 
     #[test]

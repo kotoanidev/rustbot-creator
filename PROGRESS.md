@@ -313,8 +313,14 @@ Its decisions are numbered here, and the API is `docs/CLOUD_API.md` (D-163).
   builds, and the systemd sandbox with a CI job that builds and starts a real bot.
 - Next in the server: running bots through the API (start, stop, state, memory), then
   logs and backups, then the VPS setup guide.
-- Then the app's side: sign-in, "Publish" with the token's consent, and the bot's state,
-  logs and backups.
+- The app's side is done (D-171–D-174): `cloud.rs` (the API client: HTTPS only, except
+  a local server; no pooled connections) and `publish.rs` (signing in through the
+  browser with the session in the keyring, "Publish" with the token's consent, Start,
+  Stop, Delete, the state and memory, logs in the console every 2 s, backups with
+  Restore and Download, and Run pausing the Cloud bot). A bot runs in one place at a
+  time: publishing removes local hosting and hosting deletes the Cloud copy, after
+  asking. All of it stays hidden without `RUSTBOT_CLOUD_URL`. Tested against a stand-in
+  server and headless; not yet against the real server with a real sign-in.
 - Owner-side before the pilot: a VPS and a domain (after the name and trademark check),
   and a Discord application for sign-in.
 

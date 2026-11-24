@@ -25,3 +25,20 @@ fn bot_token_round_trip() {
     assert_eq!(rustbot_secrets::bot_token(project).unwrap(), None);
     rustbot_secrets::delete_bot_token(project).unwrap();
 }
+
+#[test]
+#[ignore = "uses the system keyring"]
+fn cloud_session_round_trip() {
+    // A real session is never touched.
+    if rustbot_secrets::cloud_session().unwrap().is_some() {
+        return;
+    }
+    rustbot_secrets::set_cloud_session("session").unwrap();
+    assert_eq!(
+        rustbot_secrets::cloud_session().unwrap().as_deref(),
+        Some("session")
+    );
+    rustbot_secrets::delete_cloud_session().unwrap();
+    assert_eq!(rustbot_secrets::cloud_session().unwrap(), None);
+    rustbot_secrets::delete_cloud_session().unwrap();
+}

@@ -148,10 +148,12 @@ async fn run(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Result<()
     let (lines_tx, lines) = mpsc::channel();
     // One token answers once: the hosted copy waits while this one runs (D-141).
     crate::host::pause(state, cx).await;
+    crate::publish::pause(state, cx).await;
     let bot = match Bot::start(&binary, &token, server.as_deref(), &lines_tx) {
         Ok(bot) => bot,
         Err(e) => {
             crate::host::resume(state, cx).await;
+            crate::publish::resume(state, cx).await;
             return Err(t_with("error-start", &[("error", &e.to_string())]));
         }
     };
@@ -163,6 +165,7 @@ async fn run(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Result<()
     });
     follow(state, cx, &lines).await;
     crate::host::resume(state, cx).await;
+    crate::publish::resume(state, cx).await;
     Ok(())
 }
 

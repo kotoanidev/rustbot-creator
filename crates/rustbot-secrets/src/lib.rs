@@ -53,3 +53,38 @@ pub fn delete_bot_token(project: Uuid) -> Result<(), Error> {
         Err(e) => Err(e.into()),
     }
 }
+
+fn cloud_session_entry() -> Result<keyring::Entry, Error> {
+    Ok(keyring::Entry::new(SERVICE, "cloud/session")?)
+}
+
+/// The RustBot Cloud session (D-160), or `None` when signed out.
+///
+/// # Errors
+/// The keyring could not be used.
+pub fn cloud_session() -> Result<Option<String>, Error> {
+    match cloud_session_entry()?.get_password() {
+        Ok(session) => Ok(Some(session)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Stores the RustBot Cloud session, replacing any stored one.
+///
+/// # Errors
+/// The keyring could not be used.
+pub fn set_cloud_session(session: &str) -> Result<(), Error> {
+    Ok(cloud_session_entry()?.set_password(session)?)
+}
+
+/// Forgets the RustBot Cloud session. Nothing stored is not an error.
+///
+/// # Errors
+/// The keyring could not be used.
+pub fn delete_cloud_session() -> Result<(), Error> {
+    match cloud_session_entry()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}

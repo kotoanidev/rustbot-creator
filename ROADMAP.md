@@ -126,8 +126,8 @@ layer, before the scope widens.
       the server, and the API in `docs/CLOUD_API.md`
 - [ ] The server in `kotoanidev/rustbot-cloud`: sign-in, deploys, builds, bots, logs,
       backups
-- [ ] The app's side: sign-in, "Publish" with the token's consent, the bot's state, logs
-      and backups
+- [x] The app's side: sign-in, "Publish" with the token's consent, the bot's state, logs
+      and backups (D-171–D-174)
 - [ ] The pilot on a VPS, by invitation (D-158); payments and invoicing after it
 
 ## Phase 4 — Advanced mode (D-015, D-030)

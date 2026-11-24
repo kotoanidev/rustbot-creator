@@ -4,6 +4,7 @@
 #![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
 mod canvas;
+mod cloud;
 mod discord;
 mod export;
 mod guide;
@@ -12,6 +13,7 @@ mod i18n;
 mod install;
 mod measure;
 mod panels;
+mod publish;
 mod run;
 mod settings;
 mod state;

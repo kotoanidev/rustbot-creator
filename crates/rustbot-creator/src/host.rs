@@ -222,7 +222,7 @@ fn hosted_dir(state: &AppState) -> Option<PathBuf> {
 /// A fingerprint of the generated code, to tell an out-of-date snapshot (D-140).
 // The std hasher may change with Rust; a new app then calls the snapshot out of date
 // once, which its new code generator may well make true.
-fn fingerprint(output: &rustbot_codegen::Output) -> String {
+pub(crate) fn fingerprint(output: &rustbot_codegen::Output) -> String {
     let mut hasher = DefaultHasher::new();
     output.files.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
@@ -312,6 +312,10 @@ pub(crate) fn host(state: Entity<AppState>, window: &mut Window, cx: &mut App) {
     let first = !state.read(cx).hosted.is_hosted();
     window
         .spawn(cx, async move |cx| {
+            // A bot runs in one place at a time (D-173).
+            if first && !crate::publish::leave_cloud(&state, cx).await {
+                return;
+            }
             let detail = t("host-confirm-detail");
             if first && !ask(cx, &t("host-confirm-title"), &detail, &t("host-confirm")).await {
                 return;
@@ -386,40 +390,55 @@ pub(crate) fn switch(state: &Entity<AppState>, on: bool, cx: &mut App) {
 
 /// "Remove…": the service and the snapshot go, and the memory stays.
 pub(crate) fn remove(state: Entity<AppState>, window: &mut Window, cx: &mut App) {
-    let Some((service, dir)) = (|| {
-        let state = state.read(cx);
-        Some((service_of(state)?, hosted_dir(state)?))
-    })() else {
+    if service_of(state.read(cx)).is_none() {
         return;
-    };
+    }
     window
         .spawn(cx, async move |cx| {
             let (title, detail) = (t("host-remove-title"), t("host-remove-detail"));
             if !ask(cx, &title, &detail, &t("host-remove")).await {
                 return;
             }
-            let result = cx
-                .background_spawn(async move {
-                    service.remove().map_err(|e| e.to_string())?;
-                    match fs::remove_dir_all(&dir) {
-                        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
-                        _ => Ok(()),
-                    }
-                })
-                .await;
+            let result = unhost(&state, cx).await;
             state.update(cx, |state, cx| {
                 match result {
                     Ok(()) => state.log(t("host-removed")),
-                    Err(e) => state.log_error(t_with("error-host", &[("error", &e)])),
+                    Err(e) => state.log_error(e),
                 }
-                state.hosted = Hosted {
-                    state: Some(State::Missing),
-                    ..Hosted::default()
-                };
                 cx.notify();
             });
         })
         .detach();
+}
+
+/// Removes hosting on this PC without asking: the service and the snapshot go, and the
+/// memory stays. Also before publishing to Cloud (D-173).
+pub(crate) async fn unhost(
+    state: &Entity<AppState>,
+    cx: &mut AsyncWindowContext,
+) -> Result<(), String> {
+    let Some((service, dir)) = state.read_with(cx, |state, _| {
+        Some((service_of(state)?, hosted_dir(state)?))
+    }) else {
+        return Ok(());
+    };
+    let result = cx
+        .background_spawn(async move {
+            service.remove().map_err(|e| e.to_string())?;
+            match fs::remove_dir_all(&dir) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+                _ => Ok(()),
+            }
+        })
+        .await;
+    state.update(cx, |state, cx| {
+        state.hosted = Hosted {
+            state: Some(State::Missing),
+            ..Hosted::default()
+        };
+        cx.notify();
+    });
+    result.map_err(|e| t_with("error-host", &[("error", &e)]))
 }
 
 /// Stops the hosted bot while Run tests this one (D-141).

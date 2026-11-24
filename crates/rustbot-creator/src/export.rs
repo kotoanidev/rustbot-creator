@@ -206,7 +206,10 @@ fn existing(target: &Path) -> io::Result<Existing> {
 
 /// The source export: `generated/` as the project's root, its `Cargo.lock` when there is
 /// one, a `.gitignore`, and the extras.
-fn source_files(project: &Project, output: rustbot_codegen::Output) -> BTreeMap<PathBuf, Vec<u8>> {
+pub(crate) fn source_files(
+    project: &Project,
+    output: rustbot_codegen::Output,
+) -> BTreeMap<PathBuf, Vec<u8>> {
     let mut files: BTreeMap<PathBuf, Vec<u8>> = output
         .files
         .into_iter()
