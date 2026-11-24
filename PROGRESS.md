@@ -309,10 +309,10 @@ Phase 12 (the RustBot Cloud pilot) is in progress (D-156–D-170). Its server li
 private `kotoanidev/rustbot-cloud` (D-157), cloned next to this repository as
 `../rustbot-cloud`. That repository's `PROGRESS.md` and `CLAUDE.md` say where it stands.
 Its decisions are numbered here, and the API is `docs/CLOUD_API.md` (D-163).
-- Done in the server: sign-in with Discord, bots and encrypted tokens, deploys and
-  builds, and the systemd sandbox with a CI job that builds and starts a real bot.
-- Next in the server: running bots through the API (start, stop, state, memory), then
-  logs and backups, then the VPS setup guide.
+- The server is done in code (D-166–D-170, C-039): sign-in with Discord, bots and
+  encrypted tokens, deploys and builds (a missing `Cargo.lock` is resolved by the
+  fetch), running bots, logs, backups, and the systemd sandbox with a CI job that builds
+  and starts a real bot. `docs/VPS.md` there is the owner's guide to put it online.
 - The app's side is done (D-171–D-174): `cloud.rs` (the API client: HTTPS only, except
   a local server; no pooled connections) and `publish.rs` (signing in through the
   browser with the session in the keyring, "Publish" with the token's consent, Start,

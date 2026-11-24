@@ -1535,6 +1535,40 @@ alternatives that were considered, and why.
   file where the user picks.
 - **Alternatives:** restore only.
 
+### D-175 — The user's code joins the bot as a `#[path]` module
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** `generated/src/main.rs` includes the project's `src/lib.rs` as the module
+  `user`, through `#[path]`. The bot still builds with plain cargo from the project
+  folder (D-040). The source export and Cloud send `src/` with `generated/`, in the same
+  layout.
+- **Alternatives:** `src/` as its own crate, a path dependency of `generated/`; a copy of
+  `src/` inside `generated/`.
+
+### D-176 — The "Custom code" node declares its function's signature
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The node's form names the function and its inputs (text, number, user,
+  channel… from the graph's variables), and an optional result that becomes a new
+  variable. It has "then" and "error" outputs. "Create function" writes a stub with the
+  matching signature into `src/`. The compiler checks the rest, so the app needs no Rust
+  parser.
+- **Alternatives:** the app reads the functions from `src/`, which needs `syn` or a
+  running rust-analyzer.
+
+### D-177 — The code editor highlights with tree-sitter
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The editor is gpui-kit's `Editor`. It highlights Rust and TOML through
+  gpui-kit's `tree-sitter-rust` and `tree-sitter-toml` features, which add tree-sitter
+  (compiled from C when the app builds).
+- **Alternatives:** gpui-kit's `syntect` feature; no highlighting at first.
+
+### D-178 — rust-analyzer talks to the app's own LSP client
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The app has its own JSON-RPC client over stdio, typed with `lsp-types`,
+  which gpui-kit already builds, so it adds nothing. It covers diagnostics, completion,
+  hover and go to definition. rust-analyzer (D-030) is installed when the user first
+  opens a code file, after asking.
+- **Alternatives:** no LSP at first, only `cargo check` errors in Problems.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
