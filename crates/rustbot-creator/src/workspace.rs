@@ -447,7 +447,20 @@ fn run_controls(state: &Entity<AppState>, cx: &mut Context<'_, Workspace>) -> im
             (Some(button), t("status-running"))
         }
     };
-    h_flex().gap(px(8.)).children(button).child(label)
+    // Export builds too, so it waits while the bot runs or builds (D-137).
+    let export = matches!(state.read(cx).run, Run::Stopped).then(|| {
+        let state = state.clone();
+        Button::new("export")
+            .ghost()
+            .xsmall()
+            .label(t("export"))
+            .on_click(move |_, window, cx| crate::export::start(state.clone(), window, cx))
+    });
+    h_flex()
+        .gap(px(8.))
+        .children(button)
+        .children(export)
+        .child(label)
 }
 
 #[cfg(test)]
@@ -586,6 +599,23 @@ mod tests {
             window.click("guide-done", cx);
         });
         cx.read(|cx| assert!(workspace.read(cx).guide.is_none()));
+    }
+
+    /// The license picked in the bot settings is written to `project.toml` (D-136).
+    #[gpui_kit::test]
+    fn the_license_is_saved(cx: &mut gpui_kit::TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("bot");
+        super::new_project(&root).unwrap();
+        cx.update(gpui_kit::init);
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| super::Workspace::new(Some(root.clone()), window, cx));
+        workspace.update(cx, |workspace, cx| {
+            let (state, _) = workspace.open.as_ref().unwrap();
+            state.update(cx, |state, cx| state.set_license("MIT-0", cx));
+        });
+        let manifest = std::fs::read_to_string(root.join("project.toml")).unwrap();
+        assert!(manifest.contains("license = \"MIT-0\""), "{manifest}");
     }
 
     #[test]

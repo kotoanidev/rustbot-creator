@@ -1792,6 +1792,36 @@ alternatives that were considered, and why.
     permissions. It never asks for Administrator.
   - **Where it shows:** over the window, like the wizard, with "Finish" to go back. After
     the wizard's "Choose a template", it opens as soon as the project is made.
+
+### C-034 — How export works
+- **Date:** 2026-11-24
+- **Choice:**
+  - **The steps:** "Export…" asks for the source code or a ready build, then for a new
+    folder in a save dialog. The suggested name is `<package>` for the source and
+    `<package>-linux-<arch>` for the build.
+  - **The source:** it is `generated/` as the folder's root, plus `Cargo.lock` when the
+    project has one, so the versions the bot was tried with stay the same. Only a plain
+    `Cargo.lock` file is copied, never a link. It also gets `.gitignore` (`target/`,
+    `.env`), `.env.example`, `README.md` and the license. Before writing, it saves the
+    graphs, checks them for problems and writes `generated/`. It builds nothing, so it does
+    not ask for trust (D-064).
+  - **The build:** it does Run's steps (trust, installing with consent, `generated/`), but
+    with `cargo build --release` through `Toolchain::build_release`. The folder gets the
+    program, `.env.example`, `README.md` and the license. While an export works, the
+    status bar shows it in place of Run, so a run and an export never build at once.
+  - **Files:** the README and `.env.example` are in English, like the generated code. The
+    license texts ship in `crates/rustbot-creator/licenses/`:
+    - MIT and Apache-2.0 from this repository;
+    - GPL-3.0 from Fedora's copy of the FSF text;
+    - MIT-0 from the SPDX text.
+    MIT and MIT-0 name "The authors of <bot name>" as the copyright holder, without a
+    year. "MIT OR Apache-2.0" writes `LICENSE-MIT` and `LICENSE-APACHE`. "GPL-3.0" is
+    stored as the SPDX `GPL-3.0-or-later`, the FSF's usual wording. A license typed into
+    `project.toml` by hand stays on offer in the list, without a text in the export.
+  - **Replacing:** each export holds a `.rustbot-export` marker. An existing folder is
+    used only when it is empty, or when it holds an earlier export and the user agrees to
+    replace it. Anything else is refused and never touched. The export is written next to
+    the target first, then renamed into its place.
 ---
 
 ## Open questions (to ask the owner when relevant)

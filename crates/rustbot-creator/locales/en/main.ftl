@@ -462,6 +462,25 @@ guide-no-servers = The bot is on no server yet. Invite it, then list the servers
 guide-server-ok = ✓ The test server is { $name }.
 guide-server-hint = You can also type the server's ID in the bot settings.
 
+# Export (D-134-D-137)
+export = Export…
+export-busy = Exporting…
+export-title = Export the bot
+export-detail = The source code is a Rust project that builds without RustBot Creator. A ready build is the bot's program for this system, to run on its own.
+export-source = Source code
+export-build = Ready build
+export-building = Building the release version…
+export-writing = Writing the export…
+export-done = Exported to { $path }.
+export-replace-title = Replace the earlier export?
+export-replace-detail = { $path } holds an earlier export of a bot. It will be replaced, with any changes made in it.
+export-replace = Replace
+export-cancelled = Export cancelled.
+error-export = Export failed: { $error }
+error-export-exists = { $path } already exists and is not an export. Choose a new folder.
+bot-license = License
+license-none = None
+
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Choose a template
 template-fill-hint = After it is made, Problems lists the channels and roles to fill in.

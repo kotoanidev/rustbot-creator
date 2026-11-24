@@ -72,7 +72,7 @@ pub(crate) fn stop(state: &Entity<AppState>, cx: &mut App) {
     .detach();
 }
 
-fn busy(state: &Entity<AppState>, cx: &mut AsyncWindowContext, text: &str) {
+pub(crate) fn busy(state: &Entity<AppState>, cx: &mut AsyncWindowContext, text: &str) {
     state.update(cx, |state, cx| {
         state.log(text.to_owned());
         state.run = Run::Busy(text.to_owned());
@@ -81,7 +81,7 @@ fn busy(state: &Entity<AppState>, cx: &mut AsyncWindowContext, text: &str) {
 }
 
 /// Install and build progress, into the status bar and the Logs panel.
-fn report(state: &Entity<AppState>) -> impl Fn(&mut AsyncWindowContext, Progress) + '_ {
+pub(crate) fn report(state: &Entity<AppState>) -> impl Fn(&mut AsyncWindowContext, Progress) + '_ {
     move |cx, progress| match progress {
         Progress::Step(text) => busy(state, cx, &text),
         Progress::Lines(lines) => state.update(cx, |state, cx| {
@@ -97,15 +97,7 @@ async fn run(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Result<()
     let (project, toolchain) = check(state, cx).await?;
     let report = report(state);
     install(cx, &toolchain, &report).await?;
-
-    busy(state, cx, &t("run-generating"));
-    state
-        .update(cx, |state, _| {
-            let output = rustbot_codegen::generate(&state.project, &state.registry)
-                .map_err(|e| e.to_string())?;
-            rustbot_codegen::write(&state.project, &output).map_err(|e| e.to_string())
-        })
-        .map_err(|e: String| t_with("error-codegen", &[("error", &e)]))?;
+    generate(state, cx)?;
 
     busy(state, cx, &t("run-building"));
     let (builder, built) = (toolchain.clone(), project.clone());
@@ -136,14 +128,29 @@ async fn run(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Result<()
     Ok(())
 }
 
-/// Saves, checks for problems, and asks before building a project from elsewhere
-/// (D-064).
-async fn check(
+/// Writes `generated/` from the graphs, and returns what was written.
+pub(crate) fn generate(
     state: &Entity<AppState>,
     cx: &mut AsyncWindowContext,
-) -> Result<(rustbot_core::Project, rustbot_toolchain::Toolchain), String> {
+) -> Result<rustbot_codegen::Output, String> {
+    busy(state, cx, &t("run-generating"));
+    state
+        .update(cx, |state, _| {
+            let output = rustbot_codegen::generate(&state.project, &state.registry)
+                .map_err(|e| e.to_string())?;
+            rustbot_codegen::write(&state.project, &output).map_err(|e| e.to_string())?;
+            Ok(output)
+        })
+        .map_err(|e: String| t_with("error-codegen", &[("error", &e)]))
+}
+
+/// Saves and checks for problems.
+pub(crate) fn checked(
+    state: &Entity<AppState>,
+    cx: &mut AsyncWindowContext,
+) -> Result<rustbot_core::Project, String> {
     busy(state, cx, &t("run-checking"));
-    let (project, problems, toolchain) = state.update(cx, |state, _| {
+    let (project, problems) = state.update(cx, |state, _| {
         state.save_now();
         let problems = state
             .project
@@ -151,12 +158,23 @@ async fn check(
             .iter()
             .map(|file| state.registry.validate(&file.graph).len())
             .sum::<usize>();
-        (state.project.clone(), problems, state.toolchain.clone())
+        (state.project.clone(), problems)
     });
     if problems > 0 {
         return Err(t("run-has-problems"));
     }
-    let toolchain = toolchain.ok_or_else(|| t("error-no-home"))?;
+    Ok(project)
+}
+
+/// [`checked`], then asks before building a project from elsewhere (D-064).
+pub(crate) async fn check(
+    state: &Entity<AppState>,
+    cx: &mut AsyncWindowContext,
+) -> Result<(rustbot_core::Project, rustbot_toolchain::Toolchain), String> {
+    let project = checked(state, cx)?;
+    let toolchain = state
+        .read_with(cx, |state, _| state.toolchain.clone())
+        .ok_or_else(|| t("error-no-home"))?;
     if !trust::is_trusted(toolchain.data_dir(), &project.root) {
         let own = project
             .files_under(std::path::Path::new("src"), &[])

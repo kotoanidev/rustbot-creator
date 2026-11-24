@@ -328,7 +328,7 @@ impl AppState {
             scope: MemoryScope::Member,
             initial: String::new(),
         });
-        self.memory_changed(cx);
+        self.manifest_changed(cx);
     }
 
     /// Renames memory variable `ix` to `name`, in every node and template too (D-109).
@@ -369,7 +369,7 @@ impl AppState {
         }
         name.clone_into(&mut self.project.manifest.memory[ix].name);
         self.save_now();
-        self.memory_changed(cx);
+        self.manifest_changed(cx);
     }
 
     /// Changes memory variable `ix`.
@@ -381,7 +381,7 @@ impl AppState {
     ) {
         if let Some(var) = self.project.manifest.memory.get_mut(ix) {
             change(var);
-            self.memory_changed(cx);
+            self.manifest_changed(cx);
         }
     }
 
@@ -392,12 +392,18 @@ impl AppState {
             return;
         }
         self.project.manifest.memory.remove(ix);
-        self.memory_changed(cx);
+        self.manifest_changed(cx);
     }
 
-    /// Checks graphs against the new memory and writes `project.toml`.
-    // shortcut: memory changes have no undo, unlike graphs; add it if people ask.
-    fn memory_changed(&mut self, cx: &mut Context<'_, Self>) {
+    /// Sets the bot's license (D-136) and writes `project.toml`.
+    pub(crate) fn set_license(&mut self, license: &str, cx: &mut Context<'_, Self>) {
+        license.clone_into(&mut self.project.manifest.bot.license);
+        self.manifest_changed(cx);
+    }
+
+    /// Checks graphs against the memory and writes `project.toml`.
+    // shortcut: memory and license changes have no undo, unlike graphs; add it if people ask.
+    fn manifest_changed(&mut self, cx: &mut Context<'_, Self>) {
         self.registry
             .set_memory(self.project.manifest.memory.clone());
         if let Err(e) = self.project.save_manifest() {

@@ -462,6 +462,25 @@ guide-no-servers = Bot nie jest jeszcze na żadnym serwerze. Zaproś go i wyświ
 guide-server-ok = ✓ Serwer testowy to { $name }.
 guide-server-hint = ID serwera możesz też wpisać w ustawieniach bota.
 
+# Export (D-134-D-137)
+export = Eksport…
+export-busy = Eksportuję…
+export-title = Eksport bota
+export-detail = Kod źródłowy to projekt Rusta, który buduje się bez RustBot Creator. Gotowy build to program bota dla tego systemu, do uruchomienia samodzielnie.
+export-source = Kod źródłowy
+export-build = Gotowy build
+export-building = Buduję wersję wydania…
+export-writing = Zapisuję eksport…
+export-done = Wyeksportowano do { $path }.
+export-replace-title = Zastąpić wcześniejszy eksport?
+export-replace-detail = W { $path } jest wcześniejszy eksport bota. Zostanie zastąpiony razem ze wszystkimi zmianami w nim.
+export-replace = Zastąp
+export-cancelled = Eksport anulowany.
+error-export = Eksport nie powiódł się: { $error }
+error-export-exists = { $path } już istnieje i nie jest eksportem. Wybierz nowy folder.
+bot-license = Licencja
+license-none = Brak
+
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Wybierz szablon
 template-fill-hint = Po utworzeniu panel Problemy pokaże kanały i role do uzupełnienia.

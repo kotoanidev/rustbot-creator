@@ -157,7 +157,8 @@ struct BotForm {
     /// What the form last found or did, e.g. "a token is saved"; `true` for an error.
     token_status: (String, bool),
     server_status: Option<(String, bool)>,
-    _changes: [Subscription; 2],
+    license: Entity<SelectState<Vec<SharedString>>>,
+    _changes: [Subscription; 3],
 }
 
 impl Properties {
@@ -1668,6 +1669,30 @@ impl Properties {
             .and_then(|dir| rustbot_runner::test_server(&dir).ok().flatten())
             .unwrap_or_default();
         let project = state.project.manifest.id;
+        // A license typed into project.toml by hand stays on offer (D-136).
+        let current = state.project.manifest.bot.license.clone();
+        let mut licenses: Vec<&str> = crate::export::LICENSES.to_vec();
+        if !licenses.contains(&current.as_str()) {
+            licenses.push(&current);
+        }
+        let license_at = licenses
+            .iter()
+            .position(|l| *l == current)
+            .map(IndexPath::new);
+        let licenses: Vec<SharedString> = licenses.into_iter().map(license_name).collect();
+        let license = cx.new(|cx| SelectState::new(licenses, license_at, window, cx));
+        let license_changes = cx.subscribe(&license, |this, _, event, cx| {
+            let SelectEvent::Confirm(Some(label)) = event else {
+                return;
+            };
+            let license = if *label == license_name("") {
+                ""
+            } else {
+                label.as_ref()
+            };
+            this.state
+                .update(cx, |state, cx| state.set_license(license, cx));
+        });
         let server = cx.new(|cx| InputState::new(window, cx).default_value(server_id));
         let token_changes = cx.subscribe_in(&token, window, |this, _, event, window, cx| {
             if let InputEvent::PressEnter { .. } = event {
@@ -1696,7 +1721,8 @@ impl Properties {
             server,
             token_status: (t("bot-token-checking"), false),
             server_status: None,
-            _changes: [token_changes, server_changes],
+            license,
+            _changes: [token_changes, server_changes, license_changes],
         }
     }
 
@@ -1782,6 +1808,17 @@ impl Properties {
             .child(Input::new(&bot.server))
             .child(status((t("bot-test-server-hint"), false)))
             .children(bot.server_status.clone().map(status))
+            .child(label(t("bot-license")))
+            .child(Select::new(&bot.license).small())
+    }
+}
+
+/// A license as the bot settings show it: its SPDX expression, or "None".
+fn license_name(license: &str) -> SharedString {
+    if license.is_empty() {
+        t("license-none").into()
+    } else {
+        SharedString::from(license.to_owned())
     }
 }
 

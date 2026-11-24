@@ -9,9 +9,12 @@
 D-046). Later phases are planned in detail when each one starts (D-043).
 **Phase 2 — Vertical slice: ✅ done 2026-11-23.** The owner ran `/ping` live on a test server.
 **Phase 3 — Easy mode: ✅ done in code 2026-11-23; the owner's live test is pending.**
-**Next: phase 5, first run + themes.** The phase order changed after phase 3 to follow the
-incubation timeline (D-123–D-125): 5 → 6 → 7 → a public Linux release → Windows →
-RustBot Cloud pilot → 4 → 8 → 9. The README describes the pre-alpha honestly now.
+**Phase 5 — First run + themes: ✅ done in code 2026-11-24.**
+**Phase 6 — Export: ✅ done in code 2026-11-24.**
+**Next: phase 7, hosting on the PC (D-022).** The phase order changed after phase 3 to
+follow the incubation timeline (D-123–D-125): 5 → 6 → 7 → a public Linux release →
+Windows → RustBot Cloud pilot → 4 → 8 → 9. The README describes the pre-alpha honestly
+now.
 
 Phase 3 was planned 2026-11-23 (D-073–D-075). Step 1, the console (D-075, C-014), is ✅ done: lines select and copy with Ctrl+C, errors are red and warnings yellow, build output is muted, and "Clear" sits in the panel's toolbar. Step 1 (workspace skeleton + CI) is ✅ done.
 The six crates of D-036 and the lints of D-046 are in place, and `cargo run -p
@@ -245,6 +248,15 @@ code, and with it phase 5:
 - It has not talked to the real Discord yet: that needs the owner's token, which only the
   owner types.
 
+Phase 6 (export, D-134–D-137, C-034) is ✅ done in code:
+- "Export…" on the status bar writes the source code as a standalone Cargo project, or a
+  ready build made with `cargo build --release`, to a new folder.
+- Both come with a README, `.env.example` and the license the bot settings now offer
+  (D-136).
+- An earlier export is replaced only after asking; any other folder is never touched.
+- The ready build has not been made live yet. It needs the private Rust, which the app
+  installs.
+
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
    the channel filled in, or "Levels") and the new nodes (e.g. a private ticket channel)
@@ -253,9 +265,12 @@ code, and with it phase 5:
    Discord, idle and on a few servers, and how many fit in 4 GB. Record it in
    `docs/PERFORMANCE.md`, and tell the owner if it is far from about 7 MB per idle bot.
    The owner starts the bot in the app; measuring its process needs no token.
-3. The owner tries phase 5 live: Settings (language, theme, font size), the wizard (it
-   appears once on a start without a project), and the guide with a real bot. Then plan
-   phase 6, export (D-123, D-043), with the owner.
+3. The owner tries phases 5 and 6 live:
+   - Settings (language, theme, font size);
+   - the wizard, which appears once on a start without a project;
+   - the guide with a real bot;
+   - both exports, and running the ready build from its folder with a `.env`.
+   Then plan phase 7, hosting on the PC (D-022, D-043), with the owner.
 4. The README still needs a screenshot labelled pre-alpha. Take it only of the app's own
    window: `spectacle -a` once caught another window when the app was not focused.
 

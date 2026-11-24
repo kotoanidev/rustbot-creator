@@ -79,12 +79,12 @@ layer, before the scope widens.
       and the test server picked from the bot's servers. It follows the first project in
       the wizard and is in the bot settings (D-129, D-131–D-133, C-033)
 
-## Phase 6 — Export (D-023, D-134–D-137)
-- [ ] The bot's license in the bot settings, from a short list (D-136)
-- [ ] Source code: a standalone Cargo project with a README, `.env.example` and the
+## Phase 6 — Export (D-023, D-134–D-137, C-034) ✅
+- [x] The bot's license in the bot settings, from a short list (D-136)
+- [x] Source code: a standalone Cargo project with a README, `.env.example` and the
       license (D-134)
-- [ ] Ready build: the release program, `.env.example` and a README (D-135)
-- [ ] "Export…" on the status bar, progress in the Logs panel (D-137)
+- [x] Ready build: the release program, `.env.example` and a README (D-135)
+- [x] "Export…" on the status bar, progress in the Logs panel (D-137)
 
 ## Phase 7 — Hosting on the PC (D-022)
 - [ ] `systemd --user` service with autostart and restarts; status and logs in the app

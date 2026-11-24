@@ -196,6 +196,37 @@ impl Toolchain {
     /// # Errors
     /// [`Error::NotInstalled`], a failed build, or an I/O error.
     pub fn build(&self, project: &Project, log: &mut dyn FnMut(&str)) -> Result<PathBuf, Error> {
+        let built = self.cargo_build(project, false, log)?;
+        let package = &project.manifest.bot.package;
+        let dir = self.bot_dir(project);
+        fs::create_dir_all(&dir).map_err(|e| io_error(&dir, e))?;
+        let bot = dir.join(package);
+        // Copy, then rename: a bot that is running keeps its old file.
+        let tmp = dir.join(format!(".{package}.tmp"));
+        fs::copy(&built, &tmp).map_err(|e| io_error(&built, e))?;
+        fs::rename(&tmp, &bot).map_err(|e| io_error(&bot, e))?;
+        Ok(bot)
+    }
+
+    /// Builds the project's `generated/` bot in release mode, for an export (D-135), and
+    /// returns the binary's path in the shared target folder.
+    ///
+    /// # Errors
+    /// As [`Toolchain::build`].
+    pub fn build_release(
+        &self,
+        project: &Project,
+        log: &mut dyn FnMut(&str),
+    ) -> Result<PathBuf, Error> {
+        self.cargo_build(project, true, log)
+    }
+
+    fn cargo_build(
+        &self,
+        project: &Project,
+        release: bool,
+        log: &mut dyn FnMut(&str),
+    ) -> Result<PathBuf, Error> {
         if !self.is_installed() {
             return Err(Error::NotInstalled);
         }
@@ -206,23 +237,21 @@ impl Toolchain {
         fs::create_dir_all(&self.cache).map_err(|e| io_error(&self.cache, e))?;
         let manifest = project.root.join("generated").join("Cargo.toml");
         let mut cargo = self.command("cargo");
+        cargo.args(["build", "--color", "never"]);
+        if release {
+            cargo.arg("--release");
+        }
         cargo
-            .args(["build", "--color", "never", "--manifest-path"])
+            .arg("--manifest-path")
             .arg(&manifest)
             .current_dir(&self.cache)
             .env("CARGO_TARGET_DIR", self.target_dir());
         run(cargo, log)?;
-
-        let package = &project.manifest.bot.package;
-        let built = self.target_dir().join("debug").join(package);
-        let dir = self.bot_dir(project);
-        fs::create_dir_all(&dir).map_err(|e| io_error(&dir, e))?;
-        let bot = dir.join(package);
-        // Copy, then rename: a bot that is running keeps its old file.
-        let tmp = dir.join(format!(".{package}.tmp"));
-        fs::copy(&built, &tmp).map_err(|e| io_error(&built, e))?;
-        fs::rename(&tmp, &bot).map_err(|e| io_error(&bot, e))?;
-        Ok(bot)
+        let profile = if release { "release" } else { "debug" };
+        Ok(self
+            .target_dir()
+            .join(profile)
+            .join(&project.manifest.bot.package))
     }
 
     /// A rustup or cargo command of this toolchain. `RUSTUP_TOOLCHAIN` outranks every

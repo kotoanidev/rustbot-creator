@@ -2,6 +2,7 @@
 
 mod canvas;
 mod discord;
+mod export;
 mod guide;
 mod i18n;
 mod install;

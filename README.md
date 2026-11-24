@@ -31,13 +31,17 @@ top of [djs-rs](https://github.com/kotoanidev/djs-rs).
   `generated/` folder. The first build installs a private Rust toolchain for your bots, in
   the app's data folder. The bot token is kept in the system keyring, and the bot runs with
   its logs in the app.
+- **A first-run wizard and a Discord guide.** It sets the language and look, installs the
+  tools after asking, and walks through the Developer Portal: the token, the intents, the
+  invite and the test server, each checked.
+- **Themes.** Light, dark and any gpui-component theme dropped into the themes folder.
+- **Export.** The bot as a standalone Rust project, or as a ready program, with a README,
+  `.env.example` and the license you pick.
 - **English and Polish.** Fully local: no account and no telemetry.
 
 ## Coming next
 
-A first-run wizard that also guides you through the Discord Developer Portal, light and
-dark themes, exporting the bot as source code or a ready build, hosting it on your PC, and
-a public release for Fedora and Ubuntu, then Windows. After that come an advanced mode
+Hosting the bot on your PC, and a public release for Fedora and Ubuntu, then Windows. After that come an advanced mode
 with a code editor, and GitHub and Cloudflare integrations. The plan is in
 [`ROADMAP.md`](ROADMAP.md).
 
