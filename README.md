@@ -37,13 +37,15 @@ top of [djs-rs](https://github.com/kotoanidev/djs-rs).
 - **Themes.** Light, dark and any gpui-component theme dropped into the themes folder.
 - **Export.** The bot as a standalone Rust project, or as a ready program, with a README,
   `.env.example` and the license you pick.
-- **Hosting on your PC.** The bot runs in the background from every login as a
-  `systemd --user` service, with its state and logs in the app.
+- **Hosting on your PC.** The bot runs in the background from every login, as a
+  `systemd --user` service on Linux or a Task Scheduler task on Windows, with its state
+  and logs in the app.
 - **English and Polish.** Fully local: no account and no telemetry.
 
 ## Coming next
 
-A public release for Fedora and Ubuntu, then Windows. After that come an advanced mode
+A public release for Fedora, Ubuntu and Windows; Windows support is new and not yet
+tested on a real PC. After that come an advanced mode
 with a code editor, and GitHub and Cloudflare integrations. The plan is in
 [`ROADMAP.md`](ROADMAP.md).
 
@@ -57,6 +59,9 @@ cd rustbot-creator
 pkexec scripts/install-build-deps.sh   # once: the system libraries of the UI (dnf or apt)
 cargo run --release -p rustbot-creator
 ```
+
+On Windows 10 or 11, Rust from rustup needs the Visual Studio Build Tools with the C++
+workload; then run the same commands without the `pkexec` line.
 
 To run a bot, you need a Discord application and its bot token from the
 [Discord Developer Portal](https://discord.com/developers/applications).

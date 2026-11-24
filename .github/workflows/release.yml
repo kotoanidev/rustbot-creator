@@ -99,7 +99,6 @@ jobs:
     env:
       # Git Bash would turn the installer compiler's "/D..." options into paths.
       MSYS_NO_PATHCONV: "1"
-      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v7
       - name: Check the version
@@ -115,7 +114,7 @@ jobs:
         run: |
           cargo metadata --format-version 1 --locked \
             --filter-platform x86_64-pc-windows-msvc \
-            | python -I packaging/third-party-licenses.py > THIRD-PARTY-LICENSES.txt
+            | python -I -X utf8 packaging/third-party-licenses.py > THIRD-PARTY-LICENSES.txt
       - name: Build the installer
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
