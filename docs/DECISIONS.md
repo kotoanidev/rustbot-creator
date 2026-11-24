@@ -1218,6 +1218,56 @@ alternatives that were considered, and why.
   build, then for the folder. Its progress goes to the Logs panel, like a build.
 - **Alternatives:** an "Export" item in the project tree's context menu.
 
+### D-138 — The hosted bot gets its token from the keyring through the app's launcher
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The `systemd --user` service of a hosted bot (D-022) runs
+  `rustbot-creator --host <project id>` without a window. This launcher reads the token
+  from the keyring and starts the bot, so the token never reaches the disk (D-020,
+  D-056). Windows will do the same through Credential Manager. It needs a logged-in
+  session, which is when the keyring is unlocked.
+- **Alternatives:** the token encrypted with `systemd-creds --user` (systemd 256+, so not
+  Ubuntu 24.04, and something else on Windows); a `.env` file with mode 0600 (the token
+  on disk).
+
+### D-139 — A hosted bot starts at login
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The hosted bot starts with the user's session and keeps running when the
+  app is closed. It stops when the user logs out.
+- **Alternatives:** from boot with `loginctl enable-linger`, which would need the token
+  outside the keyring.
+
+### D-140 — The hosted bot is a snapshot, changed only by "Update"
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** "Host on this PC" builds the bot in release mode and copies it into the
+  app's data folder. Changes to the graphs reach the hosted bot only through "Update".
+  The app shows when the hosted version is older than the graphs.
+- **Alternatives:** every successful Run also replaces the hosted bot.
+
+### D-141 — Run pauses the hosted bot while testing
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** Two copies with one token would answer twice, so Run stops the hosted
+  bot's service, and Stop starts it again. The status bar shows that the hosted bot is
+  paused.
+- **Alternatives:** Run refused while the bot is hosted; both copies allowed, with a
+  warning.
+
+### D-142 — Hosting is on the status bar and in the bot settings
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** "Host…" sits next to Export on the status bar, which also shows the hosted
+  bot's state: running, paused, failed or out of date. The bot settings get a "Hosting on
+  this PC" section with Update, Stop/Start and Remove.
+- **Alternatives:** a separate "Hosting" panel listing the hosted bots of all projects.
+
+### D-143 — Hosted logs come from journald, and the memory is shared
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The service logs to the systemd journal. The app follows it with
+  `journalctl --user -u <service> -f` into the Logs panel, including what happened while
+  the app was closed. Windows will need a log file. The hosted bot and Run use one
+  `data.json` (D-105) in the bot's folder in the app's data. They never run at once
+  (D-141).
+- **Alternatives:** a rotated log file written by the launcher, the same on Linux and
+  Windows; separate memory for the hosted bot.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
