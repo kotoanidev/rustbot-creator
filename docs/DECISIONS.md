@@ -1188,6 +1188,36 @@ alternatives that were considered, and why.
   selected) opens the same guide for any project, including ones made later.
 - **Alternatives:** the guide only in the wizard.
 
+### D-134 — The source export is a standalone Cargo project in a folder
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** Export writes the bot as a standalone Rust project to a folder the user
+  picks: the generated code (and the user's own code once D-015's custom code node
+  exists), a README on building and running it, `.env.example` and the license file.
+  No new dependency.
+- **Alternatives:** a `.zip` archive (a new dependency); a `.tar.gz` made with the
+  system's `tar` (awkward on Windows).
+
+### D-135 — The ready build is the program, `.env.example` and a README
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The ready build is a folder with the bot's program built in release mode
+  for this system, `.env.example` (the token, and no test server, so the commands are
+  global, D-055) and a short README, plus the license file.
+- **Alternatives:** also an example systemd `.service` file for a Linux server; running
+  on the PC comes in phase 7 anyway.
+
+### D-136 — The bot's license is picked in the bot settings from a short list
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The bot settings offer: none (the default), MIT, Apache-2.0,
+  MIT OR Apache-2.0, MIT-0 and GPL-3.0. The export adds the full license text, which the
+  app ships.
+- **Alternatives:** asking when a project is made; any SPDX expression in a text field.
+
+### D-137 — Export is a status bar button
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** "Export…" next to Run asks whether to export the source code or a ready
+  build, then for the folder. Its progress goes to the Logs panel, like a build.
+- **Alternatives:** an "Export" item in the project tree's context menu.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
