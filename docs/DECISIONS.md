@@ -1454,6 +1454,30 @@ alternatives that were considered, and why.
   configuration.
 - **Alternatives:** 3 bots, 128 MB and 5 MB; 5 bots, 128 MB and 5 MB.
 
+### D-166 — The Cloud server's dependency set
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** Approved as a set for `kotoanidev/rustbot-cloud`:
+  - `axum` 0.8 and `tokio` 1 (D-162);
+  - `rusqlite` 0.43 with `bundled`, so SQLite is built into the program; it is called
+    through `spawn_blocking`;
+  - `ureq` 3, for the OAuth exchange with Discord;
+  - `chacha20poly1305` 0.11, which encrypts the bot tokens, and `getrandom` 0.4, for
+    keys, sessions and nonces;
+  - `sha2` 0.11, since the database keeps only hashes of sessions;
+  - as in the app: `serde`, `serde_json`, `toml`, `uuid`, `thiserror`, `anyhow`,
+    `tracing` and `tracing-subscriber`;
+  - dev-only: `tempfile`.
+  Any other dependency still needs approval.
+- **Alternatives:** `sqlx` and `reqwest` in place of `rusqlite` and `ureq`; approving each
+  dependency separately.
+
+### D-167 — Caddy serves Cloud over HTTPS
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** On the VPS, Caddy from the system's repository stands in front of the
+  server and gets and renews Let's Encrypt certificates itself. The Rust server listens
+  only on localhost and has no TLS code.
+- **Alternatives:** nginx and certbot; TLS and ACME in the server itself.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
