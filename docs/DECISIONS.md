@@ -1392,6 +1392,68 @@ alternatives that were considered, and why.
   invoices); Cloudflare Containers, a container per bot, with a lower margin on small
   bots.
 
+### D-159 — "Publish" sends the sources, and Cloud builds them
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** "Publish" sends the project as the source export does: the generated
+  crate and the user's own code. The Cloud server builds it for Linux in a sandbox, with
+  its own Rust and djs-rs versions. Publishing works the same from Linux and Windows.
+- **Alternatives:** the app builds a Linux program and uploads it, which on Windows needs
+  cross-compiling, so at first only from Linux.
+
+### D-160 — Cloud accounts sign in with Discord
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** A RustBot Cloud account is a Discord account. The app opens the browser,
+  Discord confirms the user to the Cloud server, and the app gets its session from the
+  server. The OAuth client secret lives only on the server, and RustBot keeps no
+  passwords. The session is kept in the OS keyring (D-020).
+- **Alternatives:** an e-mail link; GitHub.
+
+### D-161 — The app sends the bot token to Cloud with consent
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** On the first publish, the app asks for consent, then sends the bot's token
+  from the keyring over TLS. Cloud keeps it encrypted, with the key apart from the
+  database, and never shows it. The user can replace or delete it. This is the only way
+  a token leaves the PC (amends D-020 for Cloud).
+- **Alternatives:** the user pastes the token on a Cloud web page, and the app never sends
+  it.
+
+### D-162 — The Cloud server is Rust with SQLite, and bots are systemd units
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The server is one Rust program (axum, tokio, SQLite) in the private
+  repository (D-157). Each bot is a systemd unit with `DynamicUser`, memory and CPU
+  limits, a system call filter and a read-only file system. Builds run in the same
+  kind of sandbox.
+- **Alternatives:** the same server with rootless Podman containers; PostgreSQL and
+  Firecracker microVMs.
+
+### D-163 — The Cloud API of `docs/CLOUD_API.md`
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The app and Cloud speak the HTTP API in `docs/CLOUD_API.md`, version
+  `/v1`:
+  - a browser sign-in the app polls for, with no local listener;
+  - a deploy as JSON with the source files as text, so no archive dependency;
+  - logs polled every 2 s;
+  - daily `data.json` backups, 7 kept;
+  - error codes the app translates.
+  Changes to it are decisions too.
+- **Alternatives:** logs over a WebSocket, a new dependency; deploys as `tar.gz`, needing
+  `tar` and `flate2`.
+
+### D-164 — Claude creates the private `kotoanidev/rustbot-cloud`
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** Claude creates the private repository `kotoanidev/rustbot-cloud` with
+  `gh` and builds the server there. It works the same way as here: on `main`, a commit
+  and a push after each unit of work, English, and decisions asked of the owner.
+- **Alternatives:** the owner creates it; until then, only the app's side, tested against
+  a test server.
+
+### D-165 — Pilot limits: 1 bot, 64 MB, 2 MB of sources per tester
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** In the free pilot, each tester has 1 bot with at most 64 MB of memory and
+  2 MB of sources, like the future Start plan. The limits are in the server's
+  configuration.
+- **Alternatives:** 3 bots, 128 MB and 5 MB; 5 bots, 128 MB and 5 MB.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

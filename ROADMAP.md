@@ -121,9 +121,14 @@ layer, before the scope widens.
       unsigned in pre-alpha (D-153). The installer job waits for its first run.
 
 ## Phase 12 — RustBot Cloud pilot (D-125)
-- [ ] "Publish" deploys the bot to the company's hosting, with monitoring, restarts,
-      memory backups and online logs. The account lives only here. Its architecture,
-      payments and invoicing are still open questions.
+- [x] Architecture (D-156–D-165): a private `rustbot-cloud` repository, a VPS, Rust with
+      SQLite, bots as sandboxed systemd units, sign-in with Discord, sources built on
+      the server, and the API in `docs/CLOUD_API.md`
+- [ ] The server in `kotoanidev/rustbot-cloud`: sign-in, deploys, builds, bots, logs,
+      backups
+- [ ] The app's side: sign-in, "Publish" with the token's consent, the bot's state, logs
+      and backups
+- [ ] The pilot on a VPS, by invitation (D-158); payments and invoicing after it
 
 ## Phase 4 — Advanced mode (D-015, D-030)
 - [ ] gpui-kit code editor for the user's own modules in `src/`
