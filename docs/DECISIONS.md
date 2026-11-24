@@ -2028,6 +2028,40 @@ alternatives that were considered, and why.
     name and icon.
   - **The icon:** a temporary one: a bot's head over two connected nodes on orange. It
     uses neither the Rust logo nor the Discord logo.
+
+### C-037 — How the app works on Windows
+- **Date:** 2026-11-24
+- **Choice:**
+  - **The toolchain:**
+    - the private Rust is installed for `x86_64-pc-windows-msvc`, with `.exe` names;
+    - the Build Tools are found with `vswhere` (the C++ tools component) and installed
+      with `winget install Microsoft.VisualStudio.2022.BuildTools`, with the VC++
+      workload, passive. Their installer shows its own progress and Windows'
+      administrator prompt;
+    - the consent dialog names the Build Tools' license (D-151).
+  - **No consoles:** the app is a Windows-subsystem program. Every console program it
+    starts (cargo, rustup, the bot, `schtasks`, PowerShell) gets `CREATE_NO_WINDOW`.
+  - **Stop:** Windows has no Ctrl+C for a bot without a console, so Stop ends the bot at
+    once. `data.json` is written atomically, so nothing is left half-written. A console
+    control event needs a Windows API dependency, which is not approved.
+  - **Hosting:** a Task Scheduler task `\RustBot Creator\rustbot-<id>` for the user,
+    registered with `schtasks /Create /XML`. Its trigger is the user's login, it runs
+    with the user's rights, with no time limit, also on battery.
+    - **Restarts:** Task Scheduler does not restart a task that ran and failed. The
+      launcher therefore restarts the bot itself after 10 s, except after exit code 78.
+    - **Logs:** the bot's output and the launcher's notes go to `hosted\bot.log`. It is
+      rotated at 1 MB, keeping one old file, and the app follows it in place of the
+      journal.
+    - **State:** read with PowerShell's `Get-ScheduledTask`, whose states are not
+      translated, unlike `schtasks /Query`. "Ready" with a result other than success,
+      "never ran" or "ended by the user" counts as failed.
+    - **Update:** the hosted bot stops before its snapshot is replaced on every system,
+      since Windows cannot replace a running program.
+    - **A known risk:** `schtasks /End` is expected to end the bot with the launcher.
+      The owner's live test checks that.
+  - **Tests:** CI on Windows also runs the keyring round trip against Credential Manager
+    and a real Task Scheduler round trip. Tests compare generated paths with `/` on every
+    system. `.gitattributes` keeps LF line endings.
 ---
 
 ## Open questions (to ask the owner when relevant)

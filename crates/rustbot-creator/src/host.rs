@@ -63,64 +63,150 @@ impl Hosted {
     }
 }
 
-/// Whether hosting works on this system: `systemd --user` for now. Windows gets Task
-/// Scheduler later in phase 11 (D-022).
-pub(crate) const AVAILABLE: bool = cfg!(target_os = "linux");
+/// Whether hosting works on this system: `systemd --user` on Linux, Task Scheduler on
+/// Windows (D-022).
+pub(crate) const AVAILABLE: bool = cfg!(any(target_os = "linux", windows));
+
+/// The hosted log file's size at which the launcher starts a new one, keeping one old.
+#[cfg(not(unix))]
+const LOG_LIMIT: u64 = 1024 * 1024;
+
+/// What one try of the launcher leads to.
+enum Next {
+    /// Stop with this exit code.
+    Exit(ExitCode),
+    /// Try again in 10 s: the keyring was not open yet, or the bot crashed. On Linux,
+    /// systemd does that; on Windows, the launcher itself.
+    Retry,
+}
 
 /// `rustbot-creator --host <project id> <package>`, which the service runs (D-138): starts
-/// the hosted program with the token from the keyring, in place of this process.
+/// the hosted program with the token from the keyring.
 pub(crate) fn launch(id: &str, package: &str) -> ExitCode {
-    let fail = |code: u8, message: &str| {
+    let refuse = |message: &str| {
         eprintln!("{message}");
-        ExitCode::from(code)
+        ExitCode::from(service::CANNOT_START)
     };
-    let cannot = |message: &str| fail(service::CANNOT_START, message);
     let Ok(project) = uuid::Uuid::parse_str(id) else {
-        return cannot(&format!("{id:?} is not a project ID"));
+        return refuse(&format!("{id:?} is not a project ID"));
     };
     if Service::new(id).is_none() || !service::is_package(package) {
-        return cannot(&format!("{id} {package:?} is not a hosted bot"));
+        return refuse(&format!("{id} {package:?} is not a hosted bot"));
     }
     let Ok(toolchain) = rustbot_toolchain::Toolchain::locate() else {
-        return cannot("The home folder is unknown.");
+        return refuse("The home folder is unknown.");
     };
     let dir = toolchain.bot_dir_by_id(id);
     let program = dir
         .join(HOSTED)
         .join(rustbot_toolchain::program_name(package));
+    #[cfg(unix)]
+    {
+        match start_bot(project, &dir, &program, &mut |line| eprintln!("{line}")) {
+            Next::Exit(code) => code,
+            Next::Retry => ExitCode::FAILURE,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let log_file = dir.join(HOSTED).join(service::LOG_FILE);
+        loop {
+            let mut note = |line: &str| append_log(&log_file, line);
+            match start_bot(project, &dir, &program, &mut note) {
+                Next::Exit(code) => return code,
+                Next::Retry => {
+                    note("Starting the bot again in 10 s.");
+                    std::thread::sleep(Duration::from_secs(10));
+                }
+            }
+        }
+    }
+}
+
+/// Reads the token and runs the bot once. On Linux the bot takes this process's place
+/// (`exec`), so systemd watches and signals the bot itself. On Windows it runs as a child
+/// without a console, its output going to the log file.
+fn start_bot(
+    project: uuid::Uuid,
+    dir: &std::path::Path,
+    program: &std::path::Path,
+    note: &mut dyn FnMut(&str),
+) -> Next {
     let token = match rustbot_secrets::bot_token(project) {
         Ok(Some(token)) if !token.trim().is_empty() => token,
         Ok(_) => {
-            return cannot(
+            note(
                 "The bot has no token. Paste it in the bot settings of RustBot Creator, then \
                  start the hosted bot again.",
             );
+            return Next::Exit(ExitCode::from(service::CANNOT_START));
         }
-        // Right after login the keyring may not be open yet: the service tries again.
-        Err(e) => return fail(1, &format!("The keyring cannot be read: {e}")),
+        // Right after login the keyring may not be open yet.
+        Err(e) => {
+            note(&format!("The keyring cannot be read: {e}"));
+            return Next::Retry;
+        }
     };
     // Its commands are global (D-055), and its data.json is the one Run uses (D-143).
-    let mut command = std::process::Command::new(&program);
+    let mut command = std::process::Command::new(program);
     command
-        .current_dir(&dir)
+        .current_dir(dir)
         .env("DISCORD_TOKEN", token.trim())
         .env("NO_COLOR", "1")
         .env_remove("DISCORD_TEST_GUILD_ID");
-    // The bot takes this process's place, so systemd watches and signals the bot itself.
     #[cfg(unix)]
     let error = {
         use std::os::unix::process::CommandExt as _;
         command.exec()
     };
     #[cfg(not(unix))]
-    let error = match rustbot_runner::hide_console(&mut command).status() {
-        Ok(status) => {
-            let code = status.code().and_then(|code| u8::try_from(code).ok());
-            return ExitCode::from(code.unwrap_or(1));
+    let error = {
+        let log_file = dir.join(HOSTED).join(service::LOG_FILE);
+        rotate(&log_file);
+        let opened = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file);
+        let (out, err) = match opened.and_then(|file| Ok((file.try_clone()?, file))) {
+            Ok(files) => files,
+            Err(error) => {
+                note(&format!("{}: {error}", log_file.display()));
+                return Next::Retry;
+            }
+        };
+        command.stdout(out).stderr(err);
+        match rustbot_runner::hide_console(&mut command).status() {
+            Ok(status) if status.success() => return Next::Exit(ExitCode::SUCCESS),
+            Ok(status) if status.code() == Some(i32::from(service::CANNOT_START)) => {
+                return Next::Exit(ExitCode::from(service::CANNOT_START));
+            }
+            Ok(status) => {
+                note(&format!("The bot stopped: {status}."));
+                return Next::Retry;
+            }
+            Err(error) => error,
         }
-        Err(error) => error,
     };
-    cannot(&format!("{}: {error}", program.display()))
+    note(&format!("{}: {error}", program.display()));
+    Next::Exit(ExitCode::from(service::CANNOT_START))
+}
+
+/// Starts a new hosted log file when it grew too big, keeping one old one.
+#[cfg(not(unix))]
+fn rotate(path: &std::path::Path) {
+    if fs::metadata(path).is_ok_and(|m| m.len() > LOG_LIMIT) {
+        let _ = fs::rename(path, path.with_extension("log.old"));
+    }
+}
+
+/// Adds a line to the hosted log file.
+#[cfg(not(unix))]
+fn append_log(path: &std::path::Path, line: &str) {
+    use std::io::Write as _;
+    rotate(path);
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{line}");
+    }
 }
 
 fn service_of(state: &AppState) -> Option<Service> {
@@ -203,7 +289,10 @@ fn saw(
         state.hosted.out_of_date = false;
     } else {
         if state.hosted.journal.is_none() {
-            state.hosted.journal = service_of(state).and_then(|s| s.journal(30, logs).ok());
+            let log_file = hosted_dir(state).map(|dir| dir.join(service::LOG_FILE));
+            state.hosted.journal = service_of(state)
+                .zip(log_file)
+                .and_then(|(s, file)| s.journal(&file, 30, logs).ok());
         }
         // Graphs with problems generate nothing; the last answer stands then.
         if let Ok(output) = rustbot_codegen::generate(&state.project, &state.registry) {
@@ -256,7 +345,9 @@ async fn snapshot(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Resu
     cx.background_spawn(async move {
         let io = |e: std::io::Error| e.to_string();
         fs::create_dir_all(&dir).map_err(io)?;
-        // Copy, then rename: the running snapshot keeps its file until the restart.
+        // Windows cannot replace a running program, so the old snapshot stops first; it
+        // has not started yet the first time, and the error then means nothing.
+        let _ = service.stop();
         let tmp = dir.join(format!(".{package}.tmp"));
         fs::copy(&program, &tmp).map_err(io)?;
         fs::rename(&tmp, dir.join(rustbot_toolchain::program_name(&package))).map_err(io)?;

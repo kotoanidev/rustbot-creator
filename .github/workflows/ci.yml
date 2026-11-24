@@ -84,5 +84,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
-      # Credential Manager, where the token lives on Windows (D-020).
+      # Credential Manager, where the token lives on Windows (D-020), and a real Task
+      # Scheduler task for hosting (D-022).
       - run: cargo test -p rustbot-secrets -- --ignored
+      - run: cargo test -p rustbot-runner -- --ignored

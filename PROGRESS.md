@@ -291,8 +291,11 @@ Phase 11 (Windows, D-151–D-154) has begun:
   asking, with Windows texts.
 - No console windows pop up. Stop ends the bot at once on Windows. Export names the
   system and the `.exe`.
-- Hosting is hidden on Windows until Task Scheduler support.
-- CI has a `windows-latest` job.
+- CI has a `windows-latest` job. It passed the gate, the tests and a real round trip
+  through Credential Manager.
+- Hosting works on Windows through Task Scheduler (C-037). A task starts the launcher at
+  login, and the launcher restarts the bot after a crash and writes `bot.log`, which the
+  app follows. CI runs a real task round trip.
 
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
