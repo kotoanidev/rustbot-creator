@@ -47,6 +47,8 @@ fn main() -> std::process::ExitCode {
                 title: Some("RustBot Creator".into()),
                 ..Default::default()
             }),
+            // Matches the desktop file, so the desktop shows the app's name and icon (D-147).
+            app_id: Some("io.github.kotoanidev.RustBotCreator".to_owned()),
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
                 size(px(1280.), px(800.)),

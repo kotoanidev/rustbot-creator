@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=RustBot Creator
+GenericName=Discord Bot Creator
+GenericName[pl]=Kreator botów Discorda
+Comment=Make Discord bots in Rust without writing code
+Comment[pl]=Twórz boty Discorda w Ruście bez pisania kodu
+Exec=rustbot-creator
+Icon=io.github.kotoanidev.RustBotCreator
+Terminal=false
+Categories=Development;IDE;
+Keywords=discord;bot;rust;no-code;
+Keywords[pl]=discord;bot;rust;bez kodu;
+StartupWMClass=io.github.kotoanidev.RustBotCreator

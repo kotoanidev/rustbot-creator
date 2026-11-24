@@ -1957,6 +1957,42 @@ alternatives that were considered, and why.
   - **A known limit:** the service names the app's path at the time of "Host…" or
     "Update". After the app moves (e.g. `cargo clean` in development), "Update" writes the
     new path.
+
+### C-036 — How the Linux packages are made
+- **Date:** 2026-11-24
+- **Choice:**
+  - **Third-party notices:** the program contains about 640 crates, and most of their
+    licenses ask for their notices to ship with it. All are permissive: one MPL-2.0 crate
+    is used unchanged, and an "Apache-2.0 OR GPL-2.0-only" crate is used under Apache.
+    `packaging/third-party-licenses.py` reads `cargo metadata` after the build and writes
+    `THIRD-PARTY-LICENSES.txt`, about 1 MB. Each crate's license files are in it once
+    per distinct text. Crates without a license file get the standard MIT or Apache text
+    the app ships. No tool such as cargo-about is added.
+  - **Libraries opened at run time:** wgpu, wayland-sys and fontconfig open their
+    libraries with `dlopen`, so neither rpm nor `dpkg-shlibdeps` sees them. The RPM
+    requires them by soname, and the .deb names their packages. Both recommend
+    `mesa-vulkan-drivers`.
+  - **The RPM:**
+    - it builds with Fedora's own Rust (1.100 in Fedora 43), above the dependencies'
+      highest MSRV of 1.92;
+    - it has no debuginfo package;
+    - `%check` validates the desktop file and the metainfo, and starts the launcher,
+      which stops with 78 without a display. The test suite runs in CI, not in the RPM.
+  - **Names:** the .deb's maintainer and the spec's changelog use
+    `kotoanidev <kotoanidev@users.noreply.github.com>`, from the public GitHub login.
+  - **The apt repository:** `apt/` on GitHub Pages, with one suite `stable`, component
+    `main` and `amd64` only. The key is RSA 4096 with no passphrase, kept only in the
+    `APT_GPG_KEY` secret and an offline copy. Users get it as `rustbot-creator.gpg` and
+    use it through `signed-by`.
+  - **The workflow:** it checks both packages on every run, including a run by hand: the
+    .deb on Ubuntu 24.04, and the RPM on Fedora 43 and 44 through the same SRPM steps as
+    Copr. Each is installed and its launcher started. Only a tag publishes. GitHub marks
+    the release as a pre-release. Copr's webhook gets only "Branch or tag creation"
+    events.
+  - **The window:** `app_id` matches the desktop file, so Wayland desktops show the app's
+    name and icon.
+  - **The icon:** a temporary one: a bot's head over two connected nodes on orange. It
+    uses neither the Rust logo nor the Discord logo.
 ---
 
 ## Open questions (to ask the owner when relevant)

@@ -12,7 +12,8 @@ D-046). Later phases are planned in detail when each one starts (D-043).
 **Phase 5 — First run + themes: ✅ done in code 2026-11-24.**
 **Phase 6 — Export: ✅ done in code 2026-11-24.**
 **Phase 7 — Hosting on the PC: ✅ done in code 2026-11-24.**
-**Next: phase 10, the public Linux release (D-025): RPM on Copr and a .deb.** The phase order changed after phase 3 to
+**Phase 10 — Public Linux release: packaging ready 2026-11-24; publishing waits for the
+owner's live tests and one-time setup (D-150).** The phase order changed after phase 3 to
 follow the incubation timeline (D-123–D-125): 5 → 6 → 7 → a public Linux release →
 Windows → RustBot Cloud pilot → 4 → 8 → 9. The README describes the pre-alpha honestly
 now.
@@ -271,6 +272,17 @@ Phase 7 (hosting on the PC, D-138–D-143, C-035) is ✅ done in code:
   with 78 for a project without a token. A hosted bot with a real token has not run yet:
   only the owner types the token.
 
+Phase 10 (the public Linux release, D-144–D-150, C-036) has its packaging ready, and
+nothing is published:
+- The app ID `io.github.kotoanidev.RustBotCreator`, with the desktop file, the metainfo
+  and a temporary icon in `packaging/linux/`. The window sets the same `app_id`.
+- The RPM spec with Copr's "make srpm" method, a .deb script, the apt repository script,
+  and the third-party license notices.
+- `.github/workflows/release.yml`: a run by hand builds, installs and starts both
+  packages; a `vX.Y.Z` tag also publishes.
+- `docs/RELEASING.md` lists the owner's one-time setup (Copr, the GPG key, GitHub Pages)
+  and the release steps.
+
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
    the channel filled in, or "Levels") and the new nodes (e.g. a private ticket channel)
@@ -285,7 +297,7 @@ Phase 7 (hosting on the PC, D-138–D-143, C-035) is ✅ done in code:
    - the guide with a real bot;
    - both exports, and running the ready build from its folder with a `.env`;
    - hosting a bot: "Host…", a log out and in, Run pausing it, Update and Remove.
-   Then plan phase 10, the public Linux release (D-025, D-043), with the owner.
+   Then the owner's one-time setup in `docs/RELEASING.md`, and release 0.1.0 (D-150).
 4. The README still needs a screenshot labelled pre-alpha. Take it only of the app's own
    window: `spectacle -a` once caught another window when the app was not focused.
 

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A temporary icon (D-147): a bot's head over two connected nodes. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f08a24"/>
+      <stop offset="1" stop-color="#c4501a"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bg)"/>
+  <line x1="64" y1="22" x2="64" y2="34" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="64" cy="20" r="6" fill="#fff"/>
+  <rect x="28" y="34" width="72" height="50" rx="16" fill="#fff"/>
+  <circle cx="48" cy="57" r="7" fill="#2b2d42"/>
+  <circle cx="80" cy="57" r="7" fill="#2b2d42"/>
+  <path d="M52 72 Q64 79 76 72" fill="none" stroke="#2b2d42" stroke-width="4" stroke-linecap="round"/>
+  <path d="M40 100 H88" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="40" cy="100" r="8" fill="#2b2d42" stroke="#fff" stroke-width="4"/>
+  <circle cx="88" cy="100" r="8" fill="#2b2d42" stroke="#fff" stroke-width="4"/>
+</svg>

@@ -1,0 +1,134 @@
+# Release (D-149). A vX.Y.Z tag builds and checks the .deb and the RPM, creates the GitHub
+# release with the .deb, and updates the signed apt repository on GitHub Pages (D-145).
+# Copr builds the published RPM through its own webhook (D-144). Started by hand, the
+# workflow only builds and checks both packages, and publishes nothing.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  deb:
+    name: .deb (Ubuntu 24.04)
+    # The oldest supported Ubuntu, so the package also runs on 26.04 (D-146).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the version
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: packaging/check-version.sh "$TAG"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo scripts/install-build-deps.sh && sudo apt-get install -y dpkg-dev
+      - run: cargo build --release --locked -p rustbot-creator
+      - name: Third-party licenses
+        run: |
+          cargo metadata --format-version 1 --locked --offline \
+            --filter-platform x86_64-unknown-linux-gnu \
+            | python3 -I packaging/third-party-licenses.py > THIRD-PARTY-LICENSES.txt
+      - name: Build the .deb
+        id: deb
+        run: echo "path=$(packaging/deb/build-deb.sh)" >> "$GITHUB_OUTPUT"
+      - name: Install it and start the launcher
+        env:
+          DEB: ${{ steps.deb.outputs.path }}
+        run: |
+          sudo apt-get install -y "$DEB"
+          dpkg-deb --info "$DEB"
+          # Without a display: a wrong project ID stops the hosted bot's launcher with 78.
+          rustbot-creator --host not-a-uuid bot || test $? -eq 78
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb
+          path: target/deb/*.deb
+          if-no-files-found: error
+
+  rpm:
+    name: RPM (Fedora ${{ matrix.fedora }})
+    runs-on: ubuntu-latest
+    container: fedora:${{ matrix.fedora }}
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: [43, 44]
+    steps:
+      - run: dnf install -y git make tar rpm-build dnf-plugins-core
+      - uses: actions/checkout@v7
+      # The same steps as Copr: the SRPM from .copr/Makefile, then a build with network.
+      - run: make -f .copr/Makefile srpm outdir="$PWD/srpm"
+      - run: dnf builddep -y srpm/*.src.rpm
+      - run: rpmbuild --rebuild --define "_rpmdir $PWD/rpm" srpm/*.src.rpm
+      - name: Install it and start the launcher
+        run: |
+          dnf install -y rpm/x86_64/*.rpm
+          rpm -q --requires rustbot-creator
+          rustbot-creator --host not-a-uuid bot || test $? -eq 78
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rpm-fedora-${{ matrix.fedora }}
+          path: rpm/x86_64/*.rpm
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    if: github.ref_type == 'tag'
+    needs: [deb, rpm]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: deb
+          path: dist
+      - run: sudo apt-get update && sudo apt-get install -y apt-utils
+      - name: Create the GitHub release
+        run: |
+          gh release create "$TAG" dist/*.deb --prerelease \
+            --title "RustBot Creator ${TAG#v} (pre-alpha)" \
+            --notes-file packaging/release-notes.md
+      - name: Import the apt signing key
+        id: key
+        env:
+          APT_GPG_KEY: ${{ secrets.APT_GPG_KEY }}
+        run: |
+          printf '%s\n' "$APT_GPG_KEY" | gpg --batch --import
+          fingerprint=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+      - name: Update the apt repository on GitHub Pages
+        env:
+          FINGERPRINT: ${{ steps.key.outputs.fingerprint }}
+        run: |
+          if git fetch origin gh-pages:refs/remotes/origin/gh-pages; then
+            git worktree add -B gh-pages site origin/gh-pages
+          else
+            git worktree add --orphan -b gh-pages site
+          fi
+          packaging/apt/update-repo.sh site "$FINGERPRINT" dist/*.deb
+          touch site/.nojekyll
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "apt: rustbot-creator ${TAG#v}"
+          git push origin gh-pages

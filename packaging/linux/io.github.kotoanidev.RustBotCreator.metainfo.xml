@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.kotoanidev.RustBotCreator</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>RustBot Creator</name>
+  <summary>Make Discord bots in Rust without writing code</summary>
+  <summary xml:lang="pl">Twórz boty Discorda w Ruście bez pisania kodu</summary>
+  <description>
+    <p>
+      RustBot Creator builds Discord bots on the djs-rs library. Each slash command and
+      event is a graph of nodes, and the app turns it into readable Rust, builds it and
+      runs it. It is pre-alpha.
+    </p>
+    <p xml:lang="pl">
+      RustBot Creator tworzy boty Discorda na bibliotece djs-rs. Każda komenda i każde
+      zdarzenie to graf węzłów, który aplikacja zamienia w czytelny kod Rusta, buduje
+      i uruchamia. To wersja pre-alpha.
+    </p>
+    <ul>
+      <li>Bots from templates, edited as node graphs</li>
+      <li xml:lang="pl">Boty z szablonów, edytowane jako grafy węzłów</li>
+      <li>A guide through the Discord Developer Portal, with checks</li>
+      <li xml:lang="pl">Przewodnik po Discord Developer Portal, ze sprawdzaniem</li>
+      <li>Export as a Rust project or a ready program</li>
+      <li xml:lang="pl">Eksport jako projekt Rusta albo gotowy program</li>
+      <li>Hosting on this PC as a background service</li>
+      <li xml:lang="pl">Hosting na tym komputerze jako usługa w tle</li>
+      <li>Fully local: no account and no telemetry</li>
+      <li xml:lang="pl">W pełni lokalnie: bez konta i bez telemetrii</li>
+    </ul>
+  </description>
+  <developer id="io.github.kotoanidev">
+    <name>kotoanidev</name>
+  </developer>
+  <url type="homepage">https://github.com/kotoanidev/rustbot-creator</url>
+  <url type="bugtracker">https://github.com/kotoanidev/rustbot-creator/issues</url>
+  <launchable type="desktop-id">io.github.kotoanidev.RustBotCreator.desktop</launchable>
+  <provides>
+    <binary>rustbot-creator</binary>
+  </provides>
+  <categories>
+    <category>Development</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" type="development" date="2026-11-24">
+      <description>
+        <p>The first pre-alpha.</p>
+      </description>
+    </release>
+  </releases>
+</component>
