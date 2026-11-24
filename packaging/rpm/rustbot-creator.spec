@@ -54,7 +54,8 @@ it and runs it, exports it, or hosts it on this PC. It is pre-alpha.
 %build
 export CARGO_HOME=%{_builddir}/cargo-home
 cargo build --release --locked -p rustbot-creator
-cargo metadata --format-version 1 --locked --offline \
+# cargo metadata reads every crate in Cargo.lock, so it fetches the dev-dependencies too.
+cargo metadata --format-version 1 --locked \
     --filter-platform %{_arch}-unknown-linux-gnu \
     | python3 -I packaging/third-party-licenses.py > THIRD-PARTY-LICENSES.txt
 

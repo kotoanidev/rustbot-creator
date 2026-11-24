@@ -6,7 +6,7 @@ The packages ship one program with hundreds of crates inside, and most of their 
 JSON on stdin, after a build, so every crate's source is in cargo's cache, and writes
 the notices to stdout. Identical texts are printed once, with the crates that use them.
 
-    cargo metadata --format-version 1 --locked --offline \\
+    cargo metadata --format-version 1 --locked \\
         --filter-platform x86_64-unknown-linux-gnu \\
         | python3 -I packaging/third-party-licenses.py > THIRD-PARTY-LICENSES.txt
 """

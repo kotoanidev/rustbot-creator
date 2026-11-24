@@ -32,12 +32,14 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: packaging/check-version.sh "$TAG"
-      - uses: dtolnay/rust-toolchain@stable
+      # The runner's own rustup, not a third-party action: this job builds what is
+      # published.
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
       - run: sudo scripts/install-build-deps.sh && sudo apt-get install -y dpkg-dev
       - run: cargo build --release --locked -p rustbot-creator
       - name: Third-party licenses
         run: |
-          cargo metadata --format-version 1 --locked --offline \
+          cargo metadata --format-version 1 --locked \
             --filter-platform x86_64-unknown-linux-gnu \
             | python3 -I packaging/third-party-licenses.py > THIRD-PARTY-LICENSES.txt
       - name: Build the .deb
