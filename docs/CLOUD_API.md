@@ -69,9 +69,10 @@ it.
   ```
 
   The files are the source export's (D-134), as UTF-8 text, with `/` in paths. No `..`,
-  no absolute paths, no `target/` and no `.env`. Cloud builds them in a sandbox (D-159,
-  D-162), then restarts the bot on the new build. A failed build keeps the old one
-  running.
+  no absolute paths, no `target/` and no `.env`. `Cargo.toml` is required. Without a
+  `Cargo.lock`, e.g. when the app never built the bot, Cloud resolves the versions
+  itself. Cloud builds them in a sandbox (D-159, D-162), then restarts the bot on the
+  new build. A failed build keeps the old one running.
 - `GET /v1/bots/<project>/deploys/<id>` → `{"state": "queued" | "building" | "done" |
   "failed", "log": "<build output>"}`.
 - `POST /v1/bots/<project>/start`, `POST /v1/bots/<project>/stop` → `204`.

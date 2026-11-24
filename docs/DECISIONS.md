@@ -2293,6 +2293,28 @@ alternatives that were considered, and why.
   - **The local-unsafe sandbox,** for development and tests, refuses to start unless the
     server listens only on localhost.
   - **Private CI:** Linux only, plus the real sandbox job (D-170).
+  - **A deploy without a `Cargo.lock`** gets one from the fetch step, which resolves it
+    in a copy in the unit's private `/tmp`. It runs no project code there (D-169). Then
+    publishing needs no local build (D-159).
+
+### C-040 — How the app talks to Cloud
+- **Date:** 2026-11-24
+- **Choice:**
+  - **The address:** `RUSTBOT_CLOUD_URL` must be HTTPS. Plain HTTP is allowed only for a
+    server on `127.0.0.1`, `localhost` or `[::1]`, for development, so a session or token
+    never travels in the clear. The sign-in page must be HTTPS too.
+  - **Connections:** each call has a new one and a 30-second limit, because Cloud closes
+    a connection when it answers before reading the body.
+  - **Polling:** while signed in and the project is open, the app checks the bot's state
+    every 6 s and its backups every minute. While the bot is published, it fetches the
+    logs every 2 s (D-172). The first page shows only the last 30 lines, as hosting does.
+    A sign-in waits 10 minutes for the browser.
+  - **Publishing:** the token is asked for, and sent, only when Cloud has none for the
+    bot (D-161). After the build, a stopped bot is started. The build's log shows in
+    the console when it fails.
+  - **Signing out** revokes the session and forgets it. Published bots keep running.
+    A session Cloud refuses is forgotten, and the user is told to sign in again.
+  - **Backups** download to a file the user picks, named `data.json` by default.
 ---
 
 ## Open questions (to ask the owner when relevant)
