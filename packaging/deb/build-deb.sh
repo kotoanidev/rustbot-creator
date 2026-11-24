@@ -35,8 +35,15 @@ COPYRIGHT
 # run time, which dpkg-shlibdeps cannot see.
 shlibs="$out/shlibs"
 mkdir -p "$shlibs/debian"
-printf 'Source: rustbot-creator\n\nPackage: rustbot-creator\n' > "$shlibs/debian/control"
-linked=$(cd "$shlibs" && dpkg-shlibdeps -O "$root/usr/bin/rustbot-creator" | sed 's/^shlibs:Depends=//')
+printf 'Source: rustbot-creator\n\nPackage: rustbot-creator\nArchitecture: any\n' \
+    > "$shlibs/debian/control"
+# No pipe here, so a failing dpkg-shlibdeps stops the script.
+linked=$(cd "$shlibs" && dpkg-shlibdeps -O "$root/usr/bin/rustbot-creator")
+linked=${linked#shlibs:Depends=}
+if [ -z "$linked" ]; then
+    echo "dpkg-shlibdeps found no libraries" >&2
+    exit 1
+fi
 depends="$linked, libvulkan1, libegl1, libwayland-client0, libwayland-egl1, libfontconfig1"
 
 mkdir -p "$root/DEBIAN"
