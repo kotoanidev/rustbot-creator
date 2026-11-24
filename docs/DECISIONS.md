@@ -1357,6 +1357,41 @@ alternatives that were considered, and why.
 - **Alternatives:** also a Windows virtual machine on the owner's Fedora, with Claude's
   checklists; CI only.
 
+### D-155 — The Windows program's icon is embedded with `winresource`
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** `winresource` 0.1 is a build dependency of the app, only when building on
+  Windows and without its default features. The app's build script embeds the icon and
+  the file's name and version in `rustbot-creator.exe`, with the `rc.exe` of the Build
+  Tools. Nothing changes on Linux.
+- **Alternatives:** `embed-resource` with an own `.rc` file; no icon until signing.
+
+### D-156 — Phase 12, the RustBot Cloud pilot, comes next
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** After phase 11, which waits for the owner's tests on real Windows, work
+  moves to phase 12, as D-123 orders it. Its architecture is decided first, then the
+  app's side: "Publish", the sign-in that exists only inside Cloud (D-125), and the
+  hosted bot's state and logs.
+- **Alternatives:** phase 4, the advanced mode, first; the name and trademark check first.
+
+### D-157 — RustBot Cloud's service lives in a separate private repository
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The service is the backend, the accounts and the deployment of bots. Its
+  code lives in a separate private repository, e.g. `kotoanidev/rustbot-cloud`, which
+  the owner creates, or Claude after the owner's consent. This public repository holds
+  only the app's client and the API it speaks, documented here.
+- **Alternatives:** new crates in this public repository; a separate public repository
+  under a copyleft licence such as AGPL.
+
+### D-158 — The pilot runs on a rented VPS, by invitation and without payments
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The pilot runs on a rented Linux server. Each bot is an isolated process
+  with limits on memory, CPU and files, as in local hosting plus a sandbox. Testers join
+  by invitation. Payments and VAT invoicing (KSeF) come only after the pilot, which
+  measures the willingness to pay (the MVP criterion of at least 10%).
+- **Alternatives:** a VPS with payments from the start (Stripe or Przelewy24, and VAT
+  invoices); Cloudflare Containers, a container per bot, with a lower margin on small
+  bots.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -2079,9 +2114,7 @@ alternatives that were considered, and why.
   - **Uninstalling:** it removes the hosted bots' tasks, which would start a program that
     is gone. It keeps the user's data and the private Rust in
     `%LOCALAPPDATA%\rustbot-creator`.
-  - **The program's icon:** the `.exe` has no icon of its own, so the taskbar may show a
-    generic one. Embedding it needs a resource compiler, i.e. a new build dependency
-    (open question).
+  - **The program's icon:** embedded in the `.exe` with `winresource` (D-155).
   - **The data folder:** on Windows, the app's data, the private Rust and the caches live
     in `%LOCALAPPDATA%\rustbot-creator`, never in the roaming profile. The caches are in
     its `cache` folder. Linux is unchanged.
@@ -2117,15 +2150,7 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
   releases, Actions) and the OAuth scopes they need.
 - **Community files:** CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, and when
   to add them.
-- **RustBot Cloud** (D-125), before its pilot:
-  - where the service code lives (a separate private repository?) and under which
-    licence;
-  - what it runs on: the company's own servers, or Cloudflare Containers (D-013 stays the
-    "bring your own Cloudflare account" path);
-  - payments, and VAT invoicing.
-- **The Windows program's icon (C-038):** embedding an icon in the `.exe` needs a
-  resource compiler at build time, e.g. the `winresource` or `embed-resource` crate, as a
-  build dependency of the app. Add one?
+- **RustBot Cloud** (D-125, D-157, D-158): payments and VAT invoicing, after the pilot.
 - **Paid templates and a marketplace:** templates are compiled into the app (C-028). Paid
   ones need a package format installed later, tied to plugin distribution and signing.
   Generated code stays MIT-0 (D-023), even from a paid template.

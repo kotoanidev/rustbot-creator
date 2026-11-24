@@ -24,6 +24,10 @@ unic-langid.workspace = true
 ureq.workspace = true
 uuid.workspace = true
 
+# Cargo matches this against the system that builds, which is Windows for Windows builds.
+[target.'cfg(windows)'.build-dependencies]
+winresource.workspace = true
+
 [dev-dependencies]
 # Headless UI tests (D-070).
 gpui-kit = { workspace = true, features = ["test-support"] }

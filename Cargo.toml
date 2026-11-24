@@ -38,6 +38,8 @@ ureq = "3.5.2"
 sha2 = "0.11.1"
 # Secrets in the OS keyring (D-020).
 keyring = "4.2.0"
+# The Windows program's icon and file details, at build time (D-155).
+winresource = { version = "0.1.34", default-features = false }
 # Tests only.
 tempfile = "3.27.0"
 insta = "1.49.0"
