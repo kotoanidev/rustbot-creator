@@ -14,6 +14,7 @@ use gpui_kit::{
 };
 use rustbot_core::Project;
 
+use crate::guide::{Close, Guide};
 use crate::i18n::{t, t_with};
 use crate::panels::{Editor, Logs, OpenWizard, Problems, ProjectTree, Properties, SettingsPanel};
 use crate::run::Run;
@@ -31,6 +32,10 @@ pub(crate) struct Workspace {
     showing_settings: bool,
     /// The first-run wizard (D-128), over everything while it is open.
     wizard: Option<Entity<Wizard>>,
+    /// The Developer Portal guide (D-129), over the project while it is open.
+    guide: Option<Entity<Guide>>,
+    /// The wizard ended at the templates, so the guide follows the new project (D-131).
+    guide_next: bool,
 }
 
 impl Workspace {
@@ -55,6 +60,8 @@ impl Workspace {
             settings: None,
             showing_settings: false,
             wizard: None,
+            guide: None,
+            guide_next: false,
         };
         // A project named on the command line is opened at once; otherwise the wizard
         // comes first until it was finished or skipped.
@@ -90,6 +97,9 @@ impl Workspace {
                     let _ = crate::trust::trust(toolchain.data_dir(), &project.root);
                 }
                 self.show(project, window, cx);
+                if std::mem::take(&mut self.guide_next) {
+                    self.open_guide(window, cx);
+                }
             }
             Err(e) => self.error = Some(t_with("error-create", &[("error", &e.to_string())])),
         }
@@ -99,6 +109,14 @@ impl Workspace {
     fn show(&mut self, project: Project, window: &mut Window, cx: &mut Context<'_, Self>) {
         let state = cx.new(|cx| AppState::new(project, cx));
         cx.observe(&state, |_, _, cx| cx.notify()).detach();
+        cx.subscribe_in(
+            &state,
+            window,
+            |this, _, _: &crate::state::OpenGuide, window, cx| {
+                this.open_guide(window, cx);
+            },
+        )
+        .detach();
         let tree = cx.new(|cx| ProjectTree::new(state.clone(), cx));
         let properties = cx.new(|cx| Properties::new(state.clone(), window, cx));
         let editor = cx.new(|cx| Editor::new(state.clone(), cx));
@@ -135,10 +153,25 @@ impl Workspace {
             this.wizard = None;
             this.showing_settings = false;
             this.choosing = done.choose_template && this.open.is_none();
+            this.guide_next = this.choosing;
             cx.notify();
         })
         .detach();
         self.wizard = Some(wizard);
+        cx.notify();
+    }
+
+    /// Opens the Developer Portal guide for the open project (D-129, D-133).
+    fn open_guide(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let Some((state, _)) = &self.open else { return };
+        let state = state.clone();
+        let guide = cx.new(|cx| Guide::new(state, window, cx));
+        cx.subscribe(&guide, |this, _, _: &Close, cx| {
+            this.guide = None;
+            cx.notify();
+        })
+        .detach();
+        self.guide = Some(guide);
         cx.notify();
     }
 
@@ -296,6 +329,9 @@ impl Render for Workspace {
         crate::measure::frame_start();
         if let Some(wizard) = &self.wizard {
             return div().size_full().child(wizard.clone()).into_any_element();
+        }
+        if let Some(guide) = &self.guide {
+            return div().size_full().child(guide.clone()).into_any_element();
         }
         if self.open.is_none() && self.choosing {
             return template_cards(cx).into_any_element();
@@ -527,6 +563,29 @@ mod tests {
         );
         let (again, cx) = cx.add_window_view(|window, cx| super::Workspace::new(None, window, cx));
         cx.read(|cx| assert!(again.read(cx).wizard.is_none()));
+    }
+
+    /// "Connect to Discord…" in the bot settings opens the guide over the project, and
+    /// "Finish" closes it (D-133).
+    #[gpui_kit::test]
+    fn the_bot_settings_open_the_discord_guide(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::test::TestWindowExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("bot");
+        super::new_project(&root).unwrap();
+        cx.update(gpui_kit::init);
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| super::Workspace::new(Some(root.clone()), window, cx));
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            window.click("connect-discord", cx);
+        });
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            assert!(workspace.read(cx).guide.is_some());
+            window.click("guide-done", cx);
+        });
+        cx.read(|cx| assert!(workspace.read(cx).guide.is_none()));
     }
 
     #[test]

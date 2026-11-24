@@ -104,6 +104,11 @@ pub(crate) struct AppState {
     save: Option<Task<()>>,
 }
 
+/// The bot settings ask for the Developer Portal guide (D-133).
+pub(crate) struct OpenGuide;
+
+impl gpui_kit::EventEmitter<OpenGuide> for AppState {}
+
 impl AppState {
     pub(crate) fn new(project: Project, cx: &mut Context<'_, Self>) -> Self {
         // Whatever is still waiting for autosave is written when the app quits.

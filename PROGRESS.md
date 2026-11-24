@@ -234,6 +234,17 @@ Phase 5, step 2 (the first-run wizard, D-128, C-032) is ✅ done in code:
   and Settings can open it again.
 - Run, the wizard and Settings share one installer (`src/install.rs`).
 
+Phase 5, step 3 (the Developer Portal guide, D-129, D-131–D-133, C-033) is ✅ done in
+code, and with it phase 5:
+- After the wizard's "Choose a template" and the new project, or from "Connect to
+  Discord…" in the bot settings, a guide walks through the portal.
+- The token is checked with Discord before the keyring keeps it. The privileged intents
+  the project needs are checked against the portal.
+- The invite asks for the permissions the nodes need, and the test server is picked from
+  the servers the bot is on.
+- It has not talked to the real Discord yet: that needs the owner's token, which only the
+  owner types.
+
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
    the channel filled in, or "Levels") and the new nodes (e.g. a private ticket channel)
@@ -242,9 +253,9 @@ Phase 5, step 2 (the first-run wizard, D-128, C-032) is ✅ done in code:
    Discord, idle and on a few servers, and how many fit in 4 GB. Record it in
    `docs/PERFORMANCE.md`, and tell the owner if it is far from about 7 MB per idle bot.
    The owner starts the bot in the app; measuring its process needs no token.
-3. Phase 5, step 3: the wizard's Developer Portal guide with checks (D-129), before its
-   last step. It uses `ureq` from the workspace to ask Discord about the token, makes the
-   invite link, and checks that the bot is on the test server.
+3. The owner tries phase 5 live: Settings (language, theme, font size), the wizard (it
+   appears once on a start without a project), and the guide with a real bot. Then plan
+   phase 6, export (D-123, D-043), with the owner.
 4. The README still needs a screenshot labelled pre-alpha. Take it only of the app's own
    window: `spectacle -a` once caught another window when the app was not focused.
 

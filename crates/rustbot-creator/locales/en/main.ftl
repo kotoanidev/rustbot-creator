@@ -436,6 +436,32 @@ wizard-skip-step = Skip this step
 wizard-skip = Skip the wizard
 settings-wizard = Open the first-run wizard again
 
+# The Developer Portal guide (D-129, D-131-D-133)
+guide-open = Connect to Discord…
+guide-title = Connect the bot to Discord
+guide-app = Make an application
+guide-app-about = On Discord's Developer Portal, press "New Application", give it a name and accept the terms. The application is your bot.
+guide-portal = Open the Developer Portal
+guide-token = Paste the bot's token
+guide-token-about = On the application's "Bot" page, press "Reset Token", copy the token and paste it here. Never show it to anyone: it controls the bot. The app keeps it in the system keyring.
+guide-check = Check and save
+guide-checking = Asking Discord…
+guide-token-ok = ✓ Connected to the bot { $name }.
+guide-token-wrong = Discord does not know this token. Copy it again from the "Bot" page.
+guide-token-first = Paste the bot's token first.
+guide-network = Discord cannot be reached: { $error }
+guide-intents = Switch on what this bot reads
+guide-intents-about = On the "Bot" page, under "Privileged Gateway Intents", switch these on and save, then check again:
+guide-bot-page = Open the Bot page
+guide-check-again = Check again
+guide-invite = Invite the bot to your test server
+guide-invite-about = Invite the bot to the server where you try it, with the permissions this bot's nodes need. Then list the servers the bot is on and pick that one.
+guide-invite-button = Invite the bot
+guide-servers = List the bot's servers
+guide-no-servers = The bot is on no server yet. Invite it, then list the servers again.
+guide-server-ok = ✓ The test server is { $name }.
+guide-server-hint = You can also type the server's ID in the bot settings.
+
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Choose a template
 template-fill-hint = After it is made, Problems lists the channels and roles to fill in.

@@ -1761,6 +1761,14 @@ impl Properties {
         v_flex()
             .gap(px(6.))
             .child(div().text_sm().child(t("bot-settings")))
+            .child(
+                Button::new("connect-discord")
+                    .label(t("guide-open"))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.state
+                            .update(cx, |_, cx| cx.emit(crate::state::OpenGuide));
+                    })),
+            )
             .child(label(t("bot-token")))
             .child(Input::new(&bot.token))
             .child(

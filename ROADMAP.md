@@ -68,16 +68,16 @@ layer, before the scope widens.
 - [x] Bot templates: empty, moderation, welcome, roles from a menu, reports, levels
       (D-115–D-119)
 
-## Phase 5 — Themes + first run (D-034, D-017, D-127–D-130)
+## Phase 5 — Themes + first run (D-034, D-017, D-127–D-133) ✅
 - [x] Settings as an editor tab, saved in `settings.toml`: language, theme, font size,
       toolchain, reopening the wizard (D-130, C-032)
 - [x] JSON themes in gpui-component's format: built-in dark and light, following the
       system, and the user's own from a folder (D-127)
 - [x] First-run wizard: language and theme, Rust and gcc with consent, a first project
       from a template (D-128, C-032)
-- [ ] The Developer Portal guide, with checks: the token, the intents, the invite link,
+- [x] The Developer Portal guide, with checks: the token, the intents, the invite link,
       and the test server picked from the bot's servers. It follows the first project in
-      the wizard and is in the bot settings (D-129, D-131–D-133)
+      the wizard and is in the bot settings (D-129, D-131–D-133, C-033)
 
 ## Phase 6 — Export
 - [ ] Source code (MIT-0 templates, the user's chosen license, D-023)

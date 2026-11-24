@@ -1741,6 +1741,27 @@ alternatives that were considered, and why.
   - **From Settings:** "Open the first-run wizard again" opens it over the window.
     Installing Rust from Settings goes through the wizard, so there is one place that
     shows the progress. A forced reinstall over a working Rust is not offered.
+
+### C-033 — How the Developer Portal guide works
+- **Date:** 2026-11-24
+- **Choice:**
+  - **Asking Discord:** the app calls Discord's API v10 with `ureq` from the workspace,
+    in the background, with Discord's "DiscordBot (url, version)" User-Agent.
+    `/oauth2/applications/@me` gives the bot's name, the application ID and its flags.
+    `/users/@me/guilds` lists the servers. A 401 means a wrong token; any other failure
+    shows Discord's error.
+  - **The token:** a typed token is checked first and kept in the project's keyring entry
+    only when Discord knows it. The field is cleared before the check, so the token does
+    not stay in the window. A token saved before is checked when the guide opens.
+  - **Intents:** the privileged intents the project's nodes and `extra-intents` use are
+    listed. Each counts as on when its application flag, or its "limited" flag for bots on
+    fewer than 100 servers, is set.
+  - **Permissions:** the invite asks to view channels, send messages, embed links and read
+    the history. On top of that come the permission of each node type (the one members
+    need), "Manage messages" for deleting and pinning, "Add reactions", and the thread
+    permissions. It never asks for Administrator.
+  - **Where it shows:** over the window, like the wizard, with "Finish" to go back. After
+    the wizard's "Choose a template", it opens as soon as the project is made.
 ---
 
 ## Open questions (to ask the owner when relevant)

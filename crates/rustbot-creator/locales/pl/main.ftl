@@ -436,6 +436,32 @@ wizard-skip-step = Pomiń ten krok
 wizard-skip = Pomiń kreator
 settings-wizard = Otwórz ponownie kreator pierwszego uruchomienia
 
+# The Developer Portal guide (D-129, D-131-D-133)
+guide-open = Połącz z Discordem…
+guide-title = Połącz bota z Discordem
+guide-app = Utwórz aplikację
+guide-app-about = W Discord Developer Portal naciśnij „New Application”, nadaj nazwę i zaakceptuj warunki. Ta aplikacja to Twój bot.
+guide-portal = Otwórz Developer Portal
+guide-token = Wklej token bota
+guide-token-about = Na stronie „Bot” aplikacji naciśnij „Reset Token”, skopiuj token i wklej go tutaj. Nigdy go nikomu nie pokazuj: daje pełną kontrolę nad botem. Aplikacja trzyma go w systemowym pęku kluczy.
+guide-check = Sprawdź i zapisz
+guide-checking = Pytam Discorda…
+guide-token-ok = ✓ Połączono z botem { $name }.
+guide-token-wrong = Discord nie zna tego tokenu. Skopiuj go jeszcze raz ze strony „Bot”.
+guide-token-first = Najpierw wklej token bota.
+guide-network = Nie można połączyć się z Discordem: { $error }
+guide-intents = Włącz to, co bot czyta
+guide-intents-about = Na stronie „Bot”, w sekcji „Privileged Gateway Intents”, włącz te przełączniki i zapisz, a potem sprawdź ponownie:
+guide-bot-page = Otwórz stronę Bot
+guide-check-again = Sprawdź ponownie
+guide-invite = Zaproś bota na serwer testowy
+guide-invite-about = Zaproś bota na serwer, na którym go testujesz, z uprawnieniami potrzebnymi węzłom tego bota. Potem wyświetl serwery bota i wybierz ten.
+guide-invite-button = Zaproś bota
+guide-servers = Pokaż serwery bota
+guide-no-servers = Bot nie jest jeszcze na żadnym serwerze. Zaproś go i wyświetl serwery ponownie.
+guide-server-ok = ✓ Serwer testowy to { $name }.
+guide-server-hint = ID serwera możesz też wpisać w ustawieniach bota.
+
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Wybierz szablon
 template-fill-hint = Po utworzeniu panel Problemy pokaże kanały i role do uzupełnienia.
