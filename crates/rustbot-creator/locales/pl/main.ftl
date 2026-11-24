@@ -418,7 +418,10 @@ wizard-step = Krok { $number } z { $count }: { $name }
 wizard-appearance = Język i wygląd
 wizard-appearance-about = Wybierz język i wygląd. Później możesz je zmienić w Ustawieniach.
 wizard-toolchain = Narzędzia do budowania botów
-wizard-toolchain-about = Do zbudowania bota aplikacja potrzebuje systemowego kompilatora C (gcc) i własnej kopii Rusta, około 1 GB. Przed każdą instalacją pyta o zgodę.
+wizard-toolchain-about-gcc = Do zbudowania bota aplikacja potrzebuje systemowego kompilatora C (gcc) i własnej kopii Rusta, około 1 GB. Przed każdą instalacją pyta o zgodę.
+wizard-toolchain-about-msvc = Do zbudowania bota aplikacja potrzebuje narzędzi Microsoft C++ Build Tools (2–5 GB) i własnej kopii Rusta, około 1 GB. Przed każdą instalacją pyta o zgodę.
+wizard-msvc-found = ✓ Visual Studio Build Tools są zainstalowane.
+wizard-msvc-missing = ✗ Brakuje Visual Studio Build Tools.
 wizard-checking = Sprawdzam…
 wizard-gcc-found = ✓ Kompilator C (gcc) jest zainstalowany.
 wizard-gcc-missing = ✗ Brakuje kompilatora C (gcc).
@@ -507,6 +510,14 @@ host-state-paused = Hostowany: wstrzymany na czas testu
 host-out-of-date = nieaktualny
 log-hosted = hostowany
 error-host = Hosting nie powiódł się: { $error }
+
+# The C compiler on Windows (D-151)
+msvc-title = Zainstalować Visual Studio Build Tools?
+msvc-detail = Boty są budowane narzędziami Microsoft C++ Build Tools, których ten komputer nie ma. winget je zainstaluje (2–5 GB), a Windows poprosi o zgodę. Są darmowe dla osób prywatnych, open source i małych zespołów na licencji Visual Studio Community; firmy potrzebują licencji Visual Studio.
+msvc-install = Zainstaluj Build Tools
+msvc-installing = Instaluję Visual Studio Build Tools… To może chwilę potrwać.
+msvc-unknown-system = Nie znaleziono programu winget. Zainstaluj samodzielnie Visual Studio Build Tools z „Programowanie aplikacji klasycznych w języku C++”, a potem ponownie naciśnij Uruchom.
+msvc-failed = Nie udało się zainstalować Build Tools. Powód jest w liniach powyżej.
 
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Wybierz szablon

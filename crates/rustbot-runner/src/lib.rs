@@ -83,7 +83,7 @@ impl Bot {
             return Err(Error::NoToken);
         }
         let mut command = Command::new(binary);
-        command
+        hide_console(&mut command)
             .env("DISCORD_TOKEN", token.trim())
             // The Logs panel shows plain text: no colour codes (https://no-color.org).
             .env("NO_COLOR", "1")
@@ -127,19 +127,26 @@ impl Bot {
             return Ok(status);
         }
         // shortcut: the `kill` program sends SIGINT, since std cannot and unsafe code is
-        // denied; use a signal API instead once a dependency for it is approved, and a
-        // Windows mechanism in the Windows phase. The pid cannot be reused yet: the child
-        // is not reaped until we wait for it.
-        let _ = Command::new("kill")
-            .args(["-INT", &self.child.id().to_string()])
-            .status();
-        let deadline = Instant::now() + grace;
-        while Instant::now() < deadline {
-            if let Some(status) = self.exit_status()? {
-                return Ok(status);
+        // denied; use a signal API instead once a dependency for it is approved. The pid
+        // cannot be reused yet: the child is not reaped until we wait for it.
+        #[cfg(unix)]
+        {
+            let _ = Command::new("kill")
+                .args(["-INT", &self.child.id().to_string()])
+                .status();
+            let deadline = Instant::now() + grace;
+            while Instant::now() < deadline {
+                if let Some(status) = self.exit_status()? {
+                    return Ok(status);
+                }
+                std::thread::sleep(Duration::from_millis(20));
             }
-            std::thread::sleep(Duration::from_millis(20));
         }
+        // shortcut: Windows has no Ctrl+C for a bot without a console, so it is ended at
+        // once; its data.json is written atomically, so nothing is left half-written. Use
+        // a console control event once a Windows API dependency is approved.
+        #[cfg(not(unix))]
+        let _ = grace;
         let _ = self.child.kill();
         self.child
             .wait()
@@ -151,6 +158,18 @@ impl Drop for Bot {
     fn drop(&mut self) {
         let _ = self.stop(Duration::from_secs(5));
     }
+}
+
+/// Keeps a console program from opening a console window: the app is a window of its own
+/// on Windows. Elsewhere it changes nothing.
+pub fn hide_console(command: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
 }
 
 /// Sends each line of `pipe` to `logs` from a thread of its own, until the pipe closes.

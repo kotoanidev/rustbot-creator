@@ -418,7 +418,10 @@ wizard-step = Step { $number } of { $count }: { $name }
 wizard-appearance = Language and look
 wizard-appearance-about = Choose the language and the look. You can change them later in Settings.
 wizard-toolchain = Tools for building bots
-wizard-toolchain-about = To build a bot, the app needs the system's C compiler (gcc) and its own copy of Rust, about 1 GB. It asks before installing anything.
+wizard-toolchain-about-gcc = To build a bot, the app needs the system's C compiler (gcc) and its own copy of Rust, about 1 GB. It asks before installing anything.
+wizard-toolchain-about-msvc = To build a bot, the app needs Microsoft's C++ Build Tools (2–5 GB) and its own copy of Rust, about 1 GB. It asks before installing anything.
+wizard-msvc-found = ✓ The Visual Studio Build Tools are installed.
+wizard-msvc-missing = ✗ The Visual Studio Build Tools are missing.
 wizard-checking = Checking…
 wizard-gcc-found = ✓ The C compiler (gcc) is installed.
 wizard-gcc-missing = ✗ The C compiler (gcc) is missing.
@@ -507,6 +510,14 @@ host-state-paused = Hosted: paused for Run
 host-out-of-date = out of date
 log-hosted = hosted
 error-host = Hosting failed: { $error }
+
+# The C compiler on Windows (D-151)
+msvc-title = Install the Visual Studio Build Tools?
+msvc-detail = Bots are built with Microsoft's C++ Build Tools, which this computer does not have. winget installs them (2–5 GB), and Windows asks for permission. They are free for individuals, open source and small teams under the Visual Studio Community license; companies need a Visual Studio license.
+msvc-install = Install the Build Tools
+msvc-installing = Installing the Visual Studio Build Tools… This can take a while.
+msvc-unknown-system = winget was not found. Install the Visual Studio Build Tools with "Desktop development with C++" yourself, then press Run again.
+msvc-failed = The Build Tools could not be installed. The lines above say why.
 
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Choose a template

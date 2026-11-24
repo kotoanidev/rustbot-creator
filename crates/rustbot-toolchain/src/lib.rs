@@ -105,7 +105,9 @@ impl Toolchain {
     }
 
     fn bin(&self, program: &str) -> PathBuf {
-        self.cargo_home().join("bin").join(program)
+        self.cargo_home()
+            .join("bin")
+            .join(format!("{program}{}", std::env::consts::EXE_SUFFIX))
     }
 
     /// The app's data folder.
@@ -162,8 +164,9 @@ impl Toolchain {
         }
 
         let url = format!(
-            "https://static.rust-lang.org/rustup/dist/{}/rustup-init",
-            host()
+            "https://static.rust-lang.org/rustup/dist/{}/rustup-init{}",
+            host(),
+            std::env::consts::EXE_SUFFIX
         );
         log(&format!("Downloading {url}…"));
         let installer = download(&url, 64 * 1024 * 1024)?;
@@ -173,7 +176,9 @@ impl Toolchain {
         }
 
         fs::create_dir_all(&self.data).map_err(|e| io_error(&self.data, e))?;
-        let path = self.data.join("rustup-init");
+        let path = self
+            .data
+            .join(format!("rustup-init{}", std::env::consts::EXE_SUFFIX));
         fs::write(&path, &installer).map_err(|e| io_error(&path, e))?;
         make_executable(&path)?;
         log(&format!("Installing rustup and Rust {RUST_VERSION}…"));
@@ -207,7 +212,7 @@ impl Toolchain {
         let package = &project.manifest.bot.package;
         let dir = self.bot_dir(project);
         fs::create_dir_all(&dir).map_err(|e| io_error(&dir, e))?;
-        let bot = dir.join(package);
+        let bot = dir.join(program_name(package));
         // Copy, then rename: a bot that is running keeps its old file.
         let tmp = dir.join(format!(".{package}.tmp"));
         fs::copy(&built, &tmp).map_err(|e| io_error(&built, e))?;
@@ -258,7 +263,7 @@ impl Toolchain {
         Ok(self
             .target_dir()
             .join(profile)
-            .join(&project.manifest.bot.package))
+            .join(program_name(&project.manifest.bot.package)))
     }
 
     /// A rustup or cargo command of this toolchain. `RUSTUP_TOOLCHAIN` outranks every
@@ -273,15 +278,38 @@ impl Toolchain {
     }
 }
 
-/// The host's rustup target, e.g. `x86_64-unknown-linux-gnu`.
+/// The file name of a bot's program: `<package>`, or `<package>.exe` on Windows.
+#[must_use]
+pub fn program_name(package: &str) -> String {
+    format!("{package}{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// The host's rustup target, e.g. `x86_64-unknown-linux-gnu`; MSVC on Windows (D-151).
 fn host() -> String {
-    format!("{}-unknown-linux-gnu", std::env::consts::ARCH)
+    let arch = std::env::consts::ARCH;
+    if cfg!(windows) {
+        format!("{arch}-pc-windows-msvc")
+    } else {
+        format!("{arch}-unknown-linux-gnu")
+    }
+}
+
+/// Keeps a console program from opening a console window: the app is a window of its own
+/// on Windows. Elsewhere it changes nothing.
+pub fn hide_console(command: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
 }
 
 /// Runs `command`, sending each line of its output to `log`.
 fn run(mut command: Command, log: &mut dyn FnMut(&str)) -> Result<(), Error> {
     let program = command.get_program().to_string_lossy().into_owned();
-    let mut child = command
+    let mut child = hide_console(&mut command)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -327,26 +355,85 @@ fn matches_checksum(data: &[u8], sha256_file: &[u8]) -> bool {
         .is_some_and(|expected| expected.eq_ignore_ascii_case(&actual))
 }
 
+#[cfg(unix)]
 fn make_executable(path: &Path) -> Result<(), Error> {
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(|e| io_error(path, e))
 }
 
+/// Windows runs any `.exe`.
+#[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)] // the same signature as on Unix
+fn make_executable(_: &Path) -> Result<(), Error> {
+    Ok(())
+}
+
 /// A C compiler on `PATH`, which every bot build needs (D-039).
+#[cfg(not(windows))]
 #[must_use]
 pub fn c_compiler() -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     find_program(&path, &["cc", "gcc"])
 }
 
+/// The folder of the Visual Studio Build Tools with the C++ tools, which bots for
+/// `windows-msvc` need (D-151). rustc finds the linker in it by itself.
+#[cfg(windows)]
+#[must_use]
+pub fn c_compiler() -> Option<PathBuf> {
+    let program_files = std::env::var_os("ProgramFiles(x86)")?;
+    let vswhere = PathBuf::from(program_files)
+        .join("Microsoft Visual Studio")
+        .join("Installer")
+        .join("vswhere.exe");
+    let mut command = Command::new(vswhere);
+    command.args([
+        "-latest",
+        "-products",
+        "*",
+        "-requires",
+        "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+        "-property",
+        "installationPath",
+    ]);
+    let output = hide_console(&mut command).output().ok()?;
+    let folder = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    (output.status.success() && !folder.is_empty()).then(|| PathBuf::from(folder))
+}
+
+#[cfg(not(windows))]
 fn find_program(path: &std::ffi::OsStr, names: &[&str]) -> Option<PathBuf> {
     std::env::split_paths(path)
         .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
         .find(|candidate| candidate.is_file())
 }
 
+/// The command that installs the Build Tools' C++ tools through winget (D-151). Their
+/// installer shows its own progress and Windows' administrator prompt. Run it only after
+/// the user agreed, which includes the Build Tools' license.
+#[cfg(windows)]
+#[must_use]
+pub fn install_c_compiler_command() -> Option<Command> {
+    let mut command = Command::new("winget");
+    command.args([
+        "install",
+        "--id",
+        "Microsoft.VisualStudio.2022.BuildTools",
+        "--exact",
+        "--source",
+        "winget",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+        "--override",
+        "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended",
+    ]);
+    hide_console(&mut command);
+    Some(command)
+}
+
 /// The command that installs gcc through the system's administrator prompt (D-039), for the
 /// package manager this system has. Run it only after the user agreed.
+#[cfg(not(windows))]
 #[must_use]
 pub fn install_c_compiler_command() -> Option<Command> {
     let path = std::env::var_os("PATH")?;
@@ -368,7 +455,7 @@ pub fn install_c_compiler_command() -> Option<Command> {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_program, matches_checksum};
+    use super::matches_checksum;
 
     #[test]
     fn checksums() {
@@ -380,8 +467,10 @@ mod tests {
         assert!(!matches_checksum(b"abc", b""));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn programs_are_found_on_the_path() {
+        use super::find_program;
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("gcc"), "").unwrap();
         let path = std::env::join_paths([dir.path()]).unwrap();

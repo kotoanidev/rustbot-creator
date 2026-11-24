@@ -284,6 +284,7 @@ mod tests {
     /// A real round trip through `systemctl --user`: a service whose launcher stops at
     /// once with [`super::CANNOT_START`] ends as failed and is not restarted. Then it is
     /// removed. Run by hand (see CLAUDE.md).
+    #[cfg(unix)]
     #[test]
     #[ignore = "installs and removes a real systemd --user unit"]
     fn a_service_installs_fails_without_restarts_and_is_removed() {

@@ -63,10 +63,13 @@ impl Hosted {
     }
 }
 
+/// Whether hosting works on this system: `systemd --user` for now. Windows gets Task
+/// Scheduler later in phase 11 (D-022).
+pub(crate) const AVAILABLE: bool = cfg!(target_os = "linux");
+
 /// `rustbot-creator --host <project id> <package>`, which the service runs (D-138): starts
 /// the hosted program with the token from the keyring, in place of this process.
 pub(crate) fn launch(id: &str, package: &str) -> ExitCode {
-    use std::os::unix::process::CommandExt as _;
     let fail = |code: u8, message: &str| {
         eprintln!("{message}");
         ExitCode::from(code)
@@ -82,7 +85,9 @@ pub(crate) fn launch(id: &str, package: &str) -> ExitCode {
         return cannot("The home folder is unknown.");
     };
     let dir = toolchain.bot_dir_by_id(id);
-    let program = dir.join(HOSTED).join(package);
+    let program = dir
+        .join(HOSTED)
+        .join(rustbot_toolchain::program_name(package));
     let token = match rustbot_secrets::bot_token(project) {
         Ok(Some(token)) if !token.trim().is_empty() => token,
         Ok(_) => {
@@ -94,14 +99,27 @@ pub(crate) fn launch(id: &str, package: &str) -> ExitCode {
         // Right after login the keyring may not be open yet: the service tries again.
         Err(e) => return fail(1, &format!("The keyring cannot be read: {e}")),
     };
-    // The bot takes this process's place, so systemd watches and signals the bot itself.
     // Its commands are global (D-055), and its data.json is the one Run uses (D-143).
-    let error = std::process::Command::new(&program)
+    let mut command = std::process::Command::new(&program);
+    command
         .current_dir(&dir)
         .env("DISCORD_TOKEN", token.trim())
         .env("NO_COLOR", "1")
-        .env_remove("DISCORD_TEST_GUILD_ID")
-        .exec();
+        .env_remove("DISCORD_TEST_GUILD_ID");
+    // The bot takes this process's place, so systemd watches and signals the bot itself.
+    #[cfg(unix)]
+    let error = {
+        use std::os::unix::process::CommandExt as _;
+        command.exec()
+    };
+    #[cfg(not(unix))]
+    let error = match rustbot_runner::hide_console(&mut command).status() {
+        Ok(status) => {
+            let code = status.code().and_then(|code| u8::try_from(code).ok());
+            return ExitCode::from(code.unwrap_or(1));
+        }
+        Err(error) => error,
+    };
     cannot(&format!("{}: {error}", program.display()))
 }
 
@@ -127,6 +145,9 @@ fn fingerprint(output: &rustbot_codegen::Output) -> String {
 /// Watches the hosted bot while the project is open: its state every 5 s, and its
 /// journal in the Logs panel (D-143).
 pub(crate) fn watch(cx: &mut Context<'_, AppState>) {
+    if !AVAILABLE {
+        return;
+    }
     let (logs, lines) = mpsc::channel::<LogLine>();
     cx.spawn(async move |this, cx| {
         let mut ticks = 0;
@@ -238,7 +259,7 @@ async fn snapshot(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Resu
         // Copy, then rename: the running snapshot keeps its file until the restart.
         let tmp = dir.join(format!(".{package}.tmp"));
         fs::copy(&program, &tmp).map_err(io)?;
-        fs::rename(&tmp, dir.join(&package)).map_err(io)?;
+        fs::rename(&tmp, dir.join(rustbot_toolchain::program_name(&package))).map_err(io)?;
         fs::write(dir.join("version"), version).map_err(io)?;
         service
             .install(&launcher, &package, &name)

@@ -133,12 +133,13 @@ impl Wizard {
     fn toolchain_step(&self, cx: &mut Context<'_, Self>) -> gpui_kit::Div {
         let theme = cx.theme();
         let version = [("version", rustbot_core::RUST_VERSION)];
-        let mut body = v_flex().gap(px(8.)).child(t("wizard-toolchain-about"));
+        let about = crate::install::compiler_text("wizard-toolchain-about-gcc");
+        let mut body = v_flex().gap(px(8.)).child(about);
         match &self.setup {
             Setup::Checking => body = body.child(t("wizard-checking")),
             Setup::Found { gcc, rust } => {
                 body = body
-                    .child(t(if *gcc {
+                    .child(crate::install::compiler_text(if *gcc {
                         "wizard-gcc-found"
                     } else {
                         "wizard-gcc-missing"

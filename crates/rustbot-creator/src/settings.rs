@@ -48,6 +48,12 @@ impl Global for Store {}
 
 /// The app's settings folder, `~/.config/rustbot-creator`, which also holds the user's
 /// themes.
+/// The user's home folder, where the file dialogs start.
+pub(crate) fn home() -> PathBuf {
+    directories::UserDirs::new()
+        .map_or_else(|| PathBuf::from("/"), |dirs| dirs.home_dir().to_owned())
+}
+
 pub(crate) fn config_dir() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|dirs| dirs.config_dir().join("rustbot-creator"))
 }

@@ -1,5 +1,8 @@
 //! RustBot Creator, the desktop application. `rustbot-creator <folder>` opens a project.
 
+// A window of its own on Windows, without a console behind it.
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
+
 mod canvas;
 mod discord;
 mod export;

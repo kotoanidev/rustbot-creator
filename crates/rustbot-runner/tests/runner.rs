@@ -1,11 +1,17 @@
 //! Running a bot, with shell scripts standing in for built bots.
 
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::sync::mpsc;
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
-use rustbot_runner::{Bot, Error, LogLine, Stream, set_test_server, test_server};
+#[cfg(unix)]
+use rustbot_runner::{Bot, LogLine, Stream};
+use rustbot_runner::{Error, set_test_server, test_server};
 
+#[cfg(unix)]
 fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let path = dir.join(name);
@@ -15,6 +21,7 @@ fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
 }
 
 /// Collects lines until every one of `lines` has arrived; stdout and stderr interleave freely.
+#[cfg(unix)]
 fn wait_for(logs: &mpsc::Receiver<LogLine>, lines: &[(Stream, &str)]) {
     let mut seen = Vec::new();
     while !lines.iter().all(|&(stream, text)| {
@@ -26,6 +33,7 @@ fn wait_for(logs: &mpsc::Receiver<LogLine>, lines: &[(Stream, &str)]) {
 }
 
 /// One test, so no other test thread forks while a script is being written (ETXTBSY).
+#[cfg(unix)]
 #[test]
 fn start_log_and_stop() {
     let dir = tempfile::tempdir().unwrap();

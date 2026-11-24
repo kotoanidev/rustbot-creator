@@ -69,6 +69,16 @@ pub(crate) async fn logged<R: Send + 'static>(
     }
 }
 
+/// The text of a C compiler message: about gcc, or about the Build Tools on Windows
+/// (D-151), whose keys say `msvc` for `gcc`.
+pub(crate) fn compiler_text(gcc_key: &str) -> String {
+    if cfg!(windows) {
+        t(&gcc_key.replace("gcc", "msvc"))
+    } else {
+        t(gcc_key)
+    }
+}
+
 /// Installs gcc and the private Rust when they are missing, each after asking. The error
 /// is the message to show, e.g. that the user cancelled.
 pub(crate) async fn install(
@@ -77,12 +87,13 @@ pub(crate) async fn install(
     report: Report<'_>,
 ) -> Result<(), String> {
     if rustbot_toolchain::c_compiler().is_none() {
-        if !ask(cx, &t("gcc-title"), &t("gcc-detail"), &t("gcc-install")).await {
+        let (title, detail) = (compiler_text("gcc-title"), compiler_text("gcc-detail"));
+        if !ask(cx, &title, &detail, &compiler_text("gcc-install")).await {
             return Err(t("run-cancelled"));
         }
         let mut command = rustbot_toolchain::install_c_compiler_command()
-            .ok_or_else(|| t("gcc-unknown-system"))?;
-        report(cx, Progress::Step(t("gcc-installing")));
+            .ok_or_else(|| compiler_text("gcc-unknown-system"))?;
+        report(cx, Progress::Step(compiler_text("gcc-installing")));
         let installed = logged(cx, report, move |log| match command.output() {
             Ok(output) => {
                 let text = String::from_utf8_lossy(&output.stdout).into_owned()
@@ -97,7 +108,7 @@ pub(crate) async fn install(
         })
         .await;
         if !installed || rustbot_toolchain::c_compiler().is_none() {
-            return Err(t("gcc-failed"));
+            return Err(compiler_text("gcc-failed"));
         }
     }
     if !toolchain.is_installed() {

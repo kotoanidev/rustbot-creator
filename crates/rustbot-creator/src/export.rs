@@ -89,10 +89,14 @@ async fn choose(cx: &mut AsyncWindowContext) -> Option<Kind> {
 }
 
 async fn folder(cx: &mut AsyncWindowContext, package: &str, kind: Kind) -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
+    let home = crate::settings::home();
     let name = match kind {
         Kind::Source => package.to_owned(),
-        Kind::Build => format!("{package}-linux-{}", std::env::consts::ARCH),
+        Kind::Build => format!(
+            "{package}-{}-{}",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        ),
     };
     let path = cx
         .update(|_, cx| cx.prompt_for_new_path(&home, Some(&name)))
@@ -145,7 +149,8 @@ async fn export(
     let target = target.to_owned();
     let package = project.manifest.bot.package.clone();
     cx.background_spawn(async move {
-        let binary = binary.as_deref().map(|path| (path, package.as_str()));
+        let file = rustbot_toolchain::program_name(&package);
+        let binary = binary.as_deref().map(|path| (path, file.as_str()));
         place(&target, &files, binary, replace)
     })
     .await
@@ -255,12 +260,13 @@ fn readme(bot: &rustbot_core::BotSettings, kind: Kind) -> String {
             let _ = write!(
                 text,
             "A Discord bot made with [RustBot Creator](https://github.com/kotoanidev/rustbot-creator), \
-             built for Linux ({arch}).\n\n\
+             built for {os} ({arch}).\n\n\
              ## Run\n\n\
              1. Copy `.env.example` to `.env` and put the bot's token in it.\n\
-             2. Run `./{package}` in this folder.\n\n",
+             2. Run `{run}` in this folder.\n\n",
+            os = if cfg!(windows) { "Windows" } else { "Linux" },
             arch = std::env::consts::ARCH,
-            package = bot.package,
+            run = run_line(&bot.package),
         );
         }
     }
@@ -272,6 +278,15 @@ fn readme(bot: &rustbot_core::BotSettings, kind: Kind) -> String {
         let _ = write!(text, "\n## License\n\n{}\n", bot.license);
     }
     text
+}
+
+/// How the README says to start the program in its folder.
+fn run_line(package: &str) -> String {
+    if cfg!(windows) {
+        rustbot_toolchain::program_name(package)
+    } else {
+        format!("./{package}")
+    }
 }
 
 /// The license's files, with the bot's authors as the copyright holder where the text
@@ -417,7 +432,7 @@ mod tests {
         assert!(target.join(package).is_file());
         assert!(!target.join("LICENSE").exists());
         let readme = std::fs::read_to_string(target.join("README.md")).unwrap();
-        assert!(readme.contains(&format!("Run `./{package}`")));
+        assert!(readme.contains(&format!("Run `{}`", super::run_line(package))));
         assert!(
             std::fs::read_to_string(target.join(".env.example"))
                 .unwrap()

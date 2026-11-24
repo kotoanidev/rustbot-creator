@@ -1,0 +1,5 @@
+# The same line endings on every system, so snapshots, templates and scripts match (D-154).
+* text=auto eol=lf
+*.svg text eol=lf
+*.ico binary
+*.png binary

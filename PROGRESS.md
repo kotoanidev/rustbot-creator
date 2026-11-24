@@ -282,6 +282,17 @@ nothing is published:
   packages; a `vX.Y.Z` tag also publishes.
 - `docs/RELEASING.md` lists the owner's one-time setup (Copr, the GPG key, GitHub Pages)
   and the release steps.
+- A run by hand of the release workflow passed: the .deb on Ubuntu 24.04 and the RPM on
+  Fedora 43 and 44 build, install and start their launcher.
+
+Phase 11 (Windows, D-151–D-154) has begun:
+- The code builds for Windows: the toolchain uses `x86_64-pc-windows-msvc` and `.exe`
+  names. It finds the Build Tools with `vswhere`, and installs them through winget after
+  asking, with Windows texts.
+- No console windows pop up. Stop ends the bot at once on Windows. Export names the
+  system and the `.exe`.
+- Hosting is hidden on Windows until Task Scheduler support.
+- CI has a `windows-latest` job.
 
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with

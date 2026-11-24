@@ -217,8 +217,7 @@ impl Workspace {
     }
 
     fn pick_new_folder(template: usize, window: &mut Window, cx: &mut Context<'_, Self>) {
-        let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
-        let path = cx.prompt_for_new_path(&home, Some("my-bot"));
+        let path = cx.prompt_for_new_path(&crate::settings::home(), Some("my-bot"));
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(Some(path))) = path.await else {
                 return;
@@ -458,15 +457,15 @@ fn run_controls(state: &Entity<AppState>, cx: &mut Context<'_, Workspace>) -> im
             .on_click(move |_, window, cx| crate::export::start(state.clone(), window, cx))
     });
     let hosted = &state.read(cx).hosted;
-    let host =
-        (stopped && hosted.state == Some(rustbot_runner::service::State::Missing)).then(|| {
-            let state = state.clone();
-            Button::new("host")
-                .ghost()
-                .xsmall()
-                .label(t("host"))
-                .on_click(move |_, window, cx| crate::host::host(state.clone(), window, cx))
-        });
+    let not_hosted = hosted.state == Some(rustbot_runner::service::State::Missing);
+    let host = (crate::host::AVAILABLE && stopped && not_hosted).then(|| {
+        let state = state.clone();
+        Button::new("host")
+            .ghost()
+            .xsmall()
+            .label(t("host"))
+            .on_click(move |_, window, cx| crate::host::host(state.clone(), window, cx))
+    });
     h_flex()
         .gap(px(8.))
         .children(button)

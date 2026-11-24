@@ -1814,7 +1814,7 @@ impl Properties {
             .children(bot.server_status.clone().map(status))
             .child(label(t("bot-license")))
             .child(Select::new(&bot.license).small())
-            .child(hosting_section(hosted, cx))
+            .children(crate::host::AVAILABLE.then(|| hosting_section(hosted, cx)))
     }
 }
 
