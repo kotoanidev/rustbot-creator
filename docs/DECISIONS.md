@@ -1322,6 +1322,41 @@ alternatives that were considered, and why.
   phases 3–7 have been tested live and they agree.
 - **Alternatives:** publishing as soon as the packages build and pass the checks.
 
+### D-151 — Windows bots build with MSVC, and Build Tools are installed with consent
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** On Windows, bots build for `x86_64-pc-windows-msvc`, the standard Rust
+  target that rustup recommends. When the Visual Studio Build Tools are missing, the app
+  installs them through winget, after asking and behind Windows' administrator prompt
+  (2–5 GB). Their license is free for individuals, open source and small teams (the
+  Visual Studio Community terms); companies need a Visual Studio license.
+- **Alternatives:** a private llvm-mingw (about 200 MB, no administrator, no Microsoft
+  license), whose younger `windows-gnullvm` target could fail to build ring, zstd or
+  djs-rs; trying gnullvm in CI first and falling back to MSVC.
+
+### D-152 — Windows gets a per-user Inno Setup installer and winget
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** An Inno Setup installer that needs no administrator installs the app
+  into `%LOCALAPPDATA%`. It is attached to the GitHub release, with a winget manifest, so
+  updates come through `winget upgrade`, in the spirit of D-025.
+- **Alternatives:** a WiX MSI with winget (awkward per user, usually needs an
+  administrator); only a portable .zip.
+
+### D-153 — Windows builds are unsigned in pre-alpha, then signed through SignPath
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The first Windows releases are not code-signed. The README explains
+  SmartScreen's warning. Later the owner applies to the SignPath Foundation, which signs
+  open-source projects for free in CI.
+- **Alternatives:** a certificate from the start, e.g. Azure Trusted Signing (about
+  USD 10 a month) or an OV certificate, which need an identity or company check.
+
+### D-154 — Windows is tested in CI and live by the owner
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** GitHub Actions on `windows-latest` runs the quality gate, the headless
+  UI tests and the template bots' builds. The owner tests the interface live on real
+  Windows or in a virtual machine.
+- **Alternatives:** also a Windows virtual machine on the owner's Fedora, with Claude's
+  checklists; CI only.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

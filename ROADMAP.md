@@ -110,8 +110,14 @@ layer, before the scope widens.
 
 # After release 1 (D-123)
 
-## Phase 11 — Windows (D-009, D-124)
-- [ ] The app, the toolchain installation and hosting on Windows, and an installer
+## Phase 11 — Windows (D-009, D-124, D-151–D-154)
+- [ ] The workspace builds and passes the gate on `windows-latest` in CI (D-154)
+- [ ] The private Rust for `x86_64-pc-windows-msvc`, and the Build Tools through winget
+      with consent (D-151)
+- [ ] Run and Stop without consoles popping up; the token in Credential Manager
+- [ ] Hosting through Task Scheduler at login, with a log file (D-022, D-138, D-143)
+- [ ] A per-user Inno Setup installer in the release, and a winget manifest (D-152);
+      unsigned in pre-alpha (D-153)
 
 ## Phase 12 — RustBot Cloud pilot (D-125)
 - [ ] "Publish" deploys the bot to the company's hosting, with monitoring, restarts,
