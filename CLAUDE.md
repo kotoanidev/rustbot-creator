@@ -14,9 +14,10 @@ ship a bot. The full brief is D-010 in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 - License: `MIT OR Apache-2.0`
 - Local directory: `discord-bot-rust-app` (not renamed to match the repository)
 
-**State: pre-alpha. Phases 2 and 3 are done in code (see `ROADMAP.md`).** The app makes
-bots from templates or by hand, with a node-graph editor, and builds and runs them. Next
-is phase 5, the first run and themes (D-123).
+**State: pre-alpha. Phases 2, 3, 5 and 6 are done in code (see `ROADMAP.md`).** The app
+makes bots from templates or by hand, with a node-graph editor, builds and runs them, and
+exports them. It has a first-run wizard, a Discord Developer Portal guide and themes. Next
+is phase 7, hosting on the PC (D-123).
 
 ## Commands
 
@@ -29,6 +30,7 @@ cargo test -p rustbot-core <test_name>               # a single test
 cargo run -p rustbot-creator                         # the app
 cargo test -p rustbot-codegen -- --ignored compiles  # the generated bot builds against real djs-rs (network)
 cargo test -p rustbot-creator -- --ignored template_bots_compile  # every bot template builds (network)
+cargo test -p rustbot-creator -- --ignored the_ready_build_runs   # a release export with the private Rust starts from its folder
 cargo test -p rustbot-codegen --release -- --ignored budget --nocapture   # D-038 measurement
 INSTA_UPDATE=always cargo test -p rustbot-codegen    # accept changed snapshots of generated code; review the diff
 cargo test -p rustbot-toolchain -- --ignored install --nocapture   # real rustup + Rust install, bot build and run (~300 MB)

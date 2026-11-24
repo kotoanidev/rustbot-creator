@@ -430,6 +430,35 @@ mod tests {
         assert!(Path::new(&target).join(super::MARKER).is_file());
     }
 
+    /// A real release build with the app's private Rust, exported and started from its
+    /// folder. Without a token it must stop at once and say so. Run by hand (see
+    /// CLAUDE.md).
+    #[test]
+    #[ignore = "builds a bot with the private Rust: needs it installed and the network"]
+    fn the_ready_build_runs_from_its_folder() {
+        let (dir, project) = project("MIT");
+        let output =
+            rustbot_codegen::generate(&project, &rustbot_core::Registry::with_core()).unwrap();
+        rustbot_codegen::write(&project, &output).unwrap();
+        let toolchain = rustbot_toolchain::Toolchain::locate().unwrap();
+        let program = toolchain
+            .build_release(&project, &mut |line| eprintln!("{line}"))
+            .unwrap();
+        let target = dir.path().join("build");
+        let package = &project.manifest.bot.package;
+        let files = super::extras(&project, Kind::Build);
+        super::place(&target, &files, Some((&program, package)), false).unwrap();
+        std::fs::copy(target.join(".env.example"), target.join(".env")).unwrap();
+        let run = std::process::Command::new(target.join(package))
+            .current_dir(&target)
+            .env_remove("DISCORD_TOKEN")
+            .output()
+            .unwrap();
+        assert!(!run.status.success());
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        assert!(stderr.contains("DISCORD_TOKEN is not set"), "{stderr}");
+    }
+
     /// Every license on offer has its text in the export, except none.
     #[test]
     fn every_offered_license_has_its_text() {
