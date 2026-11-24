@@ -86,15 +86,15 @@ layer, before the scope widens.
 - [x] Ready build: the release program, `.env.example` and a README (D-135)
 - [x] "Export…" on the status bar, progress in the Logs panel (D-137)
 
-## Phase 7 — Hosting on the PC (D-022, D-138–D-143)
-- [ ] The headless launcher `rustbot-creator --host <id>`, with the token from the keyring
+## Phase 7 — Hosting on the PC (D-022, D-138–D-143, C-035) ✅
+- [x] The headless launcher `rustbot-creator --host <id>`, with the token from the keyring
       (D-138)
-- [ ] A `systemd --user` service that starts at login and restarts on failure (D-139)
-- [ ] "Host…" makes a release snapshot; "Update" replaces it, and an out-of-date snapshot
+- [x] A `systemd --user` service that starts at login and restarts on failure (D-139)
+- [x] "Host…" makes a release snapshot; "Update" replaces it, and an out-of-date snapshot
       is shown (D-140)
-- [ ] Run pauses the hosted bot, and Stop resumes it (D-141)
-- [ ] The state on the status bar, and the controls in the bot settings (D-142)
-- [ ] The journal in the Logs panel, and one `data.json` for both (D-143)
+- [x] Run pauses the hosted bot, and Stop resumes it (D-141)
+- [x] The state on the status bar, and the controls in the bot settings (D-142)
+- [x] The journal in the Logs panel, and one `data.json` for both (D-143)
 
 ## Phase 10 — Public Linux release (D-025, D-123)
 - [ ] RPM on Copr, testing on Fedora

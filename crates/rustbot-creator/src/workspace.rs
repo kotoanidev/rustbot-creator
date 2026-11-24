@@ -447,8 +447,9 @@ fn run_controls(state: &Entity<AppState>, cx: &mut Context<'_, Workspace>) -> im
             (Some(button), t("status-running"))
         }
     };
-    // Export builds too, so it waits while the bot runs or builds (D-137).
-    let export = matches!(state.read(cx).run, Run::Stopped).then(|| {
+    // Export and hosting build too, so they wait while the bot runs or builds (D-137).
+    let stopped = matches!(state.read(cx).run, Run::Stopped);
+    let export = stopped.then(|| {
         let state = state.clone();
         Button::new("export")
             .ghost()
@@ -456,11 +457,23 @@ fn run_controls(state: &Entity<AppState>, cx: &mut Context<'_, Workspace>) -> im
             .label(t("export"))
             .on_click(move |_, window, cx| crate::export::start(state.clone(), window, cx))
     });
+    let hosted = &state.read(cx).hosted;
+    let host =
+        (stopped && hosted.state == Some(rustbot_runner::service::State::Missing)).then(|| {
+            let state = state.clone();
+            Button::new("host")
+                .ghost()
+                .xsmall()
+                .label(t("host"))
+                .on_click(move |_, window, cx| crate::host::host(state.clone(), window, cx))
+        });
     h_flex()
         .gap(px(8.))
         .children(button)
         .children(export)
+        .children(host)
         .child(label)
+        .children(hosted.label())
 }
 
 #[cfg(test)]

@@ -1872,6 +1872,37 @@ alternatives that were considered, and why.
     used only when it is empty, or when it holds an earlier export and the user agrees to
     replace it. Anything else is refused and never touched. The export is written next to
     the target first, then renamed into its place.
+
+### C-035 — How hosting on the PC works
+- **Date:** 2026-11-24
+- **Choice:**
+  - **The service:** `rustbot-<project id>.service` in `~/.config/systemd/user/`
+    (`$XDG_CONFIG_HOME` if set). It runs `"<the app>" --host <id> <package>` with
+    `Restart=on-failure` after 10 s and `WantedBy=default.target`, then is enabled and
+    restarted. The bot's name in `Description` loses control characters, and `%` and `$`
+    are escaped, so no name or path can add a setting.
+  - **The launcher:** `--host` is handled before gpui starts. It takes the place of its
+    own process with the program (`exec`), so systemd watches and signals the bot itself.
+    The bot gets the token, `NO_COLOR=1` and no test server, so its commands are global.
+    It runs in the bot's folder, where `data.json` is.
+  - **Exit codes:** a missing token, program or project gives 78 (`EX_CONFIG`), which
+    `RestartPreventExitStatus` keeps from restarting. A keyring that cannot be read gives
+    1, which is retried: right after login it may not be open yet.
+  - **The snapshot:** the release program goes to `bots/<id>/hosted/<package>` (copied,
+    then renamed, so the running one keeps its file). Next to it is `version`, a hash of
+    the generated code. The app regenerates every 5 s while the bot is hosted and says
+    "out of date" when the hash differs. Graphs with problems keep the last answer.
+  - **Watching:** the state comes from `systemctl --user is-active` every 5 s. The
+    journal is followed from its last 30 lines, and its lines show in the Logs panel
+    prefixed with "[hosted]".
+  - **Run:** Run asks systemd for the state just before it starts the bot, and stops a
+    running service. Stop, or the bot exiting, starts it again. When the app quits during
+    Run, it first stops the test bot, then starts the service.
+  - **Remove:** after asking, it disables the service, deletes the unit and the
+    snapshot, and keeps `data.json` and the token.
+  - **A known limit:** the service names the app's path at the time of "Host…" or
+    "Update". After the app moves (e.g. `cargo clean` in development), "Update" writes the
+    new path.
 ---
 
 ## Open questions (to ask the owner when relevant)

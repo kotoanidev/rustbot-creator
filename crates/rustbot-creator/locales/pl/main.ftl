@@ -481,6 +481,33 @@ error-export-exists = { $path } już istnieje i nie jest eksportem. Wybierz nowy
 bot-license = Licencja
 license-none = Brak
 
+# Hosting on this PC (D-138-D-143)
+host = Hostuj…
+host-busy = Przygotowuję hosting…
+host-confirm-title = Hostować tego bota na tym komputerze?
+host-confirm-detail = Działa w tle od każdego logowania, także przy zamkniętej aplikacji, i uruchamia się ponownie po awarii. Jego komendy są rejestrowane na wszystkich serwerach, nie tylko na testowym. Token zostaje w pęku kluczy.
+host-confirm = Hostuj
+host-done = Bot jest hostowany na tym komputerze. Uruchamia się przy każdym logowaniu.
+host-paused-log = Hostowany bot jest wstrzymany, dopóki działa ten.
+host-resumed-log = Hostowany bot znowu działa.
+host-removed = Bot nie jest już hostowany na tym komputerze. Jego pamięć (data.json) zostaje.
+host-remove-title = Przestać hostować tego bota?
+host-remove-detail = Usługa zostanie usunięta, a bot będzie offline, dopóki nie zahostujesz go ponownie. Jego pamięć zostaje.
+host-remove = Przestań hostować
+host-remove-button = Usuń…
+host-section = Hosting na tym komputerze
+host-none = Nie jest hostowany. „Hostuj…” uruchamia bota w tle od każdego logowania.
+host-update = Zaktualizuj
+host-start = Włącz
+host-state-running = Hostowany: działa
+host-state-starting = Hostowany: uruchamia się
+host-state-stopped = Hostowany: zatrzymany
+host-state-failed = Hostowany: błąd, zobacz Logi
+host-state-paused = Hostowany: wstrzymany na czas testu
+host-out-of-date = nieaktualny
+log-hosted = hostowany
+error-host = Hosting nie powiódł się: { $error }
+
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Wybierz szablon
 template-fill-hint = Po utworzeniu panel Problemy pokaże kanały i role do uzupełnienia.

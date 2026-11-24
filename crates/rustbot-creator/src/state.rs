@@ -96,6 +96,8 @@ pub(crate) struct AppState {
     pub(crate) toolchain: Option<rustbot_toolchain::Toolchain>,
     /// What the bot is doing (D-071).
     pub(crate) run: crate::run::Run,
+    /// The bot hosted on this PC, if it is (D-022).
+    pub(crate) hosted: crate::host::Hosted,
     /// Earlier versions of graphs, newest last: `(index in project.graphs, file)`.
     undo: Vec<(usize, GraphFile)>,
     redo: Vec<(usize, GraphFile)>,
@@ -114,9 +116,11 @@ impl AppState {
         // Whatever is still waiting for autosave is written when the app quits.
         cx.on_app_quit(|this, _| {
             this.save_now();
+            crate::host::resume_on_quit(this);
             async {}
         })
         .detach();
+        crate::host::watch(cx);
         // The first command is open, so a new project starts on its /ping graph.
         let open_graph = (!project.graphs.is_empty()).then_some(0);
         let mut registry = Registry::with_core();
@@ -130,6 +134,7 @@ impl AppState {
             logs: Vec::new(),
             toolchain: rustbot_toolchain::Toolchain::locate().ok(),
             run: crate::run::Run::Stopped,
+            hosted: crate::host::Hosted::default(),
             undo: Vec::new(),
             redo: Vec::new(),
             unsaved: BTreeSet::new(),

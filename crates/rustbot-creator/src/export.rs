@@ -60,30 +60,16 @@ pub(crate) fn start(state: Entity<AppState>, window: &mut Window, cx: &mut App) 
             let Some(target) = folder(cx, &package, kind).await else {
                 return;
             };
-            // Run may have been pressed while the dialogs were open.
-            let started = state.update(cx, |state, cx| {
-                let stopped = matches!(state.run, Run::Stopped);
-                if stopped {
-                    state.run = Run::Busy(t("export-busy"));
-                    cx.notify();
-                }
-                stopped
-            });
-            if !started {
+            if !run::begin(&state, cx, &t("export-busy")) {
                 return;
             }
+            let path = target.display().to_string();
             let result = export(&state, kind, &target, cx).await;
-            state.update(cx, |state, cx| {
-                match result {
-                    Ok(()) => state.log(t_with(
-                        "export-done",
-                        &[("path", &target.display().to_string())],
-                    )),
-                    Err(message) => state.log_error(message),
-                }
-                state.run = Run::Stopped;
-                cx.notify();
-            });
+            run::finish(
+                &state,
+                cx,
+                result.map(|()| t_with("export-done", &[("path", &path)])),
+            );
         })
         .detach();
 }
@@ -147,15 +133,7 @@ async fn export(
             (project, None)
         }
         Kind::Build => {
-            let (project, toolchain) = run::check(state, cx).await?;
-            let report = run::report(state);
-            install(cx, &toolchain, &report).await?;
-            run::generate(state, cx)?;
-            run::busy(state, cx, &t("export-building"));
-            let built = project.clone();
-            let binary = logged(cx, &report, move |log| toolchain.build_release(&built, log))
-                .await
-                .map_err(|e| t_with("error-build", &[("error", &e.to_string())]))?;
+            let (project, _, binary) = release(state, cx).await?;
             (project, Some(binary))
         }
     };
@@ -172,6 +150,24 @@ async fn export(
     })
     .await
     .map_err(failed)
+}
+
+/// Run's steps up to the build, but in release mode: for the ready build and for hosting
+/// (D-135, D-140). Returns the project, its generated code and the program.
+pub(crate) async fn release(
+    state: &Entity<AppState>,
+    cx: &mut AsyncWindowContext,
+) -> Result<(Project, rustbot_codegen::Output, PathBuf), String> {
+    let (project, toolchain) = run::check(state, cx).await?;
+    let report = run::report(state);
+    install(cx, &toolchain, &report).await?;
+    let output = run::generate(state, cx)?;
+    run::busy(state, cx, &t("export-building"));
+    let built = project.clone();
+    let binary = logged(cx, &report, move |log| toolchain.build_release(&built, log))
+        .await
+        .map_err(|e| t_with("error-build", &[("error", &e.to_string())]))?;
+    Ok((project, output, binary))
 }
 
 /// What is already at an export's folder.

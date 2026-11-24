@@ -124,7 +124,14 @@ impl Toolchain {
     /// for it, such as the test server (D-065).
     #[must_use]
     pub fn bot_dir(&self, project: &Project) -> PathBuf {
-        self.data.join("bots").join(project.manifest.id.to_string())
+        self.bot_dir_by_id(&project.manifest.id.to_string())
+    }
+
+    /// [`Toolchain::bot_dir`] by the project's id alone, for the hosted bot's launcher
+    /// (D-138). The caller checks that `id` is a UUID.
+    #[must_use]
+    pub fn bot_dir_by_id(&self, id: &str) -> PathBuf {
+        self.data.join("bots").join(id)
     }
 
     /// Whether Rust [`RUST_VERSION`] is installed.

@@ -72,6 +72,36 @@ pub(crate) fn stop(state: &Entity<AppState>, cx: &mut App) {
     .detach();
 }
 
+/// Marks the bot busy with `text` for a task besides Run, e.g. an export, unless it already
+/// runs or is busy: buttons may have been pressed while a dialog was open. Returns whether
+/// the task may go on.
+pub(crate) fn begin(state: &Entity<AppState>, cx: &mut AsyncWindowContext, text: &str) -> bool {
+    state.update(cx, |state, cx| {
+        let stopped = matches!(state.run, Run::Stopped);
+        if stopped {
+            state.run = Run::Busy(text.to_owned());
+            cx.notify();
+        }
+        stopped
+    })
+}
+
+/// Ends a task [`begin`] started, logging its message or error.
+pub(crate) fn finish(
+    state: &Entity<AppState>,
+    cx: &mut AsyncWindowContext,
+    result: Result<String, String>,
+) {
+    state.update(cx, |state, cx| {
+        match result {
+            Ok(message) => state.log(message),
+            Err(message) => state.log_error(message),
+        }
+        state.run = Run::Stopped;
+        cx.notify();
+    });
+}
+
 pub(crate) fn busy(state: &Entity<AppState>, cx: &mut AsyncWindowContext, text: &str) {
     state.update(cx, |state, cx| {
         state.log(text.to_owned());
@@ -116,8 +146,15 @@ async fn run(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Result<()
         .ok()
         .flatten();
     let (lines_tx, lines) = mpsc::channel();
-    let bot = Bot::start(&binary, &token, server.as_deref(), &lines_tx)
-        .map_err(|e| t_with("error-start", &[("error", &e.to_string())]))?;
+    // One token answers once: the hosted copy waits while this one runs (D-141).
+    crate::host::pause(state, cx).await;
+    let bot = match Bot::start(&binary, &token, server.as_deref(), &lines_tx) {
+        Ok(bot) => bot,
+        Err(e) => {
+            crate::host::resume(state, cx).await;
+            return Err(t_with("error-start", &[("error", &e.to_string())]));
+        }
+    };
     drop(token);
     state.update(cx, |state, cx| {
         state.log(t("run-started"));
@@ -125,6 +162,7 @@ async fn run(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Result<()
         cx.notify();
     });
     follow(state, cx, &lines).await;
+    crate::host::resume(state, cx).await;
     Ok(())
 }
 

@@ -4,6 +4,7 @@ mod canvas;
 mod discord;
 mod export;
 mod guide;
+mod host;
 mod i18n;
 mod install;
 mod measure;
@@ -18,7 +19,14 @@ mod workspace;
 
 use gpui_kit::{AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 
-fn main() {
+fn main() -> std::process::ExitCode {
+    // What the hosted bot's service runs (D-138): no window, and no gpui.
+    let args: Vec<String> = std::env::args().skip(1).take(3).collect();
+    if let [flag, id, package] = args.as_slice()
+        && flag == "--host"
+    {
+        return host::launch(id, package);
+    }
     measure::start();
     let path = std::env::args_os().nth(1).map(std::path::PathBuf::from);
     gpui_kit::application().run(move |cx| {
@@ -51,4 +59,5 @@ fn main() {
         })
         .expect("failed to open the main window");
     });
+    std::process::ExitCode::SUCCESS
 }

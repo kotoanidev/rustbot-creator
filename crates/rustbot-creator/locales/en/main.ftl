@@ -481,6 +481,33 @@ error-export-exists = { $path } already exists and is not an export. Choose a ne
 bot-license = License
 license-none = None
 
+# Hosting on this PC (D-138-D-143)
+host = Host…
+host-busy = Preparing hosting…
+host-confirm-title = Host this bot on this PC?
+host-confirm-detail = It runs in the background from every login, also while the app is closed, and restarts after a crash. Its commands are registered on every server, not only the test server. The token stays in the keyring.
+host-confirm = Host
+host-done = The bot is hosted on this PC. It starts at every login.
+host-paused-log = The hosted bot is paused while this one runs.
+host-resumed-log = The hosted bot runs again.
+host-removed = The bot is no longer hosted on this PC. Its memory (data.json) is kept.
+host-remove-title = Stop hosting this bot?
+host-remove-detail = The service is removed, and the bot stays offline until you host it again. Its memory is kept.
+host-remove = Stop hosting
+host-remove-button = Remove…
+host-section = Hosting on this PC
+host-none = Not hosted. "Host…" runs the bot in the background from every login.
+host-update = Update
+host-start = Start
+host-state-running = Hosted: running
+host-state-starting = Hosted: starting
+host-state-stopped = Hosted: stopped
+host-state-failed = Hosted: failed, see Logs
+host-state-paused = Hosted: paused for Run
+host-out-of-date = out of date
+log-hosted = hosted
+error-host = Hosting failed: { $error }
+
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Choose a template
 template-fill-hint = After it is made, Problems lists the channels and roles to fill in.

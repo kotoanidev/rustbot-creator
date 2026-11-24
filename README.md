@@ -37,11 +37,13 @@ top of [djs-rs](https://github.com/kotoanidev/djs-rs).
 - **Themes.** Light, dark and any gpui-component theme dropped into the themes folder.
 - **Export.** The bot as a standalone Rust project, or as a ready program, with a README,
   `.env.example` and the license you pick.
+- **Hosting on your PC.** The bot runs in the background from every login as a
+  `systemd --user` service, with its state and logs in the app.
 - **English and Polish.** Fully local: no account and no telemetry.
 
 ## Coming next
 
-Hosting the bot on your PC, and a public release for Fedora and Ubuntu, then Windows. After that come an advanced mode
+A public release for Fedora and Ubuntu, then Windows. After that come an advanced mode
 with a code editor, and GitHub and Cloudflare integrations. The plan is in
 [`ROADMAP.md`](ROADMAP.md).
 

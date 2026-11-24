@@ -1,4 +1,5 @@
-//! Runs a bot built by RustBot Creator and streams its logs (D-022, the in-app part).
+//! Runs a bot built by RustBot Creator and streams its logs (D-022): in the app, or hosted
+//! as a `systemd --user` service ([`service`]).
 //!
 //! The token reaches the bot only through its environment (D-056), never its arguments,
 //! which other users can see in `ps`.
@@ -8,6 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
+
+pub mod service;
 
 /// Why a bot could not be started, stopped or set up.
 #[derive(Debug, thiserror::Error)]
@@ -27,6 +30,9 @@ pub enum Error {
     /// A server id is not a Discord id (digits only).
     #[error("{0:?} is not a server ID")]
     InvalidServerId(String),
+    /// The hosted bot's service could not be set up or controlled (D-022).
+    #[error("{0}")]
+    Service(String),
 }
 
 fn io_error(path: &Path, source: io::Error) -> Error {

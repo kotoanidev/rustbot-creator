@@ -11,7 +11,8 @@ D-046). Later phases are planned in detail when each one starts (D-043).
 **Phase 3 — Easy mode: ✅ done in code 2026-11-23; the owner's live test is pending.**
 **Phase 5 — First run + themes: ✅ done in code 2026-11-24.**
 **Phase 6 — Export: ✅ done in code 2026-11-24.**
-**Next: phase 7, hosting on the PC (D-022).** The phase order changed after phase 3 to
+**Phase 7 — Hosting on the PC: ✅ done in code 2026-11-24.**
+**Next: phase 10, the public Linux release (D-025): RPM on Copr and a .deb.** The phase order changed after phase 3 to
 follow the incubation timeline (D-123–D-125): 5 → 6 → 7 → a public Linux release →
 Windows → RustBot Cloud pilot → 4 → 8 → 9. The README describes the pre-alpha honestly
 now.
@@ -254,8 +255,21 @@ Phase 6 (export, D-134–D-137, C-034) is ✅ done in code:
 - Both come with a README, `.env.example` and the license the bot settings now offer
   (D-136).
 - An earlier export is replaced only after asking; any other folder is never touched.
-- The ready build has not been made live yet. It needs the private Rust, which the app
-  installs.
+- A release export of a template bot was built with the private Rust and started from
+  its folder (the ignored test `the_ready_build_runs`).
+
+Phase 7 (hosting on the PC, D-138–D-143, C-035) is ✅ done in code:
+- "Host…" builds a release snapshot into the bot's folder of the app's data and installs
+  `rustbot-<id>.service` for `systemd --user`. The service starts at every login,
+  restarts after a crash, and runs `rustbot-creator --host <id> <package>`, which takes
+  the token from the keyring and becomes the bot.
+- The status bar and the bot settings show its state and an out-of-date snapshot. The
+  settings have Update, Stop/Start and Remove. Its journal shows in the Logs panel.
+- Run pauses it and Stop resumes it, and both use one `data.json`.
+- Checked for real: a unit round trip through `systemctl --user` (the ignored test
+  `a_service_installs_fails_without_restarts_and_is_removed`), and the launcher stopping
+  with 78 for a project without a token. A hosted bot with a real token has not run yet:
+  only the owner types the token.
 
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
@@ -269,8 +283,9 @@ Phase 6 (export, D-134–D-137, C-034) is ✅ done in code:
    - Settings (language, theme, font size);
    - the wizard, which appears once on a start without a project;
    - the guide with a real bot;
-   - both exports, and running the ready build from its folder with a `.env`.
-   Then plan phase 7, hosting on the PC (D-022, D-043), with the owner.
+   - both exports, and running the ready build from its folder with a `.env`;
+   - hosting a bot: "Host…", a log out and in, Run pausing it, Update and Remove.
+   Then plan phase 10, the public Linux release (D-025, D-043), with the owner.
 4. The README still needs a screenshot labelled pre-alpha. Take it only of the app's own
    window: `spectacle -a` once caught another window when the app was not focused.
 

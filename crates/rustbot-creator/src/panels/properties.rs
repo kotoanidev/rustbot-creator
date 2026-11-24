@@ -1772,7 +1772,11 @@ impl Properties {
         cx.notify();
     }
 
-    fn render_bot_form(bot: &BotForm, cx: &Context<'_, Self>) -> impl IntoElement + use<> {
+    fn render_bot_form(
+        bot: &BotForm,
+        hosted: &crate::host::Hosted,
+        cx: &Context<'_, Self>,
+    ) -> impl IntoElement + use<> {
         let theme = cx.theme();
         let status = |(text, error): (String, bool)| {
             div()
@@ -1810,7 +1814,66 @@ impl Properties {
             .children(bot.server_status.clone().map(status))
             .child(label(t("bot-license")))
             .child(Select::new(&bot.license).small())
+            .child(hosting_section(hosted, cx))
     }
+}
+
+/// "Hosting on this PC" in the bot settings (D-142).
+fn hosting_section(hosted: &crate::host::Hosted, cx: &Context<'_, Properties>) -> gpui_kit::Div {
+    use rustbot_runner::service::State;
+    let theme = cx.theme();
+    let section = v_flex()
+        .gap(px(6.))
+        .pt(px(8.))
+        .child(div().text_sm().child(t("host-section")));
+    let Some(text) = hosted.label() else {
+        return section
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(t("host-none")),
+            )
+            .child(
+                Button::new("host-here")
+                    .label(t("host"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        crate::host::host(this.state.clone(), window, cx);
+                    })),
+            );
+    };
+    // While Run tests the bot, its hosted copy must stay stopped (D-141).
+    let switch = match hosted.state {
+        _ if hosted.paused => None,
+        Some(State::Running | State::Starting) => Some((t("stop"), false)),
+        _ => Some((t("host-start"), true)),
+    };
+    section.child(text).child(
+        h_flex()
+            .gap(px(8.))
+            .child(
+                Button::new("host-update")
+                    .primary()
+                    .label(t("host-update"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        crate::host::host(this.state.clone(), window, cx);
+                    })),
+            )
+            .children(switch.map(|(label, on)| {
+                Button::new("host-switch")
+                    .label(label)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        crate::host::switch(&this.state, on, cx);
+                    }))
+            }))
+            .child(
+                Button::new("host-remove")
+                    .label(t("host-remove-button"))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        crate::host::remove(this.state.clone(), window, cx);
+                    })),
+            ),
+    )
 }
 
 /// A license as the bot settings show it: its SPDX expression, or "None".
@@ -2081,7 +2144,9 @@ impl Render for Properties {
                     .into_any_element()
             }
             _ => match &self.bot {
-                Some(bot) => Self::render_bot_form(bot, cx).into_any_element(),
+                Some(bot) => {
+                    Self::render_bot_form(bot, &self.state.read(cx).hosted, cx).into_any_element()
+                }
                 None => super::placeholder(t("properties-empty"), cx).into_any_element(),
             },
         };
