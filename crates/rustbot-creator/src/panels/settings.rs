@@ -3,6 +3,7 @@
 
 use std::path::Path;
 
+use gpui_kit::component::button::Button;
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use gpui_kit::component::{ActiveTheme as _, IndexPath, ThemeRegistry};
 use gpui_kit::component::{h_flex, v_flex};
@@ -16,8 +17,13 @@ use crate::settings::{self, FONT_SIZES};
 
 type Choice = Entity<SelectState<Vec<SharedString>>>;
 
+/// Settings asks the workspace to open the first-run wizard again.
+pub(crate) struct OpenWizard;
+
 pub(crate) struct SettingsPanel {
     focus: FocusHandle,
+    /// Only the language, theme and font size, as the wizard's first step shows them.
+    compact: bool,
     language: Choice,
     theme: Choice,
     font_size: Choice,
@@ -58,6 +64,14 @@ fn theme_labels(themes: &[SharedString]) -> Vec<SharedString> {
 }
 
 impl SettingsPanel {
+    /// The language, theme and font size alone, for the first-run wizard (D-128).
+    pub(crate) fn appearance(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
+        Self {
+            compact: true,
+            ..Self::new(window, cx)
+        }
+    }
+
     pub(crate) fn new(window: &mut Window, cx: &mut Context<'_, Self>) -> Self {
         let chosen = settings::get(cx).clone();
         let themes = theme_names(cx);
@@ -119,6 +133,7 @@ impl SettingsPanel {
         .detach();
         Self {
             focus: cx.focus_handle(),
+            compact: false,
             language,
             theme,
             font_size,
@@ -192,6 +207,15 @@ impl Render for SettingsPanel {
         let heading = |text: String| div().font_weight(FontWeight::SEMIBOLD).child(text);
         let folder = settings::config_dir()
             .map_or_else(String::new, |dir| dir.join("themes").display().to_string());
+        let appearance = v_flex()
+            .gap(px(12.))
+            .child(row(t("settings-language"), &self.language))
+            .child(row(t("settings-theme"), &self.theme))
+            .child(hint(t_with("settings-themes-folder", &[("path", &folder)])))
+            .child(row(t("settings-font-size"), &self.font_size));
+        if self.compact {
+            return appearance;
+        }
         v_flex()
             .size_full()
             .p(px(16.))
@@ -199,16 +223,20 @@ impl Render for SettingsPanel {
             .bg(theme.background)
             .text_color(theme.foreground)
             .child(heading(t("settings-appearance")))
-            .child(row(t("settings-language"), &self.language))
-            .child(row(t("settings-theme"), &self.theme))
-            .child(hint(t_with("settings-themes-folder", &[("path", &folder)])))
-            .child(row(t("settings-font-size"), &self.font_size))
+            .child(appearance)
             .child(heading(t("settings-toolchain")))
             .child(hint(
                 self.toolchain
                     .clone()
                     .unwrap_or_else(|| t("settings-toolchain-measuring")),
             ))
+            .child(
+                h_flex().child(
+                    Button::new("settings-wizard")
+                        .label(t("settings-wizard"))
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenWizard))),
+                ),
+            )
     }
 }
 
@@ -233,6 +261,8 @@ impl gpui_kit::component::dock::Panel for SettingsPanel {
 }
 
 impl gpui_kit::EventEmitter<gpui_kit::component::dock::PanelEvent> for SettingsPanel {}
+
+impl gpui_kit::EventEmitter<OpenWizard> for SettingsPanel {}
 
 impl gpui_kit::Focusable for SettingsPanel {
     fn focus_handle(&self, _: &gpui_kit::App) -> FocusHandle {

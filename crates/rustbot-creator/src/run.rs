@@ -5,14 +5,15 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use gpui_kit::{App, AppContext as _, AsyncWindowContext, Entity, PromptLevel, Window};
+use gpui_kit::{App, AppContext as _, AsyncWindowContext, Entity, Window};
 use rustbot_runner::Bot;
 
 use crate::i18n::{t, t_with};
+use crate::install::{Progress, ask, install, logged};
 use crate::state::{AppState, Line, Source};
 use crate::trust;
 
-/// How often the bot's and the build's output is moved into the Logs panel.
+/// How often the bot's output is moved into the Logs panel.
 const LOG_TICK: Duration = Duration::from_millis(50);
 
 /// What the bot is doing, for the status bar.
@@ -79,58 +80,23 @@ fn busy(state: &Entity<AppState>, cx: &mut AsyncWindowContext, text: &str) {
     });
 }
 
-/// Asks a yes/no question in a dialog; `true` for `yes`.
-async fn ask(cx: &mut AsyncWindowContext, title: &str, detail: &str, yes: &str) -> bool {
-    let cancel = t("cancel");
-    let Ok(answer) = cx.update(|window, cx| {
-        window.prompt(
-            PromptLevel::Warning,
-            title,
-            Some(detail),
-            &[yes, cancel.as_str()],
-            cx,
-        )
-    }) else {
-        return false;
-    };
-    answer.await == Ok(0)
-}
-
-/// Runs `work` on a background thread, moving the lines it logs into the Logs panel as
-/// they come, and returns its result.
-async fn logged<R: Send + 'static>(
-    state: &Entity<AppState>,
-    cx: &mut AsyncWindowContext,
-    work: impl FnOnce(&mut dyn FnMut(&str)) -> R + Send + 'static,
-) -> R {
-    let (lines_tx, lines) = mpsc::channel::<String>();
-    let (done_tx, done) = mpsc::channel::<R>();
-    cx.background_spawn(async move {
-        let result = work(&mut |line| {
-            let _ = lines_tx.send(line.to_owned());
-        });
-        let _ = done_tx.send(result);
-    })
-    .detach();
-    loop {
-        cx.background_executor().timer(LOG_TICK).await;
-        let result = done.try_recv().ok();
-        let batch: Vec<String> = lines.try_iter().collect();
-        state.update(cx, |state, cx| {
-            for line in batch {
+/// Install and build progress, into the status bar and the Logs panel.
+fn report(state: &Entity<AppState>) -> impl Fn(&mut AsyncWindowContext, Progress) + '_ {
+    move |cx, progress| match progress {
+        Progress::Step(text) => busy(state, cx, &text),
+        Progress::Lines(lines) => state.update(cx, |state, cx| {
+            for line in lines {
                 state.push(Line::output(Source::Build, line, true));
             }
             cx.notify();
-        });
-        if let Some(result) = result {
-            return result;
-        }
+        }),
     }
 }
 
 async fn run(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Result<(), String> {
     let (project, toolchain) = check(state, cx).await?;
-    install(state, cx, &toolchain).await?;
+    let report = report(state);
+    install(cx, &toolchain, &report).await?;
 
     busy(state, cx, &t("run-generating"));
     state
@@ -143,7 +109,7 @@ async fn run(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Result<()
 
     busy(state, cx, &t("run-building"));
     let (builder, built) = (toolchain.clone(), project.clone());
-    let binary = logged(state, cx, move |log| builder.build(&built, log))
+    let binary = logged(cx, &report, move |log| builder.build(&built, log))
         .await
         .map_err(|e| t_with("error-build", &[("error", &e.to_string())]))?;
 
@@ -203,51 +169,6 @@ async fn check(
             .map_err(|e| t_with("error-trust", &[("error", &e.to_string())]))?;
     }
     Ok((project, toolchain))
-}
-
-/// Installs gcc (D-039) and the private Rust (D-017) when they are missing, each after
-/// asking.
-async fn install(
-    state: &Entity<AppState>,
-    cx: &mut AsyncWindowContext,
-    toolchain: &rustbot_toolchain::Toolchain,
-) -> Result<(), String> {
-    if rustbot_toolchain::c_compiler().is_none() {
-        if !ask(cx, &t("gcc-title"), &t("gcc-detail"), &t("gcc-install")).await {
-            return Err(t("run-cancelled"));
-        }
-        let mut command = rustbot_toolchain::install_c_compiler_command()
-            .ok_or_else(|| t("gcc-unknown-system"))?;
-        busy(state, cx, &t("gcc-installing"));
-        let installed = logged(state, cx, move |log| match command.output() {
-            Ok(output) => {
-                let text = String::from_utf8_lossy(&output.stdout).into_owned()
-                    + &String::from_utf8_lossy(&output.stderr);
-                text.lines().for_each(&mut *log);
-                output.status.success()
-            }
-            Err(e) => {
-                log(&e.to_string());
-                false
-            }
-        })
-        .await;
-        if !installed || rustbot_toolchain::c_compiler().is_none() {
-            return Err(t("gcc-failed"));
-        }
-    }
-    if !toolchain.is_installed() {
-        let detail = t_with("rust-detail", &[("version", rustbot_core::RUST_VERSION)]);
-        if !ask(cx, &t("rust-title"), &detail, &t("rust-install")).await {
-            return Err(t("run-cancelled"));
-        }
-        busy(state, cx, &t("rust-installing"));
-        let installer = toolchain.clone();
-        logged(state, cx, move |log| installer.install(log))
-            .await
-            .map_err(|e| t_with("error-install", &[("error", &e.to_string())]))?;
-    }
-    Ok(())
 }
 
 /// Moves the bot's output into the logs until it exits or is stopped.

@@ -409,8 +409,32 @@ settings-themes-folder = Your own themes: JSON files in gpui-component's format,
 settings-font-size = Font size
 settings-toolchain = Rust for your bots
 settings-toolchain-installed = Rust { $version } is installed in { $path } and takes { $size }.
-settings-toolchain-missing = Rust is not installed yet. The first Run installs it.
+settings-toolchain-missing = Rust is not installed yet. The first-run wizard or the first Run installs it.
 settings-toolchain-measuring = Checking…
+
+# The first-run wizard (D-128)
+wizard-title = Welcome to RustBot Creator
+wizard-step = Step { $number } of { $count }: { $name }
+wizard-appearance = Language and look
+wizard-appearance-about = Choose the language and the look. You can change them later in Settings.
+wizard-toolchain = Tools for building bots
+wizard-toolchain-about = To build a bot, the app needs the system's C compiler (gcc) and its own copy of Rust, about 1 GB. It asks before installing anything.
+wizard-checking = Checking…
+wizard-gcc-found = ✓ The C compiler (gcc) is installed.
+wizard-gcc-missing = ✗ The C compiler (gcc) is missing.
+wizard-rust-found = ✓ Rust { $version } is installed.
+wizard-rust-missing = ✗ Rust { $version } is not installed yet.
+wizard-install = Install
+wizard-project = Your first bot
+wizard-project-about = Everything is ready. Start from a template: a bot with ready commands that you can change as you like.
+wizard-project-open = Everything is ready. Your project is still open.
+wizard-template = Choose a template
+wizard-later = Later
+wizard-finish = Finish
+wizard-next = Next
+wizard-skip-step = Skip this step
+wizard-skip = Skip the wizard
+settings-wizard = Open the first-run wizard again
 
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Choose a template

@@ -17,6 +17,8 @@ pub(crate) struct Settings {
     pub(crate) theme: String,
     /// The text size in pixels, one of [`FONT_SIZES`].
     pub(crate) font_size: u16,
+    /// Whether the first-run wizard was finished or skipped (D-128).
+    pub(crate) first_run_done: bool,
 }
 
 impl Default for Settings {
@@ -30,6 +32,7 @@ static DEFAULT: Settings = Settings {
     language: String::new(),
     theme: String::new(),
     font_size: 16,
+    first_run_done: false,
 };
 
 /// The text sizes Settings offer.
@@ -143,6 +146,7 @@ mod tests {
             language: "pl".to_owned(),
             theme: "Default Dark".to_owned(),
             font_size: 14,
+            first_run_done: true,
         };
         save(&path, &chosen).unwrap();
         assert_eq!(load(&path), chosen);

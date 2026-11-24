@@ -409,8 +409,32 @@ settings-themes-folder = Własne motywy: pliki JSON w formacie gpui-component, w
 settings-font-size = Rozmiar czcionki
 settings-toolchain = Rust dla botów
 settings-toolchain-installed = Rust { $version } jest zainstalowany w { $path } i zajmuje { $size }.
-settings-toolchain-missing = Rust nie jest jeszcze zainstalowany. Zainstaluje go pierwsze „Uruchom”.
+settings-toolchain-missing = Rust nie jest jeszcze zainstalowany. Zainstaluje go kreator pierwszego uruchomienia albo pierwsze „Uruchom”.
 settings-toolchain-measuring = Sprawdzam…
+
+# The first-run wizard (D-128)
+wizard-title = Witaj w RustBot Creator
+wizard-step = Krok { $number } z { $count }: { $name }
+wizard-appearance = Język i wygląd
+wizard-appearance-about = Wybierz język i wygląd. Później możesz je zmienić w Ustawieniach.
+wizard-toolchain = Narzędzia do budowania botów
+wizard-toolchain-about = Do zbudowania bota aplikacja potrzebuje systemowego kompilatora C (gcc) i własnej kopii Rusta, około 1 GB. Przed każdą instalacją pyta o zgodę.
+wizard-checking = Sprawdzam…
+wizard-gcc-found = ✓ Kompilator C (gcc) jest zainstalowany.
+wizard-gcc-missing = ✗ Brakuje kompilatora C (gcc).
+wizard-rust-found = ✓ Rust { $version } jest zainstalowany.
+wizard-rust-missing = ✗ Rust { $version } nie jest jeszcze zainstalowany.
+wizard-install = Zainstaluj
+wizard-project = Twój pierwszy bot
+wizard-project-about = Wszystko gotowe. Zacznij od szablonu: bota z gotowymi komendami, które możesz dowolnie zmieniać.
+wizard-project-open = Wszystko gotowe. Twój projekt jest nadal otwarty.
+wizard-template = Wybierz szablon
+wizard-later = Później
+wizard-finish = Zakończ
+wizard-next = Dalej
+wizard-skip-step = Pomiń ten krok
+wizard-skip = Pomiń kreator
+settings-wizard = Otwórz ponownie kreator pierwszego uruchomienia
 
 # Bot templates (D-115-D-118); "tpl-" messages are what the bots say.
 choose-template = Wybierz szablon

@@ -226,6 +226,14 @@ Phase 5, step 1 (Settings and themes, D-127, D-130, C-031) is ✅ done in code:
 - Everything is kept in `~/.config/rustbot-creator/settings.toml`.
 - The warm start is still about 130 ms.
 
+Phase 5, step 2 (the first-run wizard, D-128, C-032) is ✅ done in code:
+- Started without a project, the app first shows a wizard: language and look, then gcc
+  and the private Rust (checked, and installed after asking, with the progress shown),
+  then "Choose a template" or "Later".
+- Each step can be skipped. Finishing or skipping it is remembered in `settings.toml`,
+  and Settings can open it again.
+- Run, the wizard and Settings share one installer (`src/install.rs`).
+
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
    the channel filled in, or "Levels") and the new nodes (e.g. a private ticket channel)
@@ -234,10 +242,9 @@ Phase 5, step 1 (Settings and themes, D-127, D-130, C-031) is ✅ done in code:
    Discord, idle and on a few servers, and how many fit in 4 GB. Record it in
    `docs/PERFORMANCE.md`, and tell the owner if it is far from about 7 MB per idle bot.
    The owner starts the bot in the app; measuring its process needs no token.
-3. Phase 5, step 2: the first-run wizard (D-128): language and theme, Rust and gcc with
-   consent through an installer shared with Run and Settings, then a first project from
-   a template. Then step 3: its Developer Portal guide with checks (D-129), using `ureq`
-   from the workspace to ask Discord about the token.
+3. Phase 5, step 3: the wizard's Developer Portal guide with checks (D-129), before its
+   last step. It uses `ureq` from the workspace to ask Discord about the token, makes the
+   invite link, and checks that the bot is on the test server.
 4. The README still needs a screenshot labelled pre-alpha. Take it only of the app's own
    window: `spectacle -a` once caught another window when the app was not focused.
 

@@ -15,9 +15,10 @@ use gpui_kit::{
 use rustbot_core::Project;
 
 use crate::i18n::{t, t_with};
-use crate::panels::{Editor, Logs, Problems, ProjectTree, Properties, SettingsPanel};
+use crate::panels::{Editor, Logs, OpenWizard, Problems, ProjectTree, Properties, SettingsPanel};
 use crate::run::Run;
 use crate::state::AppState;
+use crate::wizard::{Done, Wizard};
 
 pub(crate) struct Workspace {
     open: Option<(Entity<AppState>, Entity<DockArea>)>,
@@ -28,6 +29,8 @@ pub(crate) struct Workspace {
     /// before a project is open (`showing_settings`).
     settings: Option<Entity<SettingsPanel>>,
     showing_settings: bool,
+    /// The first-run wizard (D-128), over everything while it is open.
+    wizard: Option<Entity<Wizard>>,
 }
 
 impl Workspace {
@@ -51,9 +54,14 @@ impl Workspace {
             choosing: false,
             settings: None,
             showing_settings: false,
+            wizard: None,
         };
+        // A project named on the command line is opened at once; otherwise the wizard
+        // comes first until it was finished or skipped.
         if let Some(path) = path {
             this.open_project(&path, window, cx);
+        } else if !crate::settings::get(cx).first_run_done {
+            this.open_wizard(window, cx);
         }
         this
     }
@@ -119,12 +127,31 @@ impl Workspace {
         self.error = None;
     }
 
+    fn open_wizard(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
+        let has_project = self.open.is_some();
+        let wizard = cx.new(|cx| Wizard::new(has_project, window, cx));
+        cx.subscribe(&wizard, |this, _, done: &Done, cx| {
+            crate::settings::change(cx, |settings| settings.first_run_done = true);
+            this.wizard = None;
+            this.showing_settings = false;
+            this.choosing = done.choose_template && this.open.is_none();
+            cx.notify();
+        })
+        .detach();
+        self.wizard = Some(wizard);
+        cx.notify();
+    }
+
     /// Opens Settings: as a tab in the dock's centre, or over the welcome screen.
     fn open_settings(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) {
         let panel = if let Some(panel) = &self.settings {
             panel.clone()
         } else {
             let panel = cx.new(|cx| SettingsPanel::new(window, cx));
+            cx.subscribe_in(&panel, window, |this, _, _: &OpenWizard, window, cx| {
+                this.open_wizard(window, cx);
+            })
+            .detach();
             self.settings = Some(panel.clone());
             panel
         };
@@ -267,6 +294,9 @@ fn settings_screen(
 impl Render for Workspace {
     fn render(&mut self, _: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         crate::measure::frame_start();
+        if let Some(wizard) = &self.wizard {
+            return div().size_full().child(wizard.clone()).into_any_element();
+        }
         if self.open.is_none() && self.choosing {
             return template_cards(cx).into_any_element();
         }
@@ -432,9 +462,18 @@ mod tests {
     #[gpui_kit::test]
     fn settings_open_from_the_welcome_screen_and_the_status_bar(cx: &mut gpui_kit::TestAppContext) {
         use gpui_kit::test::TestWindowExt as _;
-        cx.update(gpui_kit::init);
+        let dir = tempfile::tempdir().unwrap();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::settings::init(dir.path().join("settings.toml"), cx);
+        });
         let (workspace, cx) =
             cx.add_window_view(|window, cx| super::Workspace::new(None, window, cx));
+        // The wizard's "done" is handled after the update that clicked it.
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            window.click("wizard-skip", cx);
+        });
         cx.update(|window, cx| {
             window.render_frame(cx);
             window.click("open-settings", cx);
@@ -444,7 +483,6 @@ mod tests {
             let workspace = workspace.read(cx);
             assert!(workspace.showing_settings && workspace.settings.is_some());
         });
-        let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("bot");
         super::new_project(&root).unwrap();
         workspace.update_in(cx, |workspace, window, cx| {
@@ -456,6 +494,39 @@ mod tests {
             window.render_frame(cx);
         });
         cx.read(|cx| assert!(workspace.read(cx).open.is_some()));
+    }
+
+    /// The first start shows the wizard (D-128). Going through it to "Choose a template"
+    /// shows the templates and remembers that it is done, so it does not come again.
+    #[gpui_kit::test]
+    fn the_wizard_comes_first_and_ends_at_the_templates(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::test::TestWindowExt as _;
+        let dir = tempfile::tempdir().unwrap();
+        let settings = dir.path().join("settings.toml");
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::settings::init(settings.clone(), cx);
+        });
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| super::Workspace::new(None, window, cx));
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            for button in ["wizard-next", "wizard-next", "wizard-template"] {
+                window.click(button, cx);
+                window.render_frame(cx);
+            }
+        });
+        cx.read(|cx| {
+            let workspace = workspace.read(cx);
+            assert!(workspace.wizard.is_none() && workspace.choosing);
+        });
+        assert!(
+            std::fs::read_to_string(&settings)
+                .unwrap()
+                .contains("first-run-done = true")
+        );
+        let (again, cx) = cx.add_window_view(|window, cx| super::Workspace::new(None, window, cx));
+        cx.read(|cx| assert!(again.read(cx).wizard.is_none()));
     }
 
     #[test]

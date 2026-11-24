@@ -1698,6 +1698,25 @@ alternatives that were considered, and why.
     with the wizard's installer.
   - **Dependencies:** the app now uses `serde`, `toml` and `directories`, which the
     workspace already had (D-041).
+
+### C-032 — How the first-run wizard works
+- **Date:** 2026-11-24
+- **Choice:**
+  - **When it opens:** when the app starts without a project and `first-run-done` in
+    `settings.toml` is not set. Finishing or skipping it sets that key. A project named
+    on the command line opens at once, without the wizard. The owner's machine sees it
+    once after this update.
+  - **Its steps:** language and look (Settings' own lists), the tools, then a first
+    project. The Developer Portal step of D-129 goes in before the last one.
+  - **Moving through it:** "Back", "Next" and "Skip the wizard" are always there. While
+    gcc or Rust is missing, "Next" reads "Skip this step". The last step offers "Choose a
+    template", which goes to the template cards, or "Later". With a project open, it
+    offers only "Finish".
+  - **Installing:** the same installer as Run, moved to `install.rs`, with the same
+    consent dialogs. The step shows the installer's current step and its last 8 lines.
+  - **From Settings:** "Open the first-run wizard again" opens it over the window.
+    Installing Rust from Settings goes through the wizard, so there is one place that
+    shows the progress. A forced reinstall over a working Rust is not offered.
 ---
 
 ## Open questions (to ask the owner when relevant)
