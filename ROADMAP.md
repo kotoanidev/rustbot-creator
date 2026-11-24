@@ -139,9 +139,12 @@ layer, before the scope widens.
 - [x] rust-analyzer (LSP) from the private toolchain, with the app's own client (D-178,
       C-043)
 
-## Phase 8 — GitHub (D-021)
-- [ ] Device flow sign-in (OAuth App `Ov23liQbIFt9vqboIA0x`), create a repository, push
-      the project
+## Phase 8 — GitHub (D-021, D-179–D-182)
+- [ ] `rustbot-github`: device flow sign-in (OAuth App `Ov23liQbIFt9vqboIA0x`, scope
+      `repo`), the user's repositories, creating one, and a commit through the Git Data
+      API that never overwrites commits the app did not send
+- [ ] The app's side: connecting with the token in the keyring, linking the project to a
+      new or picked repository (kept in the app's data), and "Send"
 
 ## Phase 9 — Cloudflare Containers (D-013)
 - [ ] One-click deploy of the export's build as a kept-alive container

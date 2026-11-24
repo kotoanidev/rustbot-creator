@@ -1569,6 +1569,38 @@ alternatives that were considered, and why.
   opens a code file, after asking.
 - **Alternatives:** no LSP at first, only `cargo check` errors in Problems.
 
+### D-179 — The project goes to GitHub through its REST API
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The app makes each commit itself through GitHub's Git Data API (the files,
+  a tree, a commit, then moving the branch) with ureq, which it has already. It needs no
+  git on the system and no new dependency, and it works the same on Windows. Sending
+  goes one way, from the app to GitHub. This is the `rustbot-github` crate (D-036).
+- **Alternatives:** the system's git with a `.git` folder in the project; a git library
+  (gix), a large new dependency.
+
+### D-180 — GitHub sign-in asks for the `repo` scope
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The device flow (D-021) asks for `repo`: public and private repositories.
+  An OAuth App has no narrower scope that reaches private ones. The token is kept in the
+  OS keyring (D-020).
+- **Alternatives:** `public_repo`, with public repositories only.
+
+### D-181 — Create or pick a repository, and send without overwriting
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The user creates a new repository or picks one of theirs. "Send" makes a
+  commit of the project. If the repository has commits that the app did not send, sending
+  refuses and says why, and never overwrites them. Bringing changes from GitHub into the
+  project comes later.
+- **Alternatives:** also pulling changes, with conflicts to resolve; only new
+  repositories.
+
+### D-182 — The link to the repository is the user's, in the app's data
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** As with the test server (D-065), the repository and the last commit sent
+  are kept per project in the app's data folder. A cloned project imposes nothing, and
+  the project format does not change.
+- **Alternatives:** in `project.toml`, shared with collaborators.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
@@ -2437,8 +2469,8 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
 - **Toolchain details** (D-017, D-039): CMake for `voice`, toolchain updates, and build
   caching to make the first build faster.
 - **Other hosts** besides Cloudflare (D-013).
-- **GitHub integration** (D-021): the scope of features (create a repository, push, pull,
-  releases, Actions) and the OAuth scopes they need.
+- **GitHub integration** (D-021, D-179–D-182): pulling changes from GitHub into the
+  project, releases and Actions.
 - **Community files:** CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, and when
   to add them.
 - **RustBot Cloud** (D-125, D-157, D-158): payments and VAT invoicing, after the pilot.

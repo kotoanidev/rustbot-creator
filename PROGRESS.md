@@ -349,10 +349,23 @@ Phase 4 (advanced mode) started 2026-11-24, planned in D-175–D-178:
   checked against a real rust-analyzer (`--ignored a_real_rust_analyzer`): hover on a
   function in `src/lib.rs` after 22 s, and `cargo check`'s error there after 45 s.
   Not yet looked at in the real window.
-- **Next:** phase 8, GitHub (D-021), by the order of D-123. Plan it with the owner
-  first (D-043): sign-in (device flow with the OAuth App in ROADMAP), what is pushed
-  (the project folder, without `.env`), creating the repository, and where the token
-  lives (the keyring, D-020).
+
+Phase 8 (GitHub) started 2026-11-24, planned in D-179–D-182: commits through the REST
+API (no git needed), the `repo` scope, a new or picked repository, sending that refuses
+to overwrite commits the app did not send, and the link kept in the app's data.
+- **Next, step 1:** the `rustbot-github` crate. It needs the device flow (start, then
+  poll with `slow_down`), the user, their repositories, and creating one with
+  `auto_init`. It also needs `push`: read the branch head, refuse when it is not the
+  last commit sent, build the whole tree with inline UTF-8 contents (a blob for
+  anything else), skip when the tree is unchanged, make the commit, then move the
+  branch with `force: false`. Test it against a TcpListener stand-in, as `cloud.rs`
+  is.
+- Step 2: the app's side. Connect and Disconnect (token in the keyring) and a GitHub
+  section in the side bar (create, or pick from the list, then "Send" with a message).
+  The link and the last commit sent live in the project's data folder. Only the
+  project's own parts are sent: `project.toml`, `.gitignore`, `graphs/`, `generated/`
+  as the graphs make it now with its `Cargo.lock`, and `src/` without `.env` files or
+  links.
 
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
