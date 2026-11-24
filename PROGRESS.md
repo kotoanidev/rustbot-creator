@@ -320,7 +320,9 @@ Its decisions are numbered here, and the API is `docs/CLOUD_API.md` (D-163).
   Restore and Download, and Run pausing the Cloud bot). A bot runs in one place at a
   time: publishing removes local hosting and hosting deletes the Cloud copy, after
   asking. All of it stays hidden without `RUSTBOT_CLOUD_URL`. Tested against a stand-in
-  server and headless; not yet against the real server with a real sign-in.
+  server and headless, and the client's whole round (a lock-less deploy, build, token,
+  start, logs, stop, delete) against the real server in local-unsafe mode
+  (`a_real_cloud…`, ignored). Not yet with a real Discord sign-in or on the VPS.
 - Owner-side before the pilot: a VPS and a domain (after the name and trademark check),
   and a Discord application for sign-in.
 

@@ -389,16 +389,7 @@ async fn deploy(
     let codegen = crate::host::fingerprint(&output);
     let project = state.read_with(cx, |state, _| state.project.clone());
     let id = project.manifest.id;
-    let mut files = BTreeMap::new();
-    for (path, bytes) in crate::export::source_files(&project, output) {
-        let name: Vec<String> = path
-            .components()
-            .map(|part| part.as_os_str().to_string_lossy().into_owned())
-            .collect();
-        let text = String::from_utf8(bytes)
-            .map_err(|_| t_with("cloud-not-text", &[("file", &path.display().to_string())]))?;
-        files.insert(name.join("/"), text);
-    }
+    let files = sources(&project, output)?;
     if first {
         let token = cx
             .background_spawn(async move { rustbot_secrets::bot_token(id) })
@@ -449,6 +440,24 @@ async fn deploy(
     }
     refresh(state, client, cx).await;
     Ok(())
+}
+
+/// The source export's files as Cloud takes them: UTF-8 text, with `/` in paths.
+pub(crate) fn sources(
+    project: &rustbot_core::Project,
+    output: rustbot_codegen::Output,
+) -> Result<BTreeMap<String, String>, String> {
+    let mut files = BTreeMap::new();
+    for (path, bytes) in crate::export::source_files(project, output) {
+        let name: Vec<String> = path
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        let text = String::from_utf8(bytes)
+            .map_err(|_| t_with("cloud-not-text", &[("file", &path.display().to_string())]))?;
+        files.insert(name.join("/"), text);
+    }
+    Ok(files)
 }
 
 /// Looks at the bot and its backups now, after a change.

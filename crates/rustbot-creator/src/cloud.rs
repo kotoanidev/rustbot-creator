@@ -483,4 +483,58 @@ mod tests {
         assert_eq!(check("file:///etc/passwd"), None);
         assert_eq!(path_part("a/../b?c"), "a%2F..%2Fb%3Fc");
     }
+
+    /// The whole publishing round against a real Cloud server, signed in with
+    /// `RUSTBOT_CLOUD_TEST_SESSION`. It sends the ping bot without a `Cargo.lock`, as from
+    /// an app that never built it, then leaves nothing behind.
+    #[test]
+    #[ignore = "needs RUSTBOT_CLOUD_URL and RUSTBOT_CLOUD_TEST_SESSION of a real Cloud"]
+    fn a_real_cloud_builds_runs_and_deletes_the_ping_bot() {
+        let base = super::address().expect("RUSTBOT_CLOUD_URL");
+        let session = std::env::var("RUSTBOT_CLOUD_TEST_SESSION").expect("a session");
+        let client = Client::new(base, Some(session));
+        println!("signed in as {}", client.me().unwrap());
+
+        let dir = tempfile::tempdir().unwrap();
+        let project = crate::workspace::new_project(&dir.path().join("ping")).unwrap();
+        let output =
+            rustbot_codegen::generate(&project, &rustbot_core::Registry::with_core()).unwrap();
+        let files = crate::publish::sources(&project, output).unwrap();
+        assert!(!files.contains_key("Cargo.lock"));
+        let (id, bot) = (project.manifest.id, &project.manifest.bot);
+        assert_eq!(client.bot(id).unwrap(), None);
+        let deploy = client
+            .deploy(id, &bot.name, &bot.package, "test", &files)
+            .unwrap();
+        let log = loop {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            let (state, log) = client.deploy_state(id, &deploy).unwrap();
+            if state == "done" || state == "failed" {
+                assert_eq!(state, "done", "{log}");
+                break log;
+            }
+        };
+        println!("{log}");
+
+        let published = client.bot(id).unwrap().unwrap();
+        assert_eq!(published.codegen, "test");
+        assert!(!published.has_token);
+        client
+            .set_token(id, "MTAxMjM0NTY3ODkw.GaBcDe.x-y_z0123456789")
+            .unwrap();
+        assert!(client.bot(id).unwrap().unwrap().has_token);
+        client.switch(id, true).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        // The made-up token fails at Discord; the bot says so in its log.
+        let (lines, cursor) = client.logs(id, None).unwrap();
+        println!("{lines:?}");
+        assert!(!lines.is_empty());
+        let (again, next) = client.logs(id, Some(&cursor)).unwrap();
+        println!("cursor {cursor} -> {next}: {again:?}");
+        client.switch(id, false).unwrap();
+        println!("backups: {:?}", client.backups(id).unwrap());
+
+        client.delete(id).unwrap();
+        assert_eq!(client.bot(id).unwrap(), None);
+    }
 }
