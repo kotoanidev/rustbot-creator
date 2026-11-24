@@ -2371,10 +2371,15 @@ alternatives that were considered, and why.
     `generated/` and `src/`. rust-analyzer resolves a `#[path]` module only inside one
     package, so `generated/Cargo.toml` alone would leave the user's code out. The copy
     is written fresh at start, then follows each code save and each graph or
-    `project.toml` save. It holds only files the app makes and the user's own code, so
-    a project from elsewhere cannot run a program through its own
-    `.cargo/config.toml` or `rust-analyzer.toml`. This is why code help needs no trust
-    prompt (D-064).
+    `project.toml` save. It holds the files the app makes and, of `src/`, only `.rs`
+    files. It has no `Cargo.lock` from the project, and rust-analyzer gets
+    `linkedProjects` with the copy's manifest alone, so it never loads another
+    `Cargo.toml` it finds. A project from elsewhere therefore cannot run a program
+    through a `.cargo/config.toml`, a `rust-analyzer.toml`, a manifest with a build
+    script, or pinned versions. `cargo check` runs only crates.io crates the app's
+    manifest names, as for any bot made in the app. The user's modules are compiled,
+    not run, and a module of a binary cannot define a procedural macro. This is why
+    code help needs no trust prompt (D-064).
   - **rust-analyzer** is the rustup component of the private Rust. It runs from the
     toolchain's folder with `CARGO` and `RUSTC` set to the private ones, and with its
     own target folder (`analyzer-target`), so its `cargo check` never waits for a

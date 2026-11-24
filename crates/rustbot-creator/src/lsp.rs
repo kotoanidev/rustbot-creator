@@ -131,7 +131,12 @@ impl Server {
                         "publishDiagnostics": {},
                     },
                 },
-                "initializationOptions": { "files": { "watcher": "server" } },
+                "initializationOptions": {
+                    "files": { "watcher": "server" },
+                    // Only the copy's own manifest: rust-analyzer would otherwise load any
+                    // `Cargo.toml` it finds one folder down, and run its build script.
+                    "linkedProjects": [server.copy.join("Cargo.toml")],
+                },
             }),
         );
         match started.recv_timeout(START_TIMEOUT) {
@@ -461,7 +466,20 @@ async fn wait(
 /// the graphs have problems and make no code.
 fn copy_files(state: &AppState) -> Option<BTreeMap<PathBuf, Vec<u8>>> {
     let output = rustbot_codegen::generate(&state.project, &state.registry).ok()?;
-    Some(crate::export::source_files(&state.project, output))
+    Some(for_analyzer(crate::export::source_files(
+        &state.project,
+        output,
+    )))
+}
+
+/// What of the source export the copy takes: everything the app makes, and of `src/`
+/// only the Rust modules. A project from elsewhere cannot add a manifest, a build script
+/// it names, a toolchain or rust-analyzer settings, and its `Cargo.lock` cannot choose
+/// the versions, so `cargo check` runs only crates.io crates the app's manifest names.
+fn for_analyzer(mut files: BTreeMap<PathBuf, Vec<u8>>) -> BTreeMap<PathBuf, Vec<u8>> {
+    files.retain(|path, _| !path.starts_with("src") || path.extension().is_some_and(|e| e == "rs"));
+    files.remove(Path::new("Cargo.lock"));
+    files
 }
 
 /// Makes the copy follow the project, when code help runs.
@@ -737,6 +755,30 @@ mod tests {
         assert_eq!(super::read_message(&mut input).unwrap(), None);
         let mut too_long = BufReader::new(&b"Content-Length: 99999999999\r\n\r\n"[..]);
         assert!(super::read_message(&mut too_long).is_err());
+    }
+
+    #[test]
+    fn the_copy_takes_only_rust_modules_from_src() {
+        let files = [
+            "Cargo.toml",
+            "Cargo.lock",
+            "generated/src/main.rs",
+            "src/lib.rs",
+            "src/points/mod.rs",
+            "src/Cargo.toml",
+            "src/rust-analyzer.toml",
+            "src/x/rust-toolchain.toml",
+        ]
+        .map(|path| (PathBuf::from(path), Vec::new()))
+        .into();
+        let kept: Vec<_> = super::for_analyzer(files).into_keys().collect();
+        let expected = [
+            "Cargo.toml",
+            "generated/src/main.rs",
+            "src/lib.rs",
+            "src/points/mod.rs",
+        ];
+        assert_eq!(kept, expected.map(PathBuf::from));
     }
 
     #[test]
