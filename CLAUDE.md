@@ -36,6 +36,7 @@ cargo test -p rustbot-codegen --release -- --ignored budget --nocapture   # D-03
 INSTA_UPDATE=always cargo test -p rustbot-codegen    # accept changed snapshots of generated code; review the diff
 cargo test -p rustbot-toolchain -- --ignored install --nocapture   # real rustup + Rust install, bot build and run (~300 MB)
 cargo test -p rustbot-secrets -- --ignored           # round trip through the real system keyring
+cargo test -p rustbot-creator -- --ignored a_real_rust_analyzer --nocapture   # code help on a real rust-analyzer (adds it to the private Rust)
 RUSTBOT_CLOUD_URL=<url> RUSTBOT_CLOUD_TEST_SESSION=<session> cargo test -p rustbot-creator -- --ignored a_real_cloud --nocapture   # publish round on a real Cloud
 RUSTBOT_MEASURE=1 target/release/rustbot-creator <project>       # prints startup to the first frame (D-038)
 RUSTBOT_MEASURE=frames target/release/rustbot-creator <project>  # prints frame times (p50/p99/max) while the editor redraws

@@ -14,7 +14,7 @@ use gpui_kit::{
 };
 
 use crate::i18n::{t, t_with};
-use crate::state::{AppState, SaveCode};
+use crate::state::{AppState, CodeHelp, SaveCode};
 
 /// How long typing pauses before the file is saved.
 const SAVE_DELAY: Duration = Duration::from_millis(400);
@@ -70,12 +70,20 @@ impl CodePanel {
                     if matches!(event, InputEvent::Change) && !this.read_only {
                         this.dirty = true;
                         this.schedule_save(cx);
+                        if let Some(server) = this.state.read(cx).analyzer.server.clone() {
+                            let text = this.editor.read(cx).value().to_string();
+                            server.change(&this.path, &text);
+                        }
                         cx.notify();
                     }
                 }),
             ];
         // Run and the exports build what was typed, not what was last saved.
         changes.push(cx.subscribe(&state, |this, _, _: &SaveCode, cx| this.save_now(cx)));
+        changes.push(cx.subscribe(&state, |this, _, _: &CodeHelp, cx| {
+            this.help(cx);
+            this.show_diagnostics(cx);
+        }));
         if read_only {
             changes.push(cx.observe_in(&state, window, |this, state, window, cx| {
                 let text = generated(&state, &this.path, cx);
@@ -90,7 +98,10 @@ impl CodePanel {
             async {}
         })
         .detach();
-        Self {
+        if !read_only {
+            crate::lsp::ensure(&state, window, cx);
+        }
+        let mut panel = Self {
             focus: cx.focus_handle(),
             state,
             path,
@@ -102,7 +113,51 @@ impl CodePanel {
             message,
             save: None,
             _changes: changes,
+        };
+        panel.help(cx);
+        panel
+    }
+
+    /// Hands the file to rust-analyzer once it runs, for completion, hover, go to
+    /// definition and diagnostics (D-178).
+    fn help(&mut self, cx: &mut Context<'_, Self>) {
+        let Some(server) = self.state.read(cx).analyzer.server.clone() else {
+            return;
+        };
+        // rust-analyzer knows the file once the editor has its providers.
+        if self.editor.read(cx).lsp().hover_provider.is_some() {
+            return;
         }
+        server.open(&self.path, &self.editor.read(cx).value());
+        let help = crate::lsp::Help::new(server.clone(), self.path.clone());
+        let (state, path, read_only) = (self.state.clone(), self.path.clone(), self.read_only);
+        self.editor.update(cx, |editor, cx| {
+            let lsp = editor.lsp_mut();
+            if !read_only {
+                lsp.completion_provider = Some(help.clone());
+            }
+            lsp.hover_provider = Some(help.clone());
+            lsp.definition_provider = Some(help);
+            lsp.show_document = Some(std::rc::Rc::new(move |params, _, cx| {
+                crate::lsp::show_document(&state, &server, &path, params, cx)
+            }));
+            editor.refresh(cx);
+        });
+        self.show_diagnostics(cx);
+    }
+
+    fn show_diagnostics(&self, cx: &mut Context<'_, Self>) {
+        let Some(server) = self.state.read(cx).analyzer.server.clone() else {
+            return;
+        };
+        let diagnostics = server.diagnostics(&self.path);
+        self.editor.update(cx, |editor, cx| {
+            if let Some(set) = editor.diagnostics_mut() {
+                set.clear();
+                set.extend(diagnostics);
+            }
+            cx.notify();
+        });
     }
 
     /// Puts the cursor on 0-based `line`.
@@ -138,6 +193,9 @@ impl CodePanel {
             }
             _ => match crate::code::write(&root, &self.path, &text) {
                 Ok(()) => {
+                    if let Some(server) = &self.state.read(cx).analyzer.server {
+                        server.saved(&self.path, &text);
+                    }
                     self.saved = text;
                     self.dirty = false;
                     self.message = None;
@@ -291,7 +349,11 @@ mod tests {
         std::fs::write(&lib, "").unwrap();
         cx.update(gpui_kit::init);
         let (panel, cx) = cx.add_window_view(|window, cx| {
-            let app = cx.new(|cx| AppState::new(project, cx));
+            let app = cx.new(|cx| {
+                let mut state = AppState::new(project, cx);
+                state.toolchain = None;
+                state
+            });
             CodePanel::new(app, PathBuf::from("src/lib.rs"), window, cx)
         });
         let typed = |text: &str, cx: &mut gpui_kit::VisualTestContext| {

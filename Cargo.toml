@@ -23,6 +23,8 @@ unic-langid = "0.9.6"
 # The project format (D-019, D-051).
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+# rust-analyzer's messages (D-178); the version gpui-kit builds, so it adds nothing.
+lsp-types = "0.97.0"
 toml = "1.2.1"
 # The project id (D-050).
 uuid = { version = "1.29.3", features = ["v4", "serde"] }

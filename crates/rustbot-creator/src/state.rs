@@ -100,6 +100,8 @@ pub(crate) struct AppState {
     pub(crate) hosted: crate::host::Hosted,
     /// The bot published to RustBot Cloud, if it is (D-171).
     pub(crate) published: crate::publish::Published,
+    /// Code help from rust-analyzer (D-178).
+    pub(crate) analyzer: crate::lsp::Analyzer,
     /// Earlier versions of graphs, newest last: `(index in project.graphs, file)`.
     undo: Vec<(usize, GraphFile)>,
     redo: Vec<(usize, GraphFile)>,
@@ -125,6 +127,11 @@ impl gpui_kit::EventEmitter<OpenCode> for AppState {}
 pub(crate) struct SaveCode;
 
 impl gpui_kit::EventEmitter<SaveCode> for AppState {}
+
+/// Code help started, or rust-analyzer sent new diagnostics (D-178).
+pub(crate) struct CodeHelp;
+
+impl gpui_kit::EventEmitter<CodeHelp> for AppState {}
 
 impl AppState {
     pub(crate) fn new(project: Project, cx: &mut Context<'_, Self>) -> Self {
@@ -153,6 +160,7 @@ impl AppState {
             run: crate::run::Run::Stopped,
             hosted: crate::host::Hosted::default(),
             published: crate::publish::Published::default(),
+            analyzer: crate::lsp::Analyzer::default(),
             undo: Vec::new(),
             redo: Vec::new(),
             unsaved: BTreeSet::new(),
@@ -436,6 +444,7 @@ impl AppState {
                 &[("file", "project.toml"), ("error", &error)],
             ));
         }
+        crate::lsp::sync(self);
         cx.notify();
     }
 
@@ -451,6 +460,7 @@ impl AppState {
                 self.unsaved.insert(ix);
             }
         }
+        crate::lsp::sync(self);
     }
 }
 

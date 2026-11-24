@@ -2331,6 +2331,33 @@ alternatives that were considered, and why.
     in a copy in the unit's private `/tmp`. It runs no project code there (D-169). Then
     publishing needs no local build (D-159).
 
+### C-043 — How code help works
+- **Date:** 2026-11-24
+- **Choice:**
+  - **A copy of the project.** rust-analyzer works on a copy in the app's cache
+    (`analyzer/<project id>/`), laid out as the source export: a root `Cargo.toml`,
+    `generated/` and `src/`. rust-analyzer resolves a `#[path]` module only inside one
+    package, so `generated/Cargo.toml` alone would leave the user's code out. The copy
+    is written fresh at start, then follows each code save and each graph or
+    `project.toml` save. It holds only files the app makes and the user's own code, so
+    a project from elsewhere cannot run a program through its own
+    `.cargo/config.toml` or `rust-analyzer.toml`. This is why code help needs no trust
+    prompt (D-064).
+  - **rust-analyzer** is the rustup component of the private Rust. It runs from the
+    toolchain's folder with `CARGO` and `RUSTC` set to the private ones, and with its
+    own target folder (`analyzer-target`), so its `cargo check` never waits for a
+    Run's build. That folder takes extra disk space.
+  - **Asking:** once per opened project, when the first file in `src/` opens, and only
+    when the private Rust is installed (the first Run installs it). "Not now" holds
+    until the project is opened again.
+  - **In the editor:** completion in `src/` files; hover, go to definition and
+    diagnostics in every code tab. Positions are in UTF-32, as the editor counts
+    characters, and snippets are off. Go to definition in another file of the project
+    opens its tab at the place. A definition outside the project (djs-rs, std) is not
+    shown yet.
+  - **Problems** keeps listing graph problems only. rust-analyzer's errors show in the
+    code tabs.
+
 ### C-042 — How the code editor works
 - **Date:** 2026-11-24
 - **Choice:**

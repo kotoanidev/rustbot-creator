@@ -12,6 +12,7 @@ D-046). Later phases are planned in detail when each one starts (D-043).
 **Phase 5 — First run + themes: ✅ done in code 2026-11-24.**
 **Phase 6 — Export: ✅ done in code 2026-11-24.**
 **Phase 7 — Hosting on the PC: ✅ done in code 2026-11-24.**
+**Phase 4 — Advanced mode: ✅ done in code 2026-11-24** (D-175–D-178, C-041–C-043).
 **Phase 10 — Public Linux release: packaging ready 2026-11-24; publishing waits for the
 owner's live tests and one-time setup (D-150).** The phase order changed after phase 3 to
 follow the incubation timeline (D-123–D-125): 5 → 6 → 7 → a public Linux release →
@@ -340,12 +341,18 @@ Phase 4 (advanced mode) started 2026-11-24, planned in D-175–D-178:
   "+" for a new module file, and a read-only view of the generated code that follows
   the graphs. "Create function" opens `src/lib.rs` at the new function. Tested
   headless; not yet looked at in the real window.
-- **Next, step 3:** rust-analyzer through the app's own LSP client (D-178): install the
-  `rust-analyzer` rustup component into the private toolchain after asking, the first
-  time a code file opens; start it on the project (`generated/Cargo.toml`, which
-  includes `src/` through `#[path]`); show its diagnostics in the editor and in
-  Problems, and give completion, hover and go to definition through gpui-kit's
-  provider traits.
+- Step 3 is ✅ done in code (D-178, C-043). `lsp.rs` is the app's own JSON-RPC client
+  over stdio. It is started on a copy of the project laid out as the source export, so
+  `src/` belongs to the bot. The first `src/` file opened asks to install the
+  rust-analyzer component into the private Rust. Code tabs then get completion, hover,
+  go to definition (into other project files too) and diagnostics. The client was
+  checked against a real rust-analyzer (`--ignored a_real_rust_analyzer`): hover on a
+  function in `src/lib.rs` after 22 s, and `cargo check`'s error there after 45 s.
+  Not yet looked at in the real window.
+- **Next:** phase 8, GitHub (D-021), by the order of D-123. Plan it with the owner
+  first (D-043): sign-in (device flow with the OAuth App in ROADMAP), what is pushed
+  (the project folder, without `.env`), creating the repository, and where the token
+  lives (the keyring, D-020).
 
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with

@@ -670,3 +670,12 @@ code-changed-elsewhere = Plik zmienił się poza aplikacją, więc ta karta prze
 code-reload = Wczytaj ponownie
 code-save-failed = Nie udało się zapisać { $path }: { $error }
 code-read-failed = Nie udało się odczytać { $path }: { $error }
+
+## Code help (D-178)
+help-install-title = Zainstalować pomoc w kodzie?
+help-install-detail = rust-analyzer podpowiada kod, objaśnia go po najechaniu, przechodzi do definicji i pokazuje błędy w trakcie pisania. To część własnego Rusta aplikacji, pobierana raz.
+help-install = Zainstaluj
+help-later = Nie teraz
+help-installing = Instaluję rust-analyzer…
+help-failed = Nie udało się uruchomić pomocy w kodzie: { $error }
+help-waits = Pomoc w kodzie ruszy, gdy grafy nie będą miały problemów. Wtedy otwórz plik z kodem ponownie.

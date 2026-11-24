@@ -151,6 +151,76 @@ impl Toolchain {
                 .exists()
     }
 
+    /// The folder of rust-analyzer's own `cargo check`, apart from the bots' target folder,
+    /// so the two never wait for each other's lock (D-178).
+    #[must_use]
+    pub fn analyzer_target_dir(&self) -> PathBuf {
+        self.cache.join("analyzer-target")
+    }
+
+    /// Whether the private Rust has rust-analyzer (D-030, D-178).
+    #[must_use]
+    pub fn has_rust_analyzer(&self) -> bool {
+        self.toolchain_bin("rust-analyzer").exists()
+    }
+
+    /// Adds rust-analyzer to the private Rust, as a rustup component, so it always
+    /// matches the Rust version (D-030). Needs the network (D-060).
+    ///
+    /// # Errors
+    /// [`Error::NotInstalled`] without the private Rust, or a failed rustup.
+    pub fn install_rust_analyzer(&self, log: &mut dyn FnMut(&str)) -> Result<(), Error> {
+        if !self.is_installed() {
+            return Err(Error::NotInstalled);
+        }
+        if self.has_rust_analyzer() {
+            return Ok(());
+        }
+        log("Installing rust-analyzer…");
+        let mut rustup = self.command("rustup");
+        rustup.args([
+            "component",
+            "add",
+            "rust-analyzer",
+            "--toolchain",
+            RUST_VERSION,
+        ]);
+        run(rustup, log)
+    }
+
+    /// rust-analyzer of the private Rust, with this toolchain's homes and version, and
+    /// `CARGO` and `RUSTC` set, so the cargo it runs is never another one on `PATH`
+    /// (D-178).
+    #[must_use]
+    pub fn rust_analyzer(&self) -> Command {
+        let mut command = Command::new(self.toolchain_bin("rust-analyzer"));
+        command
+            .env("RUSTUP_HOME", self.rustup_home())
+            .env("CARGO_HOME", self.cargo_home())
+            .env("RUSTUP_TOOLCHAIN", RUST_VERSION)
+            .env("CARGO", self.bin("cargo"))
+            .env("RUSTC", self.bin("rustc"))
+            .env("CARGO_TARGET_DIR", self.analyzer_target_dir());
+        hide_console(&mut command);
+        command
+    }
+
+    /// The copy of `project` that rust-analyzer works on (D-178).
+    #[must_use]
+    pub fn analyzer_dir(&self, project: &Project) -> PathBuf {
+        self.cache
+            .join("analyzer")
+            .join(project.manifest.id.to_string())
+    }
+
+    fn toolchain_bin(&self, program: &str) -> PathBuf {
+        self.rustup_home()
+            .join("toolchains")
+            .join(format!("{RUST_VERSION}-{}", host()))
+            .join("bin")
+            .join(format!("{program}{}", std::env::consts::EXE_SUFFIX))
+    }
+
     /// Installs rustup if needed, then Rust [`RUST_VERSION`] with the minimal profile.
     /// Needs the network (D-060). `log` receives progress lines.
     ///

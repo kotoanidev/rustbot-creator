@@ -136,7 +136,8 @@ layer, before the scope widens.
 - [x] gpui-kit code editor for the user's own modules in `src/`, with tree-sitter
       highlighting (D-177, C-042)
 - [x] Read-only view of the generated code
-- [ ] rust-analyzer (LSP) from the private toolchain, with the app's own client (D-178)
+- [x] rust-analyzer (LSP) from the private toolchain, with the app's own client (D-178,
+      C-043)
 
 ## Phase 8 — GitHub (D-021)
 - [ ] Device flow sign-in (OAuth App `Ov23liQbIFt9vqboIA0x`), create a repository, push

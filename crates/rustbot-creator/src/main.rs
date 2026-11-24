@@ -12,6 +12,7 @@ mod guide;
 mod host;
 mod i18n;
 mod install;
+mod lsp;
 mod measure;
 mod panels;
 mod publish;

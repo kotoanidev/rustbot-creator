@@ -670,3 +670,12 @@ code-changed-elsewhere = The file changed outside the app, so this tab stopped s
 code-reload = Reload
 code-save-failed = Could not save { $path }: { $error }
 code-read-failed = Could not read { $path }: { $error }
+
+## Code help (D-178)
+help-install-title = Install code help?
+help-install-detail = rust-analyzer completes code, explains it on hover, goes to definitions and shows errors as you type. It is a part of the app's own Rust, downloaded once.
+help-install = Install
+help-later = Not now
+help-installing = Installing rust-analyzer…
+help-failed = Code help could not start: { $error }
+help-waits = Code help starts once the graphs have no problems. Open a code file again then.
