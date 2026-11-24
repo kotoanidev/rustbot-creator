@@ -8,7 +8,7 @@ use std::io::{self, BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::Sender;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 pub mod service;
 
@@ -134,8 +134,8 @@ impl Bot {
             let _ = Command::new("kill")
                 .args(["-INT", &self.child.id().to_string()])
                 .status();
-            let deadline = Instant::now() + grace;
-            while Instant::now() < deadline {
+            let deadline = std::time::Instant::now() + grace;
+            while std::time::Instant::now() < deadline {
                 if let Some(status) = self.exit_status()? {
                     return Ok(status);
                 }

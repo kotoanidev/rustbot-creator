@@ -906,15 +906,16 @@ fn ping_project(dir: &Path) -> Project {
     )
 }
 
+/// A path with `/` between its parts on every system, as the snapshots name them.
+fn slashes(path: &Path) -> String {
+    path.display().to_string().replace('\\', "/")
+}
+
 #[test]
 fn ping_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let output = generate(&ping_project(dir.path()), &Registry::with_core()).unwrap();
-    let names: Vec<_> = output
-        .files
-        .keys()
-        .map(|p| p.display().to_string())
-        .collect();
+    let names: Vec<_> = output.files.keys().map(|p| slashes(p)).collect();
     assert_eq!(
         names,
         [
@@ -927,7 +928,7 @@ fn ping_snapshot() {
         ]
     );
     for (path, text) in &output.files {
-        insta::assert_snapshot!(path.display().to_string(), text);
+        insta::assert_snapshot!(slashes(path), text);
     }
 }
 
@@ -1428,7 +1429,7 @@ fn write_owns_all_of_generated() {
         .files_under(Path::new("generated"), &[])
         .unwrap()
         .iter()
-        .map(|f| f.display().to_string())
+        .map(|f| slashes(f))
         .collect();
     assert_eq!(
         left,
