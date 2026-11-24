@@ -75,8 +75,9 @@ layer, before the scope widens.
       system, and the user's own from a folder (D-127)
 - [x] First-run wizard: language and theme, Rust and gcc with consent, a first project
       from a template (D-128, C-032)
-- [ ] The wizard's Developer Portal guide, with checks: the token, the invite link, the
-      bot on the test server (D-129)
+- [ ] The Developer Portal guide, with checks: the token, the intents, the invite link,
+      and the test server picked from the bot's servers. It follows the first project in
+      the wizard and is in the bot settings (D-129, D-131–D-133)
 
 ## Phase 6 — Export
 - [ ] Source code (MIT-0 templates, the user's chosen license, D-023)

@@ -1143,6 +1143,7 @@ alternatives that were considered, and why.
   Each step can be skipped, and the wizard can be opened again from Settings.
 - **Alternatives:** a wizard when the first project is made; no wizard, with only a
   Developer Portal guide in the bot settings.
+- **Amended by D-131:** the Developer Portal step comes after the first project is made.
 
 ### D-129 — A Developer Portal guide whose steps are checked
 - **Date:** 2026-11-23 · **Decided by:** Owner
@@ -1163,6 +1164,29 @@ alternatives that were considered, and why.
   - the toolchain: its state, its disk use, and installing it again;
   - opening the first-run wizard again.
 - **Alternatives:** a separate dialog with tabs, using the same file.
+
+### D-131 — The Developer Portal step comes after the first project (amends D-128)
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The wizard's order is: look → tools → a template and its folder →
+  Discord. The token goes straight into that project's keyring entry (D-020, C-006). The
+  invite link has exactly the permissions its nodes need, and the guide checks the
+  privileged intents the project needs.
+- **Alternatives:** Discord before the project, with the token kept in memory until a
+  project is made (and lost on "Later"); Discord before the project, with the token kept
+  in the keyring as a default for new projects.
+
+### D-132 — The test server is picked from the bot's servers
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** After the invite, the app asks Discord which servers the bot is on and
+  lists them to choose the test server from. Typing the server's ID stays as the other
+  way.
+- **Alternatives:** typing the ID only, as before.
+
+### D-133 — The Developer Portal guide is also in the bot settings
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** "Connect to Discord…" in the bot settings (Properties with no node
+  selected) opens the same guide for any project, including ones made later.
+- **Alternatives:** the guide only in the wizard.
 
 ---
 
