@@ -15,7 +15,8 @@ publish = false
 # Every dependency needs the owner's approval (D-006); the slice's set is D-041.
 [workspace.dependencies]
 # The UI framework (D-011), app-level errors and the app's text (D-037, D-041).
-gpui-kit = "0.10.0"
+# tree-sitter highlights the code editor (D-177).
+gpui-kit = { version = "0.10.0", features = ["tree-sitter-rust", "tree-sitter-toml"] }
 anyhow = "1.0.104"
 fluent-bundle = "0.16.0"
 unic-langid = "0.9.6"

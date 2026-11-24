@@ -1,6 +1,7 @@
 //! The dock's panels (D-044, D-066). Each holds the shared [`AppState`] and redraws when
 //! it changes.
 
+mod code;
 mod editor;
 mod logs;
 mod problems;
@@ -8,6 +9,7 @@ mod project_tree;
 mod properties;
 mod settings;
 
+pub(crate) use code::CodePanel;
 pub(crate) use editor::Editor;
 pub(crate) use logs::Logs;
 pub(crate) use problems::Problems;

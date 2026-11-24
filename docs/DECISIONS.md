@@ -2331,6 +2331,22 @@ alternatives that were considered, and why.
     in a copy in the unit's private `/tmp`. It runs no project code there (D-169). Then
     publishing needs no local build (D-159).
 
+### C-042 — How the code editor works
+- **Date:** 2026-11-24
+- **Choice:**
+  - **The tree** has "Code (src/)" with every file under `src/` and a "+" for a new
+    module file (`points.rs`: a Rust name and `.rs`, not `lib.rs`), which starts with a
+    note on `mod points;`. "Generated code" lists the files the graphs make now. A link
+    anywhere in `src/` empties the list, as building refuses the project then (D-064).
+  - **Tabs:** one closable tab per file in the dock's centre. A closed tab opens again
+    as it was. "Create function" opens `src/lib.rs` at the new function.
+  - **Saving:** a file is saved 0.4 s after typing stops, as graphs autosave, and also
+    when the app quits and before Run, an export, hosting or publishing. The tab name
+    shows "●" until then. If the file changed outside the app since it was read, the
+    tab stops saving and offers "Reload", so nothing typed elsewhere is overwritten.
+  - **The generated view** is read-only and follows the graphs as they change.
+  - **Files** are read and written only under `src/`, through no link.
+
 ### C-041 — How "Custom code" works
 - **Date:** 2026-11-24
 - **Choice:**

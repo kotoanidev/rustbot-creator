@@ -334,12 +334,18 @@ Phase 4 (advanced mode) started 2026-11-24, planned in D-175–D-178:
   `#[path]`. The source export and Cloud get the same layout, with a root
   `Cargo.toml` that builds `generated/src/main.rs`. The generated bot with every kind
   of input, and the export layout, build with the real djs-rs (`--ignored compiles`).
-- **Next, step 2:** the code editor (D-177): gpui-kit's `Editor` with the
-  `tree-sitter-rust` and `tree-sitter-toml` features, for the files in `src/` (a "Code"
-  section in the project tree, tabs like graphs, save on Ctrl+S, refusing links), and a
-  read-only view of `generated/`. "Create function" then opens `src/lib.rs` at the new
-  function.
-- Step 3: rust-analyzer through the app's own LSP client (D-178).
+- Step 2 is ✅ done in code (D-177, C-042): gpui-kit's `Editor` with tree-sitter Rust
+  and TOML highlighting. It has "Code (src/)" and "Generated code" in the project tree,
+  closable tabs that save 0.4 s after typing and stop when the file changes elsewhere,
+  "+" for a new module file, and a read-only view of the generated code that follows
+  the graphs. "Create function" opens `src/lib.rs` at the new function. Tested
+  headless; not yet looked at in the real window.
+- **Next, step 3:** rust-analyzer through the app's own LSP client (D-178): install the
+  `rust-analyzer` rustup component into the private toolchain after asking, the first
+  time a code file opens; start it on the project (`generated/Cargo.toml`, which
+  includes `src/` through `#[path]`); show its diagnostics in the editor and in
+  Problems, and give completion, hover and go to definition through gpui-kit's
+  provider traits.
 
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with

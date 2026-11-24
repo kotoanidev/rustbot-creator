@@ -113,6 +113,19 @@ pub(crate) struct OpenGuide;
 
 impl gpui_kit::EventEmitter<OpenGuide> for AppState {}
 
+/// Opens a code tab (D-177): `src/…`, or `generated/…` to view, at a 0-based line.
+pub(crate) struct OpenCode {
+    pub(crate) path: std::path::PathBuf,
+    pub(crate) line: Option<u32>,
+}
+
+impl gpui_kit::EventEmitter<OpenCode> for AppState {}
+
+/// Code tabs save what was typed now, before a build.
+pub(crate) struct SaveCode;
+
+impl gpui_kit::EventEmitter<SaveCode> for AppState {}
+
 impl AppState {
     pub(crate) fn new(project: Project, cx: &mut Context<'_, Self>) -> Self {
         // Whatever is still waiting for autosave is written when the app quits.

@@ -656,3 +656,17 @@ problem-code-function = Funkcja potrzebuje nazwy w Ruście, np. give_points: ma�
 problem-code-name = Wejście { $input }: potrzebuje własnej nazwy w Ruście, innej niż ctx.
 problem-code-type = Wejście { $input }: tego typu nie można przekazać do kodu.
 problem-code-value = Wejście { $input }: wartość nie daje jego typu, np. liczby albo zmiennej tego typu.
+
+## The code editor (D-177)
+tree-code = Kod (src/)
+tree-generated = Wygenerowany kod
+new-file-placeholder = nazwa pliku, np. points.rs
+new-file-invalid = Nazwa pliku jak points.rs: małe litery, cyfry i _, potem .rs.
+new-file-taken = W src/ jest już plik o tej nazwie.
+new-file-failed = Nie udało się utworzyć pliku: { $error }
+code-read-only = Wygenerowany z grafów: tylko do odczytu. Zmienia się razem z nimi.
+code-generated-invalid = Grafy mają problemy, więc kod nie jest generowany. Problemy mówią, co jest nie tak.
+code-changed-elsewhere = Plik zmienił się poza aplikacją, więc ta karta przestała zapisywać. Wczytaj go ponownie, aby kontynuować.
+code-reload = Wczytaj ponownie
+code-save-failed = Nie udało się zapisać { $path }: { $error }
+code-read-failed = Nie udało się odczytać { $path }: { $error }

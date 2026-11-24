@@ -1,4 +1,5 @@
-//! The project tree in the side bar: the project's commands, events and memory.
+//! The project tree in the side bar: the project's commands, events and memory, its own
+//! code in `src/` and the code generated from the graphs (D-177).
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -35,7 +36,15 @@ enum Adding {
     Command,
     /// A new name for memory variable `ix`.
     Rename(usize),
+    /// A new file of the user's code (D-177).
+    File,
 }
+
+/// The tree's folders of the user's code and of the generated code (D-177). A file's id is
+/// `file:<path in the project>`.
+const CODE: &str = "code";
+const GENERATED: &str = "generated";
+const FILE: &str = "file:";
 
 /// The tree's folder of memory variables (D-109). A variable's id is `memory:<index>`, and
 /// a node using it is `use:<index>:<graph>:<node>`.
@@ -43,10 +52,10 @@ const MEMORY: &str = "memory";
 
 impl ProjectTree {
     pub(crate) fn new(state: Entity<AppState>, cx: &mut Context<'_, Self>) -> Self {
-        let initial = items(&state.read(cx).project);
+        let initial = items(state.read(cx));
         let tree = cx.new(|cx| TreeState::new(cx).items(initial));
         cx.observe(&state, |this, state, cx| {
-            let items = items(&state.read(cx).project);
+            let items = items(state.read(cx));
             this.tree.update(cx, |tree, cx| tree.set_items(items, cx));
         })
         .detach();
@@ -63,6 +72,7 @@ impl ProjectTree {
     fn start_adding(&mut self, what: Adding, window: &mut Window, cx: &mut Context<'_, Self>) {
         let (placeholder, name) = match what {
             Adding::Command => (t("new-command-placeholder"), String::new()),
+            Adding::File => (t("new-file-placeholder"), String::new()),
             Adding::Rename(ix) => (
                 t("new-memory-placeholder"),
                 self.state
@@ -89,6 +99,7 @@ impl ProjectTree {
                     match what {
                         Adding::Command => this.add_command(&name, cx),
                         Adding::Rename(ix) => this.rename_memory(ix, &name, cx),
+                        Adding::File => this.add_file(&name, cx),
                     }
                 }
                 // Leaving an empty field gives up.
@@ -127,6 +138,32 @@ impl ProjectTree {
 }
 
 impl ProjectTree {
+    /// Makes `src/<name>` and opens it (D-177).
+    fn add_file(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+        self.error = if crate::code::valid_file_name(name) {
+            let root = self.state.read(cx).project.root.clone();
+            match crate::code::create_file(&root, name) {
+                Ok(path) => {
+                    self.state.update(cx, |_, cx| {
+                        cx.emit(crate::state::OpenCode { path, line: None });
+                        cx.notify();
+                    });
+                    None
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    Some(t("new-file-taken"))
+                }
+                Err(e) => Some(t_with("new-file-failed", &[("error", &e.to_string())])),
+            }
+        } else {
+            Some(t("new-file-invalid"))
+        };
+        if self.error.is_none() {
+            self.adding = None;
+        }
+        cx.notify();
+    }
+
     fn rename_memory(&mut self, ix: usize, name: &str, cx: &mut Context<'_, Self>) {
         let memory = &self.state.read(cx).project.manifest.memory;
         let unchanged = memory.get(ix).is_some_and(|var| var.name == name);
@@ -187,9 +224,52 @@ fn confirm_delete(
         .detach();
 }
 
-/// A folder per graph kind, where a graph's id is its index in `project.graphs`, and the
-/// memory variables with the nodes that use them (D-109).
-fn items(project: &Project) -> Vec<TreeItem> {
+/// A folder per graph kind, where a graph's id is its index in `project.graphs`, the
+/// memory variables with the nodes that use them (D-109), the user's code in `src/`, and
+/// the code the graphs generate now (D-177).
+fn items(state: &AppState) -> Vec<TreeItem> {
+    let project = &state.project;
+    let mut items = graph_items(project);
+    let file = |path: &std::path::Path| {
+        let label = path
+            .iter()
+            .skip(1)
+            .map(|part| part.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        TreeItem::new(format!("{FILE}{}", path.display()), label)
+    };
+    // A link anywhere in src/ hides the list; building refuses the project then too.
+    let own = project
+        .files_under(std::path::Path::new("src"), &[])
+        .unwrap_or_default();
+    items.push(
+        TreeItem::new(CODE, t("tree-code"))
+            .expanded(true)
+            .children(own.iter().map(|path| file(path))),
+    );
+    let generated = rustbot_codegen::generate(project, &state.registry)
+        .map_or_else(|_| Vec::new(), |output| output.files.into_keys().collect());
+    items.push(
+        TreeItem::new(GENERATED, t("tree-generated")).children(
+            generated
+                .iter()
+                .filter(|path| path.starts_with("generated/src"))
+                .map(|path| {
+                    let mut item = file(path);
+                    item.label = path.strip_prefix("generated/src").map_or_else(
+                        |_| item.label.clone(),
+                        |p| p.display().to_string().replace('\\', "/").into(),
+                    );
+                    item
+                }),
+        ),
+    );
+    items
+}
+
+/// The graphs' folders and the memory variables.
+fn graph_items(project: &Project) -> Vec<TreeItem> {
     let mut items: Vec<TreeItem> = [
         (GraphKind::Command, "tree-commands"),
         (GraphKind::Event, "tree-events"),
@@ -319,6 +399,28 @@ impl Render for ProjectTree {
                         state.selected_node = None;
                         cx.notify();
                     });
+                });
+            } else if let Some(path) = item.id.strip_prefix(FILE) {
+                let (state, path) = (state.clone(), std::path::PathBuf::from(path));
+                row = row.on_click(move |_, _, cx| {
+                    let path = path.clone();
+                    state.update(cx, |_, cx| {
+                        cx.emit(crate::state::OpenCode { path, line: None });
+                    });
+                });
+            } else if item.id.as_ref() == CODE {
+                let this = this.clone();
+                row = row.suffix(move |_, _| {
+                    let this = this.clone();
+                    Button::new("add-file")
+                        .ghost()
+                        .xsmall()
+                        .label("+")
+                        .on_click(move |_, window, cx| {
+                            let _ = this.update(cx, |this, cx| {
+                                this.start_adding(Adding::File, window, cx);
+                            });
+                        })
                 });
             } else if let Some((graph, node)) = memory_use(&item.id) {
                 let state = state.clone();
@@ -494,7 +596,7 @@ mod tests {
         let state = state.unwrap();
         let ids = |cx: &mut gpui_kit::VisualTestContext| {
             cx.read(|cx| {
-                super::items(&state.read(cx).project)[2]
+                super::items(state.read(cx))[2]
                     .children
                     .iter()
                     .map(|var| (var.id.to_string(), var.children.len()))

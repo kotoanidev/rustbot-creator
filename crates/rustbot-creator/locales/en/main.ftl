@@ -656,3 +656,17 @@ problem-code-function = The function needs a Rust name, e.g. give_points: lower-
 problem-code-name = Input { $input }: it needs a Rust name of its own, other than ctx.
 problem-code-type = Input { $input }: this type cannot be passed to code.
 problem-code-value = Input { $input }: the value does not give its type, e.g. a number, or a variable of that type.
+
+## The code editor (D-177)
+tree-code = Code (src/)
+tree-generated = Generated code
+new-file-placeholder = file name, e.g. points.rs
+new-file-invalid = A file name like points.rs: lower-case letters, digits and _, then .rs.
+new-file-taken = src/ has a file with this name already.
+new-file-failed = Could not make the file: { $error }
+code-read-only = Generated from the graphs: read-only. It changes as they do.
+code-generated-invalid = The graphs have problems, so no code is generated. Problems says what is wrong.
+code-changed-elsewhere = The file changed outside the app, so this tab stopped saving. Reload it to go on.
+code-reload = Reload
+code-save-failed = Could not save { $path }: { $error }
+code-read-failed = Could not read { $path }: { $error }

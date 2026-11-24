@@ -133,9 +133,9 @@ layer, before the scope widens.
 ## Phase 4 — Advanced mode (D-015, D-030, D-175–D-178)
 - [x] "Custom code" node calling the user's functions, with "Create function", and the
       user's `src/` in builds, exports and Cloud (D-175, D-176, C-041)
-- [ ] gpui-kit code editor for the user's own modules in `src/`, with tree-sitter
-      highlighting (D-177)
-- [ ] Read-only view of the generated code
+- [x] gpui-kit code editor for the user's own modules in `src/`, with tree-sitter
+      highlighting (D-177, C-042)
+- [x] Read-only view of the generated code
 - [ ] rust-analyzer (LSP) from the private toolchain, with the app's own client (D-178)
 
 ## Phase 8 — GitHub (D-021)

@@ -780,7 +780,16 @@ impl Properties {
                 cx.notify();
                 return;
             };
-            match crate::code::add_function(&state.project.root, &function, &stub) {
+            let root = state.project.root.clone();
+            let added = crate::code::add_function(&root, &function, &stub);
+            if added.is_ok() {
+                // The function, where it can be written (D-177).
+                let path = std::path::PathBuf::from("src/lib.rs");
+                let code = crate::code::read(&root, &path).unwrap_or_default();
+                let line = crate::code::function_line(&code, &function);
+                cx.emit(crate::state::OpenCode { path, line });
+            }
+            match added {
                 Ok(true) => state.log(t_with("code-created", &[("function", &function)])),
                 Ok(false) => state.log(t_with("code-exists", &[("function", &function)])),
                 Err(e) => {

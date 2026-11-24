@@ -191,6 +191,7 @@ pub(crate) fn checked(
     cx: &mut AsyncWindowContext,
 ) -> Result<rustbot_core::Project, String> {
     busy(state, cx, &t("run-checking"));
+    state.update(cx, |_, cx| cx.emit(crate::state::SaveCode));
     let (project, problems) = state.update(cx, |state, _| {
         state.save_now();
         let problems = state

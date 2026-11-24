@@ -16,7 +16,9 @@ use rustbot_core::Project;
 
 use crate::guide::{Close, Guide};
 use crate::i18n::{t, t_with};
-use crate::panels::{Editor, Logs, OpenWizard, Problems, ProjectTree, Properties, SettingsPanel};
+use crate::panels::{
+    CodePanel, Editor, Logs, OpenWizard, Problems, ProjectTree, Properties, SettingsPanel,
+};
 use crate::run::Run;
 use crate::state::AppState;
 use crate::wizard::{Done, Wizard};
@@ -36,6 +38,8 @@ pub(crate) struct Workspace {
     guide: Option<Entity<Guide>>,
     /// The wizard ended at the templates, so the guide follows the new project (D-131).
     guide_next: bool,
+    /// The code tabs made so far, by file (D-177); a closed one opens again as it was.
+    code: std::collections::BTreeMap<PathBuf, Entity<CodePanel>>,
 }
 
 impl Workspace {
@@ -62,6 +66,7 @@ impl Workspace {
             wizard: None,
             guide: None,
             guide_next: false,
+            code: std::collections::BTreeMap::new(),
         };
         // A project named on the command line is opened at once; otherwise the wizard
         // comes first until it was finished or skipped.
@@ -117,6 +122,15 @@ impl Workspace {
             },
         )
         .detach();
+        cx.subscribe_in(
+            &state,
+            window,
+            |this, _, open: &crate::state::OpenCode, window, cx| {
+                this.open_code(&open.path, open.line, window, cx);
+            },
+        )
+        .detach();
+        self.code.clear();
         let tree = cx.new(|cx| ProjectTree::new(state.clone(), cx));
         let properties = cx.new(|cx| Properties::new(state.clone(), window, cx));
         let editor = cx.new(|cx| Editor::new(state.clone(), cx));
@@ -172,6 +186,35 @@ impl Workspace {
         })
         .detach();
         self.guide = Some(guide);
+        cx.notify();
+    }
+
+    /// Opens the code tab of `path`, or brings it forward, at 0-based `line` (D-177).
+    fn open_code(
+        &mut self,
+        path: &Path,
+        line: Option<u32>,
+        window: &mut Window,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let Some((state, dock)) = self.open.clone() else {
+            return;
+        };
+        let panel = if let Some(panel) = self.code.get(path) {
+            panel.clone()
+        } else {
+            let path = path.to_owned();
+            let panel = cx.new(|cx| CodePanel::new(state, path.clone(), window, cx));
+            self.code.insert(path, panel.clone());
+            panel
+        };
+        dock.update(cx, |dock, cx| {
+            let handle = panel_handle(panel.clone());
+            dock.add_panel_view(handle, DockPlacement::Center, None, window, cx);
+        });
+        if let Some(line) = line {
+            panel.update(cx, |panel, cx| panel.go_to(line, window, cx));
+        }
         cx.notify();
     }
 
@@ -709,6 +752,30 @@ mod tests {
             assert!(window.try_find(("cloud-restore", 1usize)).is_some());
             assert!(window.try_find(("cloud-download", 0usize)).is_some());
         });
+    }
+
+    /// A code file opens in one tab, which comes forward when asked for again (D-177).
+    #[gpui_kit::test]
+    fn a_code_file_opens_once(cx: &mut gpui_kit::TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("bot");
+        super::new_project(&root).unwrap();
+        cx.update(gpui_kit::init);
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| super::Workspace::new(Some(root.clone()), window, cx));
+        for _ in 0..2 {
+            workspace.update(cx, |workspace, cx| {
+                let (state, _) = workspace.open.as_ref().unwrap();
+                state.update(cx, |_, cx| {
+                    cx.emit(crate::state::OpenCode {
+                        path: "generated/src/main.rs".into(),
+                        line: Some(3),
+                    });
+                });
+            });
+            cx.run_until_parked();
+        }
+        cx.read(|cx| assert_eq!(workspace.read(cx).code.len(), 1));
     }
 
     #[test]

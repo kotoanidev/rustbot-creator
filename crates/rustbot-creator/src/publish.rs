@@ -386,6 +386,7 @@ async fn deploy(
     if hosted {
         crate::host::unhost(state, cx).await?;
     }
+    state.update(cx, |_, cx| cx.emit(crate::state::SaveCode));
     let output = run::generate(state, cx)?;
     let project = state.read_with(cx, |state, _| state.project.clone());
     let codegen = crate::host::fingerprint(&project, &output);
