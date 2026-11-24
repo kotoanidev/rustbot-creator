@@ -1268,6 +1268,60 @@ alternatives that were considered, and why.
 - **Alternatives:** a rotated log file written by the launcher, the same on Linux and
   Windows; separate memory for the hosted bot.
 
+### D-144 — Copr builds the RPM from a spec in the repository, with network access
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** `rustbot-creator.spec` lives in the repository. Copr builds it from git
+  with internet access switched on, so `cargo build --release --locked` fetches the
+  crates from crates.io at the versions in `Cargo.lock`. The owner creates the Copr
+  project.
+- **Alternatives:** vendored sources in the SRPM (offline, but hundreds of MB each
+  release); no Copr, with an RPM built in GitHub Actions attached to the release (no
+  updates through dnf).
+
+### D-145 — The .deb is on GitHub Releases and in a signed apt repository
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** CI builds the .deb on Ubuntu 24.04 and attaches it to the GitHub release.
+  It also adds it to a signed apt repository on GitHub Pages, so updates come through
+  apt (D-025). The owner creates the GPG key and adds it as a repository secret.
+- **Alternatives:** only the .deb on GitHub Releases, updated by hand; a Launchpad PPA
+  (no network in its builds, and Ubuntu's Rust is too old).
+
+### D-146 — Release 1 supports Fedora 43–44 and Ubuntu 24.04 and 26.04 on x86_64
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** These are the supported releases. One build made on Ubuntu 24.04 also
+  runs on 26.04. Only x86_64, the tested architecture.
+- **Alternatives:** aarch64 too, untested on real hardware; only Fedora 44 and
+  Ubuntu 26.04.
+
+### D-147 — The app ID is `io.github.kotoanidev.RustBotCreator`, with a temporary icon
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The desktop file, the AppStream metainfo and the icon use this ID, based
+  on GitHub, with no domain needed. Claude draws a simple SVG icon for now, to be replaced
+  by the final one.
+- **Alternatives:** the owner provides the icon first; an ID from the owner's own domain.
+
+### D-148 — Packages recommend the C compiler
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The RPM has `Recommends: gcc`, and the .deb `Recommends: gcc, libc6-dev`.
+  dnf and apt install them by default, so the app's consent dialog (D-039) is usually
+  not needed. It stays for systems that skip recommended packages.
+- **Alternatives:** a hard dependency; none, as before.
+
+### D-149 — A `vX.Y.Z` tag releases everything, starting with 0.1.0
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** Pushing a tag such as `v0.1.0` starts a workflow. It builds the .deb,
+  creates the GitHub release with pre-alpha notes, and updates the apt repository. Copr
+  rebuilds the RPM through its webhook for tags. The first version is 0.1.0.
+- **Alternatives:** releases started by hand through `workflow_dispatch`, with Copr
+  builds started by hand.
+
+### D-150 — 0.1.0 is published only after the owner's live tests
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** Claude prepares and checks everything: the spec, the packages, the
+  workflow, the apt repository and the icon. No tag is pushed. The owner publishes once
+  phases 3–7 have been tested live and they agree.
+- **Alternatives:** publishing as soon as the packages build and pass the checks.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)

@@ -96,10 +96,14 @@ layer, before the scope widens.
 - [x] The state on the status bar, and the controls in the bot settings (D-142)
 - [x] The journal in the Logs panel, and one `data.json` for both (D-143)
 
-## Phase 10 — Public Linux release (D-025, D-123)
-- [ ] RPM on Copr, testing on Fedora
-- [ ] .deb for Ubuntu
-- [ ] Release; public screenshots say "pre-alpha"
+## Phase 10 — Public Linux release (D-025, D-123, D-144–D-150)
+- [ ] The app ID, desktop file, AppStream metainfo and a temporary icon (D-147)
+- [ ] The RPM spec and Copr's source method, built with network access (D-144, D-148)
+- [ ] The .deb, built on Ubuntu 24.04 (D-145, D-146, D-148)
+- [ ] The release workflow: tag → .deb, GitHub release and signed apt repository (D-149)
+- [ ] The owner's one-time setup: Copr project and webhook, GPG key, GitHub Pages
+- [ ] Release 0.1.0 after the owner's live tests; public screenshots say "pre-alpha"
+      (D-150)
 
 ---
 
