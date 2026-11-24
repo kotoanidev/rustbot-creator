@@ -1478,6 +1478,30 @@ alternatives that were considered, and why.
   only on localhost and has no TLS code.
 - **Alternatives:** nginx and certbot; TLS and ACME in the server itself.
 
+### D-168 — The Cloud server is unprivileged and starts fixed unit templates
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** The server runs as an ordinary system user. The sandbox lives in fixed
+  systemd unit templates for builds and bots (`rbc-build@`, `rbc-bot@` and the like),
+  which root installs once with the setup. A polkit rule lets the server start and stop
+  only instances of those templates. A break-in into the server gives neither root nor
+  a weaker sandbox.
+- **Alternatives:** the server runs as root and creates units with any settings
+  (`systemd-run`).
+
+### D-169 — Cloud builds fetch first, then build offline
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** A deploy is built in two sandboxed steps. `cargo fetch` has the network
+  but runs no code from the project. `cargo build --offline` has no network, so build
+  scripts and macros can neither send nor fetch anything.
+- **Alternatives:** one build step with the network.
+
+### D-170 — The real Cloud sandbox is tested in the private repository's CI
+- **Date:** 2026-11-24 · **Decided by:** Owner
+- **Decision:** GitHub Actions on `ubuntu-latest`, which has `sudo`, installs the unit
+  templates and the polkit rule. It builds a real bot on djs-rs and starts it in the
+  sandbox without a token. This uses the private repository's Actions minutes.
+- **Alternatives:** check the sandbox only by hand on the VPS.
+
 ---
 
 ## Defaults chosen by Claude (reviewable)
