@@ -22,5 +22,10 @@ sudo apt update && sudo apt install rustbot-creator
 
 Updates then come through dnf or apt. The .deb is also attached below.
 
+Windows 10 and 11 (x64): run `rustbot-creator-…-windows-x86_64-setup.exe` from the files
+below. It installs for your user only, without an administrator. This pre-alpha is not
+code-signed yet, so Windows SmartScreen warns about it: choose "More info", then "Run
+anyway". Later it also comes through winget.
+
 On its first start, the app offers to install what bots need: a C compiler and a private
 copy of Rust, about 1 GB. Nothing is installed without asking.

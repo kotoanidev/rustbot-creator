@@ -2062,6 +2062,37 @@ alternatives that were considered, and why.
   - **Tests:** CI on Windows also runs the keyring round trip against Credential Manager
     and a real Task Scheduler round trip. Tests compare generated paths with `/` on every
     system. `.gitattributes` keeps LF line endings.
+
+### C-038 — How the Windows installer is made
+- **Date:** 2026-11-24
+- **Choice:**
+  - **Supported systems:** Windows 10 and 11 on x64, as in D-146's spirit.
+  - **The installer:** Inno Setup installs for the current user into
+    `%LOCALAPPDATA%\Programs\RustBot Creator`, with no folder or start menu questions,
+    in English or Polish.
+    - Its `AppId` is fixed for good:
+      `{DE009DB1-48A6-499C-BC15-91778D656FDF}`.
+    - It adds a Start menu shortcut with the app ID as its AppUserModelID, and an
+      optional desktop one.
+    - The shortcuts use the `.ico`, made from the SVG icon.
+    - CI's runner uses its own Inno Setup, or Chocolatey's when it has none.
+  - **Uninstalling:** it removes the hosted bots' tasks, which would start a program that
+    is gone. It keeps the user's data and the private Rust in
+    `%LOCALAPPDATA%\rustbot-creator`.
+  - **The program's icon:** the `.exe` has no icon of its own, so the taskbar may show a
+    generic one. Embedding it needs a resource compiler, i.e. a new build dependency
+    (open question).
+  - **The data folder:** on Windows, the app's data, the private Rust and the caches live
+    in `%LOCALAPPDATA%\rustbot-creator`, never in the roaming profile. The caches are in
+    its `cache` folder. Linux is unchanged.
+  - **The workflow:**
+    - the installer is built, installed silently, its launcher started (it stops with
+      78) and then uninstalled;
+    - for a tag, the installer is attached to the release, and
+      `make-manifests.sh` writes the winget manifests (schema 1.9, Inno, user scope)
+      as an artifact;
+    - the owner opens their pull request to `microsoft/winget-pkgs`.
+  - **The release notes** explain SmartScreen's warning (D-153).
 ---
 
 ## Open questions (to ask the owner when relevant)
@@ -2092,6 +2123,9 @@ The agenda for detailed planning. Each one becomes a `D-NNN` once the owner answ
   - what it runs on: the company's own servers, or Cloudflare Containers (D-013 stays the
     "bring your own Cloudflare account" path);
   - payments, and VAT invoicing.
+- **The Windows program's icon (C-038):** embedding an icon in the `.exe` needs a
+  resource compiler at build time, e.g. the `winresource` or `embed-resource` crate, as a
+  build dependency of the app. Add one?
 - **Paid templates and a marketplace:** templates are compiled into the app (C-028). Paid
   ones need a package format installed later, tied to plugin distribution and signing.
   Generated code stays MIT-0 (D-023), even from a paid template.

@@ -1,5 +1,6 @@
-# Release (D-149). A vX.Y.Z tag builds and checks the .deb and the RPM, creates the GitHub
-# release with the .deb, and updates the signed apt repository on GitHub Pages (D-145).
+# Release (D-149). A vX.Y.Z tag builds and checks the .deb, the RPM and the Windows
+# installer. It creates the GitHub release with the .deb and the installer, updates the
+# signed apt repository on GitHub Pages (D-145), and makes the winget manifests (D-152).
 # Copr builds the published RPM through its own webhook (D-144). Started by hand, the
 # workflow only builds and checks both packages, and publishes nothing.
 name: Release
@@ -89,10 +90,62 @@ jobs:
           path: rpm/x86_64/*.rpm
           if-no-files-found: error
 
+  windows:
+    name: Installer (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Git Bash would turn the installer compiler's "/D..." options into paths.
+      MSYS_NO_PATHCONV: "1"
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the version
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: packaging/check-version.sh "$TAG"
+      # The runner's own rustup, not a third-party action: this job builds what is
+      # published.
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+      - run: cargo build --release --locked -p rustbot-creator
+      - name: Third-party licenses
+        run: |
+          cargo metadata --format-version 1 --locked \
+            --filter-platform x86_64-pc-windows-msvc \
+            | python -I packaging/third-party-licenses.py > THIRD-PARTY-LICENSES.txt
+      - name: Build the installer
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$iscc" ]; then choco install innosetup -y --no-progress; fi
+          "$iscc" "/DAppVersion=$version" packaging/windows/rustbot-creator.iss
+      - name: Install it, start the launcher and uninstall it
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem target/windows/*.exe | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -Wait `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          $folder = "$env:LOCALAPPDATA\Programs\RustBot Creator"
+          if (!(Test-Path "$folder\rustbot-creator.exe")) { throw 'The app was not installed.' }
+          # Without a display: a wrong project ID stops the hosted bot's launcher with 78.
+          $launcher = Start-Process -FilePath "$folder\rustbot-creator.exe" -Wait -PassThru `
+            -ArgumentList '--host', 'not-a-uuid', 'bot'
+          if ($launcher.ExitCode -ne 78) { throw "The launcher exited with $($launcher.ExitCode)." }
+          Start-Process -FilePath "$folder\unins000.exe" -Wait `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: target/windows/*.exe
+          if-no-files-found: error
+
   publish:
     name: Publish
     if: github.ref_type == 'tag'
-    needs: [deb, rpm]
+    needs: [deb, rpm, windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -107,10 +160,14 @@ jobs:
         with:
           name: deb
           path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows
+          path: dist
       - run: sudo apt-get update && sudo apt-get install -y apt-utils
       - name: Create the GitHub release
         run: |
-          gh release create "$TAG" dist/*.deb --prerelease \
+          gh release create "$TAG" dist/*.deb dist/*.exe --prerelease \
             --title "RustBot Creator ${TAG#v} (pre-alpha)" \
             --notes-file packaging/release-notes.md
       - name: Import the apt signing key
@@ -138,3 +195,14 @@ jobs:
           git add -A
           git commit -m "apt: rustbot-creator ${TAG#v}"
           git push origin gh-pages
+      - name: Make the winget manifests
+        run: |
+          setup=$(basename dist/*.exe)
+          url="https://github.com/${{ github.repository }}/releases/download/$TAG/$setup"
+          sha256=$(sha256sum "dist/$setup" | cut -d ' ' -f 1)
+          packaging/windows/winget/make-manifests.sh "${TAG#v}" "$url" "$sha256" winget
+      - uses: actions/upload-artifact@v7
+        with:
+          name: winget-manifests
+          path: winget
+          if-no-files-found: error

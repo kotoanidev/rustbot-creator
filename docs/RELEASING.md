@@ -1,8 +1,9 @@
 # Releasing
 
-How RustBot Creator is packaged and released on Linux (D-144–D-150, C-036). Fedora gets an
+How RustBot Creator is packaged and released (D-144–D-153, C-036, C-038). Fedora gets an
 RPM from Copr, and Ubuntu gets a .deb from GitHub Releases and a signed apt repository on
-GitHub Pages. A `vX.Y.Z` tag releases everything.
+GitHub Pages. Windows gets a per-user installer from GitHub Releases and winget. A
+`vX.Y.Z` tag releases everything.
 
 ## The files
 
@@ -14,11 +15,14 @@ GitHub Pages. A `vX.Y.Z` tag releases everything.
 - `packaging/apt/update-repo.sh`: adds .deb files to the apt repository and signs it.
 - `packaging/third-party-licenses.py`: the license notices of every crate built into the
   program, shipped in both packages.
+- `packaging/windows/rustbot-creator.iss` and `rustbot-creator.ico`: the Windows
+  installer (Inno Setup), for the current user and without an administrator (D-152).
+- `packaging/windows/winget/make-manifests.sh`: the winget manifests of a release.
 - `packaging/check-version.sh`: checks that a tag matches every version number.
 - `packaging/release-notes.md`: the release's notes, with the install instructions.
-- `.github/workflows/release.yml`: run by hand, it builds and checks both packages and
-  publishes nothing. For a tag, it also creates the GitHub release and updates the apt
-  repository.
+- `.github/workflows/release.yml`: run by hand, it builds and checks the .deb, the RPM
+  and the Windows installer, and publishes nothing. For a tag, it also creates the GitHub
+  release, updates the apt repository and makes the winget manifests.
 
 ## One-time setup (the owner)
 
@@ -49,6 +53,9 @@ GitHub Pages. A `vX.Y.Z` tag releases everything.
    user would have to import a new key.
 3. **GitHub Pages**, after the first release has made the `gh-pages` branch: in
    Settings → Pages, deploy from the branch `gh-pages`, folder `/`.
+4. **winget**, at the first Windows release: the package
+   `kotoanidev.RustBotCreator` is added to `microsoft/winget-pkgs` by a pull request.
+   Its maintainers review it, and later versions are pull requests too (see below).
 
 ## Releasing a version
 
@@ -68,9 +75,11 @@ GitHub Pages. A `vX.Y.Z` tag releases everything.
    git push origin vX.Y.Z
    ```
 
-5. Watch the workflow publish the .deb, the release and the apt repository, and Copr
-   build the RPM.
-6. Install from Copr and from apt on clean Fedora and Ubuntu systems (e.g. in a VM), and
+5. Watch the workflow publish the .deb, the installer, the release and the apt
+   repository, and Copr build the RPM.
+6. Download the workflow's `winget-manifests` artifact and open a pull request with it
+   to `microsoft/winget-pkgs`, e.g. with `wingetcreate submit <its folder>`.
+7. Install from Copr, apt and the Windows installer on clean systems (e.g. in a VM), and
    start the app.
-7. For the first release only, add the install instructions of
+8. For the first release only, add the install instructions of
    `packaging/release-notes.md` to the README.

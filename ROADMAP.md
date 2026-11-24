@@ -117,8 +117,8 @@ layer, before the scope widens.
 - [x] Run and Stop without consoles popping up; the token in Credential Manager
 - [x] Hosting through Task Scheduler at login, with a log file (D-022, D-138, D-143,
       C-037)
-- [ ] A per-user Inno Setup installer in the release, and a winget manifest (D-152);
-      unsigned in pre-alpha (D-153)
+- [~] A per-user Inno Setup installer in the release, and a winget manifest (D-152);
+      unsigned in pre-alpha (D-153). The installer job waits for its first run.
 
 ## Phase 12 — RustBot Cloud pilot (D-125)
 - [ ] "Publish" deploys the bot to the company's hosting, with monitoring, restarts,

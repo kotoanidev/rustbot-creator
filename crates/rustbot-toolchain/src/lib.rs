@@ -70,7 +70,8 @@ fn io_error(path: &Path, source: io::Error) -> Error {
 }
 
 /// The app's folders (D-061): data in `~/.local/share/rustbot-creator`, caches in
-/// `~/.cache/rustbot-creator`.
+/// `~/.cache/rustbot-creator`. On Windows both are in `%LOCALAPPDATA%\rustbot-creator`,
+/// never in the roaming profile, with the caches in its `cache` folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Toolchain {
     data: PathBuf,
@@ -84,10 +85,13 @@ impl Toolchain {
     /// [`Error::NoHome`] when the home folder is unknown.
     pub fn locate() -> Result<Self, Error> {
         let dirs = directories::BaseDirs::new().ok_or(Error::NoHome)?;
-        Ok(Self::in_folders(
-            dirs.data_dir().join("rustbot-creator"),
-            dirs.cache_dir().join("rustbot-creator"),
-        ))
+        let data = dirs.data_local_dir().join("rustbot-creator");
+        let mut cache = dirs.cache_dir().join("rustbot-creator");
+        // Windows has one local folder for both.
+        if cache == data {
+            cache = data.join("cache");
+        }
+        Ok(Self::in_folders(data, cache))
     }
 
     /// A toolchain in the given data and cache folders, e.g. for tests.

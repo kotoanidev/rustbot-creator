@@ -296,6 +296,14 @@ Phase 11 (Windows, D-151–D-154) has begun:
 - Hosting works on Windows through Task Scheduler (C-037). A task starts the launcher at
   login, and the launcher restarts the bot after a crash and writes `bot.log`, which the
   app follows. CI runs a real task round trip.
+- On Windows the app's data, the private Rust and the caches live in
+  `%LOCALAPPDATA%\rustbot-creator` (C-038).
+- The release builds a per-user Inno Setup installer (`packaging/windows/`), installs
+  it silently, starts its launcher and uninstalls it. A tag attaches it to the GitHub
+  release and makes the winget manifests for the owner's pull request (C-038).
+- Still open in phase 11: the owner's tests on a real Windows (the Build Tools install,
+  Run and Stop, hosting across a log out, the installer and SmartScreen), and the open
+  question of the `.exe`'s own icon.
 
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
