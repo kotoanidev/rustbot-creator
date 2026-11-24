@@ -527,8 +527,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(5));
         // The made-up token fails at Discord; the bot says so in its log.
         let (lines, cursor) = client.logs(id, None).unwrap();
-        println!("{lines:?}");
-        assert!(!lines.is_empty());
+        assert_ne!(lines, Vec::new());
         let (again, next) = client.logs(id, Some(&cursor)).unwrap();
         println!("cursor {cursor} -> {next}: {again:?}");
         client.switch(id, false).unwrap();
