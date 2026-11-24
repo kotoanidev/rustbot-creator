@@ -305,9 +305,18 @@ Phase 11 (Windows, D-151–D-154) has begun:
 - Still open in phase 11: the owner's tests on a real Windows (the Build Tools install,
   Run and Stop, hosting across a log out, the installer and SmartScreen).
 
-Phase 12 (the RustBot Cloud pilot) comes next (D-156). Its service lives in a separate
-private repository (D-157), and the pilot runs on a rented VPS, by invitation and without
-payments (D-158). Its remaining architecture questions are being asked.
+Phase 12 (the RustBot Cloud pilot) is in progress (D-156–D-170). Its server lives in the
+private `kotoanidev/rustbot-cloud` (D-157), cloned next to this repository as
+`../rustbot-cloud`. That repository's `PROGRESS.md` and `CLAUDE.md` say where it stands.
+Its decisions are numbered here, and the API is `docs/CLOUD_API.md` (D-163).
+- Done in the server: sign-in with Discord, bots and encrypted tokens, deploys and
+  builds, and the systemd sandbox with a CI job that builds and starts a real bot.
+- Next in the server: running bots through the API (start, stop, state, memory), then
+  logs and backups, then the VPS setup guide.
+- Then the app's side: sign-in, "Publish" with the token's consent, and the bot's state,
+  logs and backups.
+- Owner-side before the pilot: a VPS and a domain (after the name and trademark check),
+  and a Discord application for sign-in.
 
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with

@@ -2236,6 +2236,30 @@ alternatives that were considered, and why.
       as an artifact;
     - the owner opens their pull request to `microsoft/winget-pkgs`.
   - **The release notes** explain SmartScreen's warning (D-153).
+
+### C-039 — The Cloud server's defaults
+- **Date:** 2026-11-24
+- **Choice:**
+  - **Sign-in:** a login lives in memory for 10 minutes, at most 1000 at once, and a
+    restart just ends it. A session lasts 90 days. The browser's page after Discord is
+    in English and Polish.
+  - **Bots:** each bot has an internal id of 24 hex characters, so the unit's user
+    `rbc-<id>` fits Linux's limit. Tokens must look like Discord bot tokens.
+  - **Deploys:** at most 1000 files, and the request's body may be twice the sources'
+    limit, to allow JSON escaping.
+  - **Builds:** one at a time. A build is stopped after 15 minutes, and its log keeps the
+    last 64 KB. A restart fails the builds it interrupted.
+  - **The sandbox:**
+    - a build hands its program back through a world-writable `out` folder, which is
+      reachable only through the unit's bind mount;
+    - the server takes only a plain file from it, never a link, so it needs no root
+      helper;
+    - the build units get 2 GB, the bots 64 MB (D-165) and a quarter of a CPU;
+    - the units deny private networks and cloud metadata, except the local DNS
+      resolver.
+  - **The local-unsafe sandbox,** for development and tests, refuses to start unless the
+    server listens only on localhost.
+  - **Private CI:** Linux only, plus the real sandbox job (D-170).
 ---
 
 ## Open questions (to ask the owner when relevant)
