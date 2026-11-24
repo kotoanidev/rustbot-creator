@@ -164,6 +164,8 @@ pub enum PropKind {
     Memory,
     /// A form's text fields: a list of [`FormField`] (D-112).
     FormFields,
+    /// A "Custom code" function's inputs: a list of [`CodeInput`] (D-176).
+    CodeInputs,
 }
 
 impl PropKind {
@@ -171,11 +173,15 @@ impl PropKind {
     #[must_use]
     pub fn default_value(self) -> serde_json::Value {
         match self {
-            Self::Options | Self::Buttons | Self::MenuOptions | Self::FormFields => {
-                serde_json::Value::Array(Vec::new())
+            Self::Options
+            | Self::Buttons
+            | Self::MenuOptions
+            | Self::FormFields
+            | Self::CodeInputs => serde_json::Value::Array(Vec::new()),
+            // Deleting nothing is the safe start (D-083), and a function may give nothing.
+            Self::Choice(Choices::DeleteMessages | Choices::CodeResult) => {
+                serde_json::Value::String("none".to_owned())
             }
-            // Deleting nothing is the safe start (D-083).
-            Self::Choice(Choices::DeleteMessages) => serde_json::Value::String("none".to_owned()),
             // The event's message exists only in some graphs.
             Self::Choice(Choices::MessageTarget | Choices::ThreadStart) => {
                 serde_json::Value::String("last".to_owned())
@@ -210,6 +216,8 @@ pub enum Choices {
     ChannelVisibility,
     /// What "Create thread" starts from: a message, or none in a channel (D-119).
     ThreadStart,
+    /// What a "Custom code" function gives back (D-176).
+    CodeResult,
 }
 
 impl Choices {
@@ -238,6 +246,7 @@ impl Choices {
             Self::MessageTarget => &["last", "event"],
             Self::ChannelVisibility => &["category", "private"],
             Self::ThreadStart => &["last", "event", "channel"],
+            Self::CodeResult => &["none", "text", "number"],
         }
     }
 }
@@ -357,6 +366,87 @@ impl FormField {
         let text = text.trim();
         (!text.is_empty()).then(|| text.parse().ok().filter(|n| *n <= 4000))
     }
+}
+
+/// An input of a "Custom code" function (D-176), as stored in the graph file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodeInput {
+    /// The function's parameter, a Rust name.
+    pub name: String,
+    /// Its type: text or a number from a template, or a user, channel or role from a
+    /// variable, or the server the graph runs on.
+    #[serde(rename = "type")]
+    pub ty: DataType,
+    /// A template for text and numbers, a variable such as `{option.target}` (or an ID for
+    /// a channel or role), and nothing for the server.
+    #[serde(default)]
+    pub value: String,
+}
+
+impl CodeInput {
+    /// The types an input can have, in the order a form lists them.
+    pub const TYPES: [DataType; 6] = [
+        DataType::Text,
+        DataType::Number,
+        DataType::User,
+        DataType::Channel,
+        DataType::Role,
+        DataType::Server,
+    ];
+
+    /// The inputs stored in a field, or none if it holds something else.
+    #[must_use]
+    pub fn list(value: Option<&serde_json::Value>) -> Vec<Self> {
+        value
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default()
+    }
+
+    /// A user, channel or role input's variable, without its braces.
+    #[must_use]
+    pub fn variable(&self) -> &str {
+        let value = self.value.trim();
+        value
+            .strip_prefix('{')
+            .and_then(|v| v.strip_suffix('}'))
+            .unwrap_or(value)
+            .trim()
+    }
+}
+
+/// Whether `name` can be a Rust function or parameter of the user's code: lower-case
+/// letters, digits and `_`, not starting with a digit, and not a keyword.
+#[must_use]
+pub fn is_rust_name(name: &str) -> bool {
+    const KEYWORDS: &[&str] = &[
+        "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
+        "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if", "impl",
+        "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub",
+        "ref", "return", "self", "static", "struct", "super", "trait", "true", "try", "type",
+        "typeof", "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
+    ];
+    let mut bytes = name.bytes();
+    name.len() <= 64
+        && name != "_"
+        && bytes
+            .next()
+            .is_some_and(|b| b.is_ascii_lowercase() || b == b'_')
+        && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        && !KEYWORDS.contains(&name)
+}
+
+/// What is wrong with a "Custom code" node (D-176).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CodeProblem {
+    /// The function's name is not a Rust name.
+    Function,
+    /// An input's name is not a Rust name, is `ctx`, or is used twice.
+    Name,
+    /// An input's type cannot be passed.
+    Type,
+    /// An input's value does not give its type: no number, or not a variable of the type.
+    Value,
 }
 
 /// What breaks Discord's rules for a form (D-112).
@@ -676,8 +766,16 @@ pub enum ProblemKind {
         /// What is wrong.
         problem: OptionProblem,
     },
+    /// A "Custom code" node cannot call its function (D-176).
+    BadCode {
+        /// The input's position from 0, or `None` for the function's name.
+        input: Option<usize>,
+        /// What is wrong.
+        problem: CodeProblem,
+    },
 }
 
+#[allow(clippy::too_many_lines)] // one arm per problem
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(node) = &self.node {
@@ -778,6 +876,18 @@ impl fmt::Display for Problem {
                     OptionProblem::TooMany => "a command has at most 25 options",
                 };
                 write!(f, "option {}: {why}", option + 1)
+            }
+            ProblemKind::BadCode { input, problem } => {
+                let why = match problem {
+                    CodeProblem::Function => "the function needs a Rust name like give_points",
+                    CodeProblem::Name => "an input needs its own Rust name, other than ctx",
+                    CodeProblem::Type => "an input cannot have this type",
+                    CodeProblem::Value => "the value does not give the input's type",
+                };
+                match input {
+                    Some(input) => write!(f, "input {}: {why}", input + 1),
+                    None => f.write_str(why),
+                }
             }
         }
     }
@@ -1208,9 +1318,10 @@ impl Registry {
                         late: context.late || !quick,
                         ..context.clone()
                     };
-                    let provides = self
-                        .get(&node.kind)
-                        .is_some_and(|t| t.category != Category::Trigger && !t.provides.is_empty());
+                    let provides = node.kind == "core.custom_code"
+                        || self.get(&node.kind).is_some_and(|t| {
+                            t.category != Category::Trigger && !t.provides.is_empty()
+                        });
                     if provides && edge.from.pin == "then" {
                         after.ran.push(id.clone());
                     }
@@ -1251,6 +1362,7 @@ impl Registry {
             if let Some(node_type) = self.get(&node.kind) {
                 scope.extend(node_type.provides.iter().cloned());
             }
+            scope.extend(code_result(node));
             let fields = (node.kind == "core.show_form").then(|| node.props.get("fields"));
             scope.extend(
                 FormField::list(fields.flatten())
@@ -1368,7 +1480,85 @@ fn check_node(
     {
         problems.push(ProblemKind::OnlyAuthorWithoutUser);
     }
+    if node.kind == "core.custom_code"
+        && text("function").is_some_and(|name| !name.is_empty() && !is_rust_name(name))
+    {
+        problems.push(ProblemKind::BadCode {
+            input: None,
+            problem: CodeProblem::Function,
+        });
+    }
     problems
+}
+
+/// A "Custom code" node's result, `{code.<function>}`, when it gives one (D-176).
+fn code_result(node: &Node) -> Option<Variable> {
+    if node.kind != "core.custom_code" {
+        return None;
+    }
+    let text = |name: &str| node.props.get(name).and_then(serde_json::Value::as_str);
+    let function = text("function").filter(|name| is_rust_name(name))?;
+    let ty = match text("result")? {
+        "text" => DataType::Text,
+        "number" => DataType::Number,
+        _ => return None,
+    };
+    Some(Variable {
+        name: format!("code.{function}"),
+        ty,
+    })
+}
+
+/// What is wrong with a "Custom code" node's inputs (D-176). Text and numbers are checked
+/// as templates; a user, channel or role must be one variable of its type in scope.
+/// `None` when the field is not a list of inputs.
+fn check_code_inputs(
+    value: &serde_json::Value,
+    scope: &[Variable],
+    memory: &[MemoryVar],
+) -> Option<Vec<ProblemKind>> {
+    let inputs: Vec<CodeInput> = serde_json::from_value(value.clone()).ok()?;
+    let mut problems = Vec::new();
+    let bad = |input: usize, problem: CodeProblem| ProblemKind::BadCode {
+        input: Some(input),
+        problem,
+    };
+    for (ix, input) in inputs.iter().enumerate() {
+        let taken = inputs[..ix].iter().any(|other| other.name == input.name);
+        if !is_rust_name(&input.name) || input.name == "ctx" || taken {
+            problems.push(bad(ix, CodeProblem::Name));
+        }
+        let value = input.value.trim();
+        match input.ty {
+            DataType::Text => problems.extend(check_template("inputs", value, scope, memory)),
+            DataType::Number => {
+                let literal = !value.contains('{');
+                if value.is_empty() || (literal && !value.parse::<f64>().is_ok_and(f64::is_finite))
+                {
+                    problems.push(bad(ix, CodeProblem::Value));
+                } else {
+                    problems.extend(check_template("inputs", value, scope, memory));
+                }
+            }
+            DataType::User | DataType::Channel | DataType::Role => {
+                let name = input.variable();
+                let id = input.ty != DataType::User && is_id(name);
+                let typed = scope
+                    .iter()
+                    .any(|var| var.name == name && var.ty == input.ty);
+                if !id && !typed {
+                    problems.push(bad(ix, CodeProblem::Value));
+                }
+            }
+            DataType::Server => {
+                if !scope.iter().any(|var| var.name == "server") {
+                    problems.push(bad(ix, CodeProblem::Value));
+                }
+            }
+            DataType::Bool => problems.push(bad(ix, CodeProblem::Type)),
+        }
+    }
+    Some(problems)
 }
 
 /// What is wrong with a node changing memory (D-108): whose value it is, and its numbers.
@@ -1436,6 +1626,9 @@ fn check_prop(
         (PropKind::FormFields, Some(value)) => {
             serde_json::from_value::<Vec<FormField>>(value.clone())
                 .map_or_else(|_| wrong_type(), |fields| check_form_fields(&fields))
+        }
+        (PropKind::CodeInputs, Some(value)) => {
+            check_code_inputs(value, scope, memory).unwrap_or_else(wrong_type)
         }
         (PropKind::Buttons, Some(value)) => serde_json::from_value::<Vec<Button>>(value.clone())
             .map_or_else(|_| wrong_type(), |buttons| check_buttons(&buttons)),

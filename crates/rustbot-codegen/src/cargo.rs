@@ -9,6 +9,9 @@ struct CargoToml<'a> {
     package: Package<'a>,
     /// Empty: the bot is its own workspace, even inside another one.
     workspace: Empty,
+    /// The program, when it is not `src/main.rs`: an export's (D-175).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    bin: Vec<Bin<'a>>,
     dependencies: Dependencies<'a>,
 }
 
@@ -28,6 +31,17 @@ struct Package<'a> {
     autoexamples: bool,
     autotests: bool,
     autobenches: bool,
+    /// Off in an export, whose `src/` is the user's code, not more programs or a library.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    autobins: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    autolib: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct Bin<'a> {
+    name: &'a str,
+    path: &'static str,
 }
 
 #[derive(Serialize)]
@@ -52,7 +66,9 @@ struct Dependency<'a> {
     features: &'a [String],
 }
 
-pub(crate) fn manifest(manifest: &Manifest) -> String {
+/// `generated/Cargo.toml`, or with `export`, the `Cargo.toml` at an export's root, which
+/// builds `generated/src/main.rs` beside the user's `src/` (D-175).
+pub(crate) fn manifest(manifest: &Manifest, export: bool) -> String {
     let tokio = ["macros", "rt-multi-thread", "signal"].map(String::from);
     let tracing = ["env-filter".to_owned()];
     let cargo = CargoToml {
@@ -66,8 +82,18 @@ pub(crate) fn manifest(manifest: &Manifest) -> String {
             autoexamples: false,
             autotests: false,
             autobenches: false,
+            autobins: export.then_some(false),
+            autolib: export.then_some(false),
         },
         workspace: Empty {},
+        bin: if export {
+            vec![Bin {
+                name: &manifest.bot.package,
+                path: "generated/src/main.rs",
+            }]
+        } else {
+            Vec::new()
+        },
         dependencies: Dependencies {
             // Pinned exactly: djs-rs is alpha and may break between alphas.
             djs_rs: Dependency {

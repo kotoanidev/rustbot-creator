@@ -229,7 +229,8 @@ fn saw(state: &mut AppState, (name, bot, backups, logs): Answer, cx: &mut Contex
             &bot,
             rustbot_codegen::generate(&state.project, &state.registry),
         ) {
-            state.published.out_of_date = bot.codegen != crate::host::fingerprint(&output);
+            state.published.out_of_date =
+                bot.codegen != crate::host::fingerprint(&state.project, &output);
         }
         state.published.bot = bot;
     }
@@ -386,8 +387,8 @@ async fn deploy(
         crate::host::unhost(state, cx).await?;
     }
     let output = run::generate(state, cx)?;
-    let codegen = crate::host::fingerprint(&output);
     let project = state.read_with(cx, |state, _| state.project.clone());
+    let codegen = crate::host::fingerprint(&project, &output);
     let id = project.manifest.id;
     let files = sources(&project, output)?;
     if first {

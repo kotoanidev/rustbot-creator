@@ -2331,6 +2331,31 @@ alternatives that were considered, and why.
     in a copy in the unit's private `/tmp`. It runs no project code there (D-169). Then
     publishing needs no local build (D-159).
 
+### C-041 — How "Custom code" works
+- **Date:** 2026-11-24
+- **Choice:**
+  - **Inputs:** each has a Rust name, a type and a value. Text and numbers take a
+    template. A user, channel or role takes one variable, written `{option.target}` or
+    `option.target`, and a channel or role may be an ID. A server input is the server the
+    graph runs on. The function gets them as `String`, `f64`, `UserId`, `ChannelId`,
+    `RoleId` and `GuildId`, after `ctx: &djs_rs::Context`. A yes-or-no input is not
+    offered yet.
+  - **The result** is none, text (`String`) or a number (`f64`), and the nodes after it
+    read it as `{code.<function>}`. The function returns `Result<…, HandlerError>`; an
+    error goes to "error", or ends the handler as other actions' errors do (D-082).
+  - **"Create function"** appends a stub to `src/lib.rs`, and makes the file with a
+    header first. It does nothing when the file already has `fn <name>(`, and refuses a
+    link in place of `src/` or `src/lib.rs`. The stub has `#[allow(unused_variables)]`
+    and returns an empty result.
+  - **`main.rs` includes the user's code** only when a graph has a "Custom code" node, so
+    projects without one generate as before.
+  - **The source export and Cloud** get a root `Cargo.toml` that builds
+    `generated/src/main.rs`, with `autobins` and `autolib` off, so the user's `src/` is
+    not taken for more targets. `rust-toolchain.toml` moves to the root. The user's
+    `src/` goes along with plain files only: no links, no `.env` files and no hidden
+    folders.
+  - **"Out of date"** for hosting and Cloud now also covers the user's `src/`.
+
 ### C-040 — How the app talks to Cloud
 - **Date:** 2026-11-24
 - **Choice:**

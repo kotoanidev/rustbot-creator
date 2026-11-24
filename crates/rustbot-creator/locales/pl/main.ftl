@@ -633,3 +633,26 @@ cloud-update-app = Ta wersja RustBot Creator jest za stara dla RustBot Cloud. Za
 cloud-no-token = Bot nie ma tokena w RustBot Cloud. Opublikuj go ponownie, aby go wysłać.
 cloud-network = Nie można połączyć się z RustBot Cloud: { $error }
 cloud-not-text = { $file } nie jest plikiem tekstowym, więc nie można go opublikować.
+
+## Custom code (D-176)
+node-core-custom_code = Własny kod
+prop-core-custom_code-function = Funkcja (nazwa w Ruście, np. give_points)
+prop-core-custom_code-inputs = Wejścia
+prop-core-custom_code-result = Wynik
+choice-code_result-none = Brak
+choice-code_result-text = Tekst, jako {"{"}code.<funkcja>{"}"}
+choice-code_result-number = Liczba, jako {"{"}code.<funkcja>{"}"}
+code-input-name = nazwa
+code-input-value = szablon lub zmienna
+code-input-add = Dodaj wejście
+code-inputs-hint = Tekst i liczby przyjmują szablon, np. {"{"}option.amount{"}"}. Użytkownik, kanał i rola przyjmują zmienną, np. {"{"}option.target{"}"}. Serwer to ten, na którym działa bot.
+code-create = Utwórz funkcję
+code-create-hint = Dopisuje funkcję z tymi wejściami do src/lib.rs. Tam napisz, co ma robić.
+code-created = Dodano { $function } do src/lib.rs.
+code-exists = src/lib.rs ma już { $function }.
+code-create-invalid = Najpierw popraw nazwę funkcji i wejścia. Problemy mówią, co jest nie tak.
+code-create-failed = Nie udało się zapisać src/lib.rs: { $error }
+problem-code-function = Funkcja potrzebuje nazwy w Ruście, np. give_points: małe litery, cyfry i _.
+problem-code-name = Wejście { $input }: potrzebuje własnej nazwy w Ruście, innej niż ctx.
+problem-code-type = Wejście { $input }: tego typu nie można przekazać do kodu.
+problem-code-value = Wejście { $input }: wartość nie daje jego typu, np. liczby albo zmiennej tego typu.

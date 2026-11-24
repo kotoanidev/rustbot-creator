@@ -633,3 +633,26 @@ cloud-update-app = This version of RustBot Creator is too old for RustBot Cloud.
 cloud-no-token = The bot has no token in RustBot Cloud. Publish it again to send it.
 cloud-network = RustBot Cloud cannot be reached: { $error }
 cloud-not-text = { $file } is not text, so it cannot be published.
+
+## Custom code (D-176)
+node-core-custom_code = Custom code
+prop-core-custom_code-function = Function (a Rust name, e.g. give_points)
+prop-core-custom_code-inputs = Inputs
+prop-core-custom_code-result = Result
+choice-code_result-none = None
+choice-code_result-text = Text, as {"{"}code.<function>{"}"}
+choice-code_result-number = Number, as {"{"}code.<function>{"}"}
+code-input-name = name
+code-input-value = template or variable
+code-input-add = Add input
+code-inputs-hint = Text and numbers take a template, e.g. {"{"}option.amount{"}"}. A user, channel or role takes a variable, e.g. {"{"}option.target{"}"}. A server is the one the bot runs on.
+code-create = Create function
+code-create-hint = Adds the function, with these inputs, to src/lib.rs. Write what it does there.
+code-created = Added { $function } to src/lib.rs.
+code-exists = src/lib.rs has { $function } already.
+code-create-invalid = Fix the function's name and inputs first. Problems says what is wrong.
+code-create-failed = Could not write src/lib.rs: { $error }
+problem-code-function = The function needs a Rust name, e.g. give_points: lower-case letters, digits and _.
+problem-code-name = Input { $input }: it needs a Rust name of its own, other than ctx.
+problem-code-type = Input { $input }: this type cannot be passed to code.
+problem-code-value = Input { $input }: the value does not give its type, e.g. a number, or a variable of that type.

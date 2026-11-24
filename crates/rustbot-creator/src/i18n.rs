@@ -171,6 +171,7 @@ mod tests {
                 rustbot_core::registry::Choices::ChannelVisibility,
             ),
             ("thread_start", rustbot_core::registry::Choices::ThreadStart),
+            ("code_result", rustbot_core::registry::Choices::CodeResult),
         ] {
             for value in choices.values() {
                 let id = format!("choice-{list}-{value}");

@@ -16,7 +16,7 @@ use gpui_kit::{
     SharedString, Styled as _, Subscription, Window, div, px,
 };
 use rustbot_core::registry::{
-    ButtonStyle, CommandOption, DataType, MenuOption, PropKind, valid_memory_name,
+    ButtonStyle, CodeInput, CommandOption, DataType, MenuOption, PropKind, valid_memory_name,
 };
 use rustbot_core::{GraphFile, MemoryScope, MemoryType, NodeId, Registry};
 
@@ -41,6 +41,8 @@ pub(crate) struct Properties {
     menu: Vec<ItemRow>,
     /// The shown form's text fields (D-112).
     form_fields: Vec<FieldRow>,
+    /// The shown "Custom code" node's inputs (D-176).
+    code_inputs: Vec<CodeRow>,
     /// The form's fields in the node type's order.
     layout: Vec<Slot>,
     /// The prop holding the shown node's command options, if it has one (D-076).
@@ -94,6 +96,15 @@ enum Slot {
     Buttons,
     Menu,
     FormFields,
+    CodeInputs,
+}
+
+/// The editable parts of a "Custom code" input (D-176).
+struct CodeRow {
+    name: Entity<InputState>,
+    ty: Entity<SelectState<Vec<SharedString>>>,
+    value: Entity<InputState>,
+    _changes: Vec<Subscription>,
 }
 
 /// The typed parts of a form's text field (D-112); "long" and "required" are drawn from
@@ -181,6 +192,7 @@ impl Properties {
             buttons: Vec::new(),
             menu: Vec::new(),
             form_fields: Vec::new(),
+            code_inputs: Vec::new(),
             layout: Vec::new(),
             options_prop: None,
             options: Vec::new(),
@@ -542,12 +554,14 @@ impl Properties {
                 PropKind::Buttons => self.layout.push(Slot::Buttons),
                 PropKind::MenuOptions => self.layout.push(Slot::Menu),
                 PropKind::FormFields => self.layout.push(Slot::FormFields),
+                PropKind::CodeInputs => self.layout.push(Slot::CodeInputs),
             }
         }
         self.build_options(window, cx);
         self.buttons = self.item_rows("buttons", window, cx);
         self.menu = self.item_rows("menu", window, cx);
         self.form_fields = self.field_rows(window, cx);
+        self.code_inputs = self.code_rows(window, cx);
     }
 
     /// The shown node's buttons or menu options, as the graph has them.
@@ -685,6 +699,158 @@ impl Properties {
             .collect()
     }
 
+    /// The rows of the shown "Custom code" node's inputs (D-176).
+    fn code_rows(&self, window: &mut Window, cx: &mut Context<'_, Self>) -> Vec<CodeRow> {
+        self.current_items("inputs", cx)
+            .into_iter()
+            .enumerate()
+            .map(|(ix, item)| {
+                let text = |key: &str| {
+                    item.get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                let mut input = |key: &str, cx: &mut Context<'_, Self>| {
+                    let (value, hint) = (text(key), t(&format!("code-input-{key}")));
+                    cx.new(|cx| {
+                        InputState::new(window, cx)
+                            .default_value(value)
+                            .placeholder(hint)
+                    })
+                };
+                let name = input("name", cx);
+                let value = input("value", cx);
+                let selected = code_type_index(&text("type")).map(IndexPath::new);
+                let ty = cx.new(|cx| SelectState::new(code_type_names(), selected, window, cx));
+                let mut changes = vec![
+                    item_typing("inputs", ix, "name", &name, window, cx),
+                    item_typing("inputs", ix, "value", &value, window, cx),
+                ];
+                changes.push(cx.subscribe_in(&ty, window, move |this, _, event, _, cx| {
+                    let SelectEvent::Confirm(Some(chosen)) = event else {
+                        return;
+                    };
+                    let Some(ty) = code_type_names().iter().position(|name| name == chosen) else {
+                        return;
+                    };
+                    let ty = data_type_value(CodeInput::TYPES[ty]);
+                    this.edit_items("inputs", true, cx, |items| set_key(items, ix, "type", ty));
+                }));
+                CodeRow {
+                    name,
+                    ty,
+                    value,
+                    _changes: changes,
+                }
+            })
+            .collect()
+    }
+
+    /// Adds a text input with a free name, `input2`.
+    fn add_code_input(&mut self, cx: &mut Context<'_, Self>) {
+        self.edit_items("inputs", true, cx, |items| {
+            let taken = |name: &str| {
+                items
+                    .iter()
+                    .any(|item| item.get("name") == Some(&name.into()))
+            };
+            let next = (1..=items.len() + 1)
+                .find(|n| !taken(&format!("input{n}")))
+                .unwrap_or(1);
+            items.push(serde_json::json!({
+                "name": format!("input{next}"), "type": "text", "value": "",
+            }));
+        });
+    }
+
+    /// "Create function": the shown node's function, added to `src/lib.rs` (D-176).
+    fn create_function(&self, cx: &mut Context<'_, Self>) {
+        let Some((_, node)) = self.shown.clone() else {
+            return;
+        };
+        self.state.update(cx, |state, cx| {
+            let stub = state.open_file().and_then(|file| {
+                let function = file.graph.nodes.get(&node)?.props.get("function")?;
+                let function = function.as_str()?.to_owned();
+                Some((function, rustbot_codegen::code_stub(file, &node)?))
+            });
+            let Some((function, stub)) = stub else {
+                state.log_error(t("code-create-invalid"));
+                cx.notify();
+                return;
+            };
+            match crate::code::add_function(&state.project.root, &function, &stub) {
+                Ok(true) => state.log(t_with("code-created", &[("function", &function)])),
+                Ok(false) => state.log(t_with("code-exists", &[("function", &function)])),
+                Err(e) => {
+                    state.log_error(t_with("code-create-failed", &[("error", &e.to_string())]));
+                }
+            }
+            cx.notify();
+        });
+    }
+
+    fn render_code_inputs(
+        &self,
+        label_text: String,
+        cx: &Context<'_, Self>,
+    ) -> impl IntoElement + use<> {
+        let theme = cx.theme();
+        let hint = |id: &str| {
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(t(id))
+        };
+        v_flex()
+            .gap(px(6.))
+            .child(label(label_text))
+            .children(self.code_inputs.iter().enumerate().map(|(ix, row)| {
+                v_flex()
+                    .gap(px(4.))
+                    .p(px(6.))
+                    .border_1()
+                    .border_color(theme.border)
+                    .rounded(px(4.))
+                    .child(
+                        h_flex()
+                            .gap(px(4.))
+                            .child(div().flex_1().child(Input::new(&row.name).small()))
+                            .child(div().w(px(120.)).child(Select::new(&row.ty).small()))
+                            .child(
+                                Button::new(("code-input-remove", ix))
+                                    .ghost()
+                                    .xsmall()
+                                    .label(t("option-remove"))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.edit_items("inputs", true, cx, |items| {
+                                            if ix < items.len() {
+                                                items.remove(ix);
+                                            }
+                                        });
+                                    })),
+                            ),
+                    )
+                    .child(Input::new(&row.value).small())
+            }))
+            .child(
+                Button::new("code-input-add")
+                    .xsmall()
+                    .label(t("code-input-add"))
+                    .on_click(cx.listener(|this, _, _, cx| this.add_code_input(cx))),
+            )
+            .child(hint("code-inputs-hint"))
+            .child(
+                Button::new("code-create")
+                    .primary()
+                    .small()
+                    .label(t("code-create"))
+                    .on_click(cx.listener(|this, _, _, cx| this.create_function(cx))),
+            )
+            .child(hint("code-create-hint"))
+    }
+
     /// Adds a text field with a free name, `field3`, and a label such as "Field 3" in the
     /// app's language (D-112).
     fn add_form_field(&mut self, cx: &mut Context<'_, Self>) {
@@ -810,6 +976,31 @@ impl Properties {
             }
         } else {
             self.form_fields = self.field_rows(window, cx);
+        }
+        let inputs = self.current_items("inputs", cx);
+        if inputs.len() == self.code_inputs.len() {
+            for (row, item) in self.code_inputs.iter().zip(&inputs) {
+                let text = |key: &str| {
+                    item.get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                for (input, key) in [(&row.name, "name"), (&row.value, "value")] {
+                    let value = text(key);
+                    if input.read(cx).value() != value.as_str() {
+                        input.update(cx, |input, cx| input.set_value(value, window, cx));
+                    }
+                }
+                let selected = code_type_index(&text("type")).map(IndexPath::new);
+                if row.ty.read(cx).selected_index(cx) != selected {
+                    row.ty.update(cx, |select, cx| {
+                        select.set_selected_index(selected, window, cx);
+                    });
+                }
+            }
+        } else {
+            self.code_inputs = self.code_rows(window, cx);
         }
         for prop in ["buttons", "menu"] {
             let items = self.current_items(prop, cx);
@@ -975,7 +1166,8 @@ impl Properties {
             | PropKind::Color
             | PropKind::Buttons
             | PropKind::MenuOptions
-            | PropKind::FormFields => Vec::new(),
+            | PropKind::FormFields
+            | PropKind::CodeInputs => Vec::new(),
         };
         let mut labels: Vec<SharedString> = values
             .iter()
@@ -990,6 +1182,7 @@ impl Properties {
                 | PropKind::Buttons
                 | PropKind::MenuOptions
                 | PropKind::FormFields
+                | PropKind::CodeInputs
                 | PropKind::Memory => value.clone().into(),
             })
             .collect();
@@ -1329,6 +1522,7 @@ impl Properties {
                 Slot::Buttons => "buttons",
                 Slot::Menu => "menu",
                 Slot::FormFields => "fields",
+                Slot::CodeInputs => "inputs",
             };
             // A form's "wait" is its own, not a click's (D-111).
             if CLICK_PROPS.contains(&prop) && node_id != "core-show_form" {
@@ -1365,6 +1559,10 @@ impl Properties {
                 Slot::FormFields => {
                     let name = t_or(&format!("prop-{node_id}-fields"), "fields");
                     self.render_form_fields(name, cx).into_any_element()
+                }
+                Slot::CodeInputs => {
+                    let name = t_or(&format!("prop-{node_id}-inputs"), "inputs");
+                    self.render_code_inputs(name, cx).into_any_element()
                 }
                 Slot::Text(ix) => self
                     .render_text_field(ix, node_id, variables, this)
@@ -2192,25 +2390,45 @@ fn choice_label(choices: rustbot_core::registry::Choices, value: &str) -> String
         rustbot_core::registry::Choices::MessageTarget => "message_target",
         rustbot_core::registry::Choices::ChannelVisibility => "channel_visibility",
         rustbot_core::registry::Choices::ThreadStart => "thread_start",
+        rustbot_core::registry::Choices::CodeResult => "code_result",
     };
     t_or(&format!("choice-{list}-{value}"), value)
+}
+
+/// A type's name in the app's language.
+fn type_name(ty: DataType) -> SharedString {
+    t(&format!("type-{}", data_type_value(ty))).into()
+}
+
+/// A type as graph files have it, e.g. `user`.
+fn data_type_value(ty: DataType) -> &'static str {
+    match ty {
+        DataType::Text => "text",
+        DataType::Number => "number",
+        DataType::Bool => "bool",
+        DataType::User => "user",
+        DataType::Channel => "channel",
+        DataType::Role => "role",
+        DataType::Server => "server",
+    }
+}
+
+/// The "Custom code" input types' names, in the order of [`CodeInput::TYPES`].
+fn code_type_names() -> Vec<SharedString> {
+    CodeInput::TYPES.iter().map(|ty| type_name(*ty)).collect()
+}
+
+fn code_type_index(value: &str) -> Option<usize> {
+    CodeInput::TYPES
+        .iter()
+        .position(|ty| data_type_value(*ty) == value)
 }
 
 /// The option types' names, in the order of [`CommandOption::TYPES`].
 fn type_names() -> Vec<SharedString> {
     CommandOption::TYPES
         .iter()
-        .map(|ty| {
-            SharedString::from(t(match ty {
-                DataType::Text => "type-text",
-                DataType::Number => "type-number",
-                DataType::Bool => "type-bool",
-                DataType::User => "type-user",
-                DataType::Channel => "type-channel",
-                DataType::Role => "type-role",
-                DataType::Server => "type-server",
-            }))
-        })
+        .map(|ty| type_name(*ty))
         .collect()
 }
 
@@ -2421,6 +2639,58 @@ mod tests {
         });
         assert_eq!(options(cx), Vec::new());
         assert_eq!(cx.read(|cx| properties.read(cx).options.len()), 0);
+    }
+
+    /// "Add input" adds a text input with a free name, and "Create function" writes the
+    /// function with it into `src/lib.rs`, once (D-176).
+    #[gpui_kit::test]
+    fn custom_code_adds_inputs_and_creates_its_function(cx: &mut TestAppContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut project = crate::workspace::new_project(&dir.path().join("bot")).unwrap();
+        let node = serde_json::json!({"type": "core.custom_code", "props": {
+            "function": "give_points", "inputs": [], "result": "number"}});
+        let n3 = NodeId("n3".to_owned());
+        project.graphs[0]
+            .graph
+            .nodes
+            .insert(n3.clone(), serde_json::from_value(node).unwrap());
+        let lib = project.root.join("src/lib.rs");
+        cx.update(gpui_kit::init);
+        let mut state = None;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let app = cx.new(|cx| AppState::new(project, cx));
+            app.update(cx, |app, _| app.selected_node = Some(n3.clone()));
+            state = Some(app.clone());
+            Properties::new(app, window, cx)
+        });
+        let state = state.unwrap();
+        cx.update(|window, cx| {
+            window.render_frame(cx);
+            window.click("code-input-add", cx);
+        });
+        let inputs = cx.read(|cx| {
+            let file = state.read(cx).open_file().unwrap();
+            file.graph.nodes[&NodeId("n3".to_owned())].props["inputs"].clone()
+        });
+        assert_eq!(
+            inputs,
+            serde_json::json!([{"name": "input1", "type": "text", "value": ""}])
+        );
+        for _ in 0..2 {
+            cx.update(|window, cx| {
+                window.render_frame(cx);
+                window.click("code-create", cx);
+            });
+        }
+        let code = std::fs::read_to_string(&lib).unwrap();
+        assert_eq!(
+            code.matches("pub async fn give_points(").count(),
+            1,
+            "{code}"
+        );
+        assert!(code.contains("    input1: String,\n) -> Result<f64, djs_rs::HandlerError>"));
+        let logs = cx.read(|cx| state.read(cx).logs.len());
+        assert!(logs >= 2);
     }
 
     /// A user field lists the user variables; a role field also offers "Role with ID…",

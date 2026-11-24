@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use rustbot_core::registry::{
-    Button, ButtonStyle, CommandOption, DataType, FormField, MenuOption, click_items, is_id,
-    waits_for_click,
+    Button, ButtonStyle, CodeInput, CommandOption, DataType, FormField, MenuOption, click_items,
+    is_id, waits_for_click,
 };
 use rustbot_core::template::{self, Segment};
 use rustbot_core::{
@@ -505,6 +505,7 @@ impl<'a> Body<'a> {
                 self.fallible(id, &action)?
             }
             "core.ranking" => (self.ranking(id)?, false),
+            "core.custom_code" => self.custom_code(id)?,
             _ => {
                 return Err(Error::NoCodegen {
                     graph: self.file.name.clone(),
@@ -1277,6 +1278,67 @@ impl<'a> Body<'a> {
         ))
     }
 
+    /// "Custom code" (D-176): the user's function in `src/`, called with the inputs. Its
+    /// result is `code_<function>` for the nodes after it; an error goes to "error", or
+    /// ends the handler without one, as an action's does (D-082).
+    fn custom_code(&mut self, id: &NodeId) -> Result<(TokenStream, bool), Error> {
+        let graph = &self.file.graph;
+        let name = text(graph, id, "function").to_owned();
+        let function = format_ident!("{name}");
+        let gives = text(graph, id, "result") != "none";
+        let inputs = CodeInput::list(graph.nodes[id].props.get("inputs"));
+        let args: Vec<TokenStream> = inputs.iter().map(|input| self.code_arg(input)).collect();
+        let call = quote!(crate::user::#function(&ctx #(, #args)*).await);
+        let result = format_ident!("code_{name}");
+        let error = self.after(id, "error")?;
+        if error.is_empty() {
+            // The nodes after it are not made yet, so an unread result is allowed.
+            let code = if gives {
+                quote!(#[allow(unused_variables)] let #result = #call?;)
+            } else {
+                quote!(#call?;)
+            };
+            return Ok((code, true));
+        }
+        let then = self.after(id, "then")?;
+        let value = if gives && uses(&then, &result.to_string()) {
+            quote!(#result)
+        } else {
+            quote!(_)
+        };
+        let log = self.log();
+        Ok((
+            quote! {
+                match #call {
+                    Ok(#value) => { #then }
+                    Err(error) => { #log #error }
+                }
+            },
+            false,
+        ))
+    }
+
+    /// A "Custom code" input as the Rust value its function takes (D-176).
+    fn code_arg(&mut self, input: &CodeInput) -> TokenStream {
+        match input.ty {
+            DataType::Text => {
+                let text = self.template(&input.value, false);
+                // Only a template without variables is a `&str`; the others are a `String`.
+                if is_literal(&input.value) {
+                    quote!(String::from(#text))
+                } else {
+                    text
+                }
+            }
+            DataType::Number => self.number(&input.value),
+            DataType::User => self.user_id(input.variable()),
+            DataType::Channel => self.channel(input.variable()),
+            DataType::Role => self.role_id(input.variable()),
+            DataType::Server => self.guild_id(),
+            DataType::Bool => unreachable!("validation refuses a yes-or-no input"),
+        }
+    }
+
     /// A condition node's test, a `bool` (D-077).
     fn condition(&mut self, id: &NodeId) -> TokenStream {
         let graph = &self.file.graph;
@@ -1916,6 +1978,10 @@ fn made(path: &str) -> Option<TokenStream> {
         ("created_role", "id") => quote!(created_role.id),
         ("created_role", "name") => quote!(created_role.name),
         ("created_role", "mention") => quote!(djs_rs::formatters::role_mention(created_role.id)),
+        ("code", function) if !function.is_empty() => {
+            let result = format_ident!("code_{function}");
+            quote!(#result)
+        }
         _ => return None,
     })
 }

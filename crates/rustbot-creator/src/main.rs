@@ -5,6 +5,7 @@
 
 mod canvas;
 mod cloud;
+mod code;
 mod discord;
 mod export;
 mod guide;

@@ -204,20 +204,34 @@ fn existing(target: &Path) -> io::Result<Existing> {
     }
 }
 
-/// The source export: `generated/` as the project's root, its `Cargo.lock` when there is
-/// one, a `.gitignore`, and the extras.
+/// The source export, laid out as the project is (D-175): `generated/src/` beside the
+/// user's own `src/`, a `Cargo.toml` at the root that builds them, the `Cargo.lock` when
+/// there is one, a `.gitignore`, and the extras.
 pub(crate) fn source_files(
     project: &Project,
     output: rustbot_codegen::Output,
 ) -> BTreeMap<PathBuf, Vec<u8>> {
-    let mut files: BTreeMap<PathBuf, Vec<u8>> = output
-        .files
-        .into_iter()
-        .filter_map(|(path, text)| {
-            let path = path.strip_prefix("generated").ok()?.to_owned();
-            Some((path, text.into_bytes()))
-        })
-        .collect();
+    let mut files = BTreeMap::new();
+    for (path, text) in output.files {
+        let Ok(path) = path.strip_prefix("generated") else {
+            continue;
+        };
+        // The root has its own manifest, and the Rust version applies to the whole folder.
+        if path == Path::new("Cargo.toml") {
+            continue;
+        }
+        let path = if path == Path::new("rust-toolchain.toml") {
+            path.to_owned()
+        } else {
+            Path::new("generated").join(path)
+        };
+        files.insert(path, text.into_bytes());
+    }
+    files.insert(
+        "Cargo.toml".into(),
+        rustbot_codegen::export_manifest(&project.manifest).into_bytes(),
+    );
+    files.extend(user_code(&project.root.join("src")));
     // The versions the bot was built and tried with. Only a plain file: a project from
     // elsewhere could link it to a secret.
     let lock = project.root.join("generated").join("Cargo.lock");
@@ -228,6 +242,39 @@ pub(crate) fn source_files(
     }
     files.insert(".gitignore".into(), b"target/\n.env\n".to_vec());
     files.extend(extras(project, Kind::Source));
+    files
+}
+
+/// The user's own code in `src/` (D-175), as `src/…`: plain files only, never a link a
+/// project from elsewhere could point at a secret, no `.env` file and no hidden folder.
+pub(crate) fn user_code(src: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    let mut files = BTreeMap::new();
+    if !fs::symlink_metadata(src).is_ok_and(|m| m.is_dir()) {
+        return files;
+    }
+    let mut folders = vec![PathBuf::new()];
+    while let Some(folder) = folders.pop() {
+        let Ok(entries) = fs::read_dir(src.join(&folder)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let text = name.to_string_lossy();
+            let relative = folder.join(&name);
+            let Ok(metadata) = fs::symlink_metadata(src.join(&relative)) else {
+                continue;
+            };
+            if metadata.is_dir() && !text.starts_with('.') {
+                folders.push(relative);
+            } else if metadata.is_file()
+                && text != ".env"
+                && !text.starts_with(".env.")
+                && let Ok(bytes) = fs::read(src.join(&relative))
+            {
+                files.insert(Path::new("src").join(relative), bytes);
+            }
+        }
+    }
     files
 }
 
@@ -252,7 +299,9 @@ fn readme(bot: &rustbot_core::BotSettings, kind: Kind) -> String {
         Kind::Source => text.push_str(
             "A Discord bot made with [RustBot Creator](https://github.com/kotoanidev/rustbot-creator) \
              on [djs-rs](https://github.com/kotoanidev/djs-rs). This folder is a plain Rust project: \
-             it builds without RustBot Creator, which does not read changes made here.\n\n\
+             it builds without RustBot Creator, which does not read changes made here. \
+             `generated/` is the code RustBot Creator made from the bot's graphs, and `src/`, \
+             if there is one, is the bot's own code that \"Custom code\" nodes call.\n\n\
              ## Build and run\n\n\
              1. Install Rust with [rustup](https://rustup.rs). `rust-toolchain.toml` picks the version.\n\
              2. Install a C compiler, e.g. `gcc` (`sudo dnf install gcc` or `sudo apt install gcc`).\n\
@@ -378,20 +427,32 @@ mod tests {
         (dir, project)
     }
 
-    /// The source export is `generated/` as a project of its own, with the extras, and
-    /// replaces only an earlier export.
+    /// The source export is a project of its own, laid out as the project (D-175), with
+    /// the extras, and replaces only an earlier export.
     #[test]
     fn the_source_export_is_a_cargo_project() {
         let (dir, project) = project("MIT OR Apache-2.0");
         let output =
             rustbot_codegen::generate(&project, &rustbot_core::Registry::with_core()).unwrap();
+        // The user's code goes too, but not a secret or a link to one.
+        let src = project.root.join("src");
+        std::fs::create_dir_all(src.join("points")).unwrap();
+        std::fs::write(src.join("lib.rs"), "mod points;\n").unwrap();
+        std::fs::write(src.join("points/mod.rs"), "").unwrap();
+        std::fs::write(src.join(".env"), "DISCORD_TOKEN=secret").unwrap();
+        std::fs::create_dir_all(src.join(".cargo")).unwrap();
+        std::fs::write(src.join(".cargo/config.toml"), "").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("/etc/hostname", src.join("host.rs")).unwrap();
         let files = super::source_files(&project, output);
         let target = dir.path().join("out");
         super::place(&target, &files, None, false).unwrap();
         for file in [
             "Cargo.toml",
             "rust-toolchain.toml",
-            "src/main.rs",
+            "generated/src/main.rs",
+            "src/lib.rs",
+            "src/points/mod.rs",
             "README.md",
             ".env.example",
             ".gitignore",
@@ -401,7 +462,20 @@ mod tests {
         ] {
             assert!(target.join(file).is_file(), "{file}");
         }
-        assert!(!target.join("generated").exists());
+        for missing in [
+            "generated/Cargo.toml",
+            "src/main.rs",
+            "src/.env",
+            "src/.cargo",
+            "src/host.rs",
+        ] {
+            assert!(!target.join(missing).exists(), "{missing}");
+        }
+        let manifest = std::fs::read_to_string(target.join("Cargo.toml")).unwrap();
+        assert!(
+            manifest.contains("path = \"generated/src/main.rs\""),
+            "{manifest}"
+        );
         let mit = std::fs::read_to_string(target.join("LICENSE-MIT")).unwrap();
         assert!(mit.contains(&format!(
             "Copyright (c) The authors of {}",

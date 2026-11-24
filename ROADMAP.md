@@ -130,11 +130,13 @@ layer, before the scope widens.
       and backups (D-171–D-174)
 - [ ] The pilot on a VPS, by invitation (D-158); payments and invoicing after it
 
-## Phase 4 — Advanced mode (D-015, D-030)
-- [ ] gpui-kit code editor for the user's own modules in `src/`
-- [ ] rust-analyzer (LSP) from the private toolchain
-- [ ] "Custom code" node calling the user's functions
+## Phase 4 — Advanced mode (D-015, D-030, D-175–D-178)
+- [x] "Custom code" node calling the user's functions, with "Create function", and the
+      user's `src/` in builds, exports and Cloud (D-175, D-176, C-041)
+- [ ] gpui-kit code editor for the user's own modules in `src/`, with tree-sitter
+      highlighting (D-177)
 - [ ] Read-only view of the generated code
+- [ ] rust-analyzer (LSP) from the private toolchain, with the app's own client (D-178)
 
 ## Phase 8 — GitHub (D-021)
 - [ ] Device flow sign-in (OAuth App `Ov23liQbIFt9vqboIA0x`), create a repository, push

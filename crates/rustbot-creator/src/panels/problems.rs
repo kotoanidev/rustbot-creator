@@ -5,7 +5,9 @@ use gpui_kit::{
     Context, Entity, FocusHandle, InteractiveElement as _, IntoElement, ParentElement as _, Render,
     StatefulInteractiveElement as _, Styled as _, TestSupportExt as _, Window, div, px,
 };
-use rustbot_core::registry::{ComponentProblem, FormProblem, OptionProblem, Problem, ProblemKind};
+use rustbot_core::registry::{
+    CodeProblem, ComponentProblem, FormProblem, OptionProblem, Problem, ProblemKind,
+};
 use rustbot_core::template::TemplateError;
 
 use crate::i18n::{t, t_with};
@@ -211,6 +213,16 @@ pub(crate) fn describe(problem: &Problem) -> String {
                 OptionProblem::TooMany => "problem-option-too-many",
             };
             t_with(id, &[("option", &(option + 1).to_string())])
+        }
+        ProblemKind::BadCode { input, problem } => {
+            let id = match problem {
+                CodeProblem::Function => "problem-code-function",
+                CodeProblem::Name => "problem-code-name",
+                CodeProblem::Type => "problem-code-type",
+                CodeProblem::Value => "problem-code-value",
+            };
+            let input = input.map_or_else(String::new, |input| (input + 1).to_string());
+            t_with(id, &[("input", &input)])
         }
     };
     match &problem.node {

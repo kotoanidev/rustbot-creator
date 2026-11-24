@@ -326,6 +326,21 @@ Its decisions are numbered here, and the API is `docs/CLOUD_API.md` (D-163).
 - Owner-side before the pilot: a VPS and a domain (after the name and trademark check),
   and a Discord application for sign-in.
 
+Phase 4 (advanced mode) started 2026-11-24, planned in D-175–D-178:
+- Step 1 is ✅ done (C-041): the "Custom code" node. Its form names the function, its
+  inputs (text, number, user, channel, role, server) and its result, which is
+  `{code.<function>}` after it. "Create function" appends the matching stub to
+  `src/lib.rs`. `generated/src/main.rs` includes `src/lib.rs` as `mod user` through
+  `#[path]`. The source export and Cloud get the same layout, with a root
+  `Cargo.toml` that builds `generated/src/main.rs`. The generated bot with every kind
+  of input, and the export layout, build with the real djs-rs (`--ignored compiles`).
+- **Next, step 2:** the code editor (D-177): gpui-kit's `Editor` with the
+  `tree-sitter-rust` and `tree-sitter-toml` features, for the files in `src/` (a "Code"
+  section in the project tree, tabs like graphs, save on Ctrl+S, refusing links), and a
+  read-only view of `generated/`. "Create function" then opens `src/lib.rs` at the new
+  function.
+- Step 3: rust-analyzer through the app's own LSP client (D-178).
+
 1. The owner tries memory (e.g. `/warn` counting warnings with "Change memory by" and
    `{memory.warnings.option.target}`), forms, the templates (e.g. "Reports by form" with
    the channel filled in, or "Levels") and the new nodes (e.g. a private ticket channel)

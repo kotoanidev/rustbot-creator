@@ -60,7 +60,27 @@ pub(crate) fn all() -> Vec<NodeType> {
         create_role(),
         delete("core.delete_role", "role", DataType::Role, "manage_roles"),
         ranking(),
+        custom_code(),
     ]
+}
+
+/// "Custom code" (D-176): calls a function of the user's own code in `src/` with the
+/// inputs, and keeps its result as `{code.<function>}`.
+fn custom_code() -> NodeType {
+    NodeType {
+        id: "core.custom_code".to_owned(),
+        category: Category::Action,
+        pins: fallible_pins(),
+        props: vec![
+            text("function", false),
+            prop("inputs", PropKind::CodeInputs, false),
+            prop("result", PropKind::Choice(Choices::CodeResult), true),
+        ],
+        provides: Vec::new(),
+        intents: Vec::new(),
+        permission: None,
+        triggers: Vec::new(),
+    }
 }
 
 /// "Create channel" (D-119–D-121): a text channel, in a category if one is given, seen as

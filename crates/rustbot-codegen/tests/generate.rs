@@ -752,6 +752,67 @@ fn catalog() -> Vec<GraphFile> {
 }
 
 /// An event graph from JSON.
+/// "Custom code" (D-176): `/give` passes every kind of input and replies with the result,
+/// with an "error" branch; an event calls a function without inputs or a result, and
+/// without an "error" branch.
+fn custom_code() -> Vec<GraphFile> {
+    vec![
+        command_graph(
+            "give",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.slash_command", "props": {
+                        "name": "give", "description": "Gives points", "options": [
+                            { "name": "target", "type": "user", "description": "Who", "required": true },
+                            { "name": "amount", "type": "number", "description": "How many", "required": true } ] } },
+                    "n2": { "type": "core.custom_code", "props": {
+                        "function": "give_points", "result": "number", "inputs": [
+                            { "name": "target", "type": "user", "value": "{option.target}" },
+                            { "name": "amount", "type": "number", "value": "{option.amount}" },
+                            { "name": "note", "type": "text", "value": "from {user.name}" },
+                            { "name": "here", "type": "channel", "value": "channel" },
+                            { "name": "guild", "type": "server" },
+                            { "name": "role", "type": "role", "value": "123456789012345678" } ] } },
+                    "n3": { "type": "core.reply", "props": {
+                        "content": "{option.target.mention} has {code.give_points} points" } },
+                    "n4": { "type": "core.reply", "props": { "content": "Points are off", "private": true } }
+                },
+                "edges": [
+                    { "from": "n1.then", "to": "n2.run" },
+                    { "from": "n2.then", "to": "n3.run" },
+                    { "from": "n2.error", "to": "n4.run" }
+                ]
+            }),
+        ),
+        event_graph(
+            "ready_code",
+            serde_json::json!({
+                "schema": 1,
+                "nodes": {
+                    "n1": { "type": "core.ready" },
+                    "n2": { "type": "core.custom_code", "props": {
+                        "function": "on_start", "result": "text" } }
+                },
+                "edges": [ { "from": "n1.then", "to": "n2.run" } ]
+            }),
+        ),
+    ]
+}
+
+/// `src/lib.rs` with the stubs "Create function" makes for `graphs` (D-176).
+fn user_code(graphs: &[GraphFile]) -> String {
+    let mut code = String::new();
+    for file in graphs {
+        for (id, node) in &file.graph.nodes {
+            if node.kind == "core.custom_code" {
+                code.push_str(&rustbot_codegen::code_stub(file, id).unwrap());
+            }
+        }
+    }
+    code
+}
+
 fn event_graph(name: &str, graph: serde_json::Value) -> GraphFile {
     GraphFile {
         kind: GraphKind::Event,
@@ -909,6 +970,46 @@ fn ping_project(dir: &Path) -> Project {
 /// A path with `/` between its parts on every system, as the snapshots name them.
 fn slashes(path: &Path) -> String {
     path.display().to_string().replace('\\', "/")
+}
+
+#[test]
+fn custom_code_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let graphs = custom_code();
+    let p = project(dir.path(), Manifest::new("Bot"), &graphs);
+    let output = generate(&p, &Registry::with_core()).unwrap();
+    let main = &output.files[Path::new("generated/src/main.rs")];
+    assert!(
+        main.contains("#[path = \"../../src/lib.rs\"]\nmod user;"),
+        "{main}"
+    );
+    insta::assert_snapshot!(
+        "custom_code_give",
+        &output.files[Path::new("generated/src/commands/give.rs")]
+    );
+    insta::assert_snapshot!(
+        "custom_code_event",
+        &output.files[Path::new("generated/src/events/ready_code.rs")]
+    );
+    insta::assert_snapshot!("custom_code_stubs", user_code(&graphs));
+    // Without the node, the bot has no user module.
+    let ping = generate(
+        &ping_project(dir.path().join("ping").as_path()),
+        &Registry::with_core(),
+    );
+    assert!(!ping.unwrap().files[Path::new("generated/src/main.rs")].contains("mod user"));
+}
+
+#[test]
+fn an_export_s_manifest_builds_generated_beside_the_user_s_code() {
+    let manifest = rustbot_codegen::export_manifest(&Manifest::new("Ping Bot"));
+    let parsed: toml::Table = manifest.parse().unwrap();
+    let package = parsed["package"].as_table().unwrap();
+    assert_eq!(package["autobins"].as_bool(), Some(false));
+    assert_eq!(package["autolib"].as_bool(), Some(false));
+    let bin = &parsed["bin"].as_array().unwrap()[0];
+    assert_eq!(bin["name"].as_str(), Some("ping-bot"));
+    assert_eq!(bin["path"].as_str(), Some("generated/src/main.rs"));
 }
 
 #[test]
@@ -1348,20 +1449,57 @@ fn generated_bot_compiles() {
     graphs.extend(remembering());
     graphs.extend(forms());
     graphs.extend(catalog());
+    graphs.extend(custom_code());
     let mut manifest = Manifest::new("Ping Bot");
     manifest.memory = memory();
     let p = project(dir.path(), manifest, &graphs);
     write(&p, &generate(&p, &Registry::with_core()).unwrap()).unwrap();
+    // The user's code: the stubs "Create function" makes, as the generated calls need.
+    fs::create_dir_all(dir.path().join("src")).unwrap();
+    fs::write(dir.path().join("src/lib.rs"), user_code(&custom_code())).unwrap();
 
     // One target folder for every run, so djs-rs is built only once.
     let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/generated-bots");
     let status = std::process::Command::new(env!("CARGO"))
         .args(["clippy", "--quiet", "--", "-D", "warnings"])
         .current_dir(dir.path().join("generated"))
-        .env("CARGO_TARGET_DIR", target)
+        .env("CARGO_TARGET_DIR", &target)
         .status()
         .unwrap();
     assert!(status.success());
+
+    // The source export's layout builds too: its root manifest, `generated/src/` and the
+    // user's `src/` side by side (D-175).
+    let export = dir.path().join("export");
+    copy_dir(
+        &dir.path().join("generated/src"),
+        &export.join("generated/src"),
+    );
+    copy_dir(&dir.path().join("src"), &export.join("src"));
+    fs::write(
+        export.join("Cargo.toml"),
+        rustbot_codegen::export_manifest(&p.manifest),
+    )
+    .unwrap();
+    let status = std::process::Command::new(env!("CARGO"))
+        .args(["check", "--quiet"])
+        .current_dir(&export)
+        .env("CARGO_TARGET_DIR", &target)
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &to.join(entry.file_name()));
+        } else {
+            fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+    }
 }
 
 /// D-038: generating 500 nodes takes at most 100 ms. Measured in release:

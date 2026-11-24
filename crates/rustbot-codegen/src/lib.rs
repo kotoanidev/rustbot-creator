@@ -99,6 +99,12 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
     registry.set_memory(project.manifest.memory.clone());
     let registry = &registry;
     let has_memory = !project.manifest.memory.is_empty();
+    let has_code = project.graphs.iter().any(|file| {
+        file.graph
+            .nodes
+            .values()
+            .any(|node| node.kind == "core.custom_code")
+    });
     let mut intents: BTreeSet<&str> = BTreeSet::new();
     for intent in &project.manifest.gateway.extra_intents {
         intents.insert(intent);
@@ -137,11 +143,18 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
         return Err(Error::UnknownIntent((*unknown).to_owned()));
     }
 
+    // The user's own code, from the project's `src/` (D-175).
+    let user_mod = has_code.then(|| {
+        quote!(
+            #[path = "../../src/lib.rs"]
+            mod user;
+        )
+    });
     let mut output = Output::default();
     let src = Path::new("generated/src");
     output.files.insert(
         "generated/Cargo.toml".into(),
-        cargo::manifest(&project.manifest),
+        cargo::manifest(&project.manifest, false),
     );
     // A hand build of an export uses the same Rust as the app (D-062).
     output.files.insert(
@@ -154,7 +167,12 @@ pub fn generate(project: &Project, registry: &Registry) -> Result<Output, Error>
     );
     output.files.insert(
         src.join("main.rs"),
-        rust(&main_rs(&intents, !events.is_empty(), has_memory)),
+        rust(&main_rs(
+            &intents,
+            !events.is_empty(),
+            has_memory,
+            user_mod.as_ref(),
+        )),
     );
     if has_memory {
         output
@@ -278,7 +296,63 @@ fn login() -> TokenStream {
     }
 }
 
-fn main_rs(intents: &BTreeSet<&str>, has_events: bool, has_memory: bool) -> TokenStream {
+/// The `Cargo.toml` at the root of a source export or a Cloud deploy, which has
+/// `generated/` and the user's `src/` side by side, as the project does (D-175).
+#[must_use]
+pub fn export_manifest(manifest: &rustbot_core::Manifest) -> String {
+    cargo::manifest(manifest, true)
+}
+
+/// The function a "Custom code" node calls, as a stub to add to the user's `src/lib.rs`
+/// (D-176): the signature the generated call needs, and a body that gives an empty
+/// result. `None` unless `node` is one whose function and inputs are valid.
+#[must_use]
+pub fn code_stub(file: &rustbot_core::GraphFile, node: &NodeId) -> Option<String> {
+    use std::fmt::Write as _;
+
+    use rustbot_core::registry::{CodeInput, DataType, is_rust_name};
+    let node = file.graph.nodes.get(node)?;
+    let text = |name: &str| node.props.get(name).and_then(serde_json::Value::as_str);
+    let function = text("function").filter(|name| is_rust_name(name))?;
+    let mut params = "    ctx: &djs_rs::Context,\n".to_owned();
+    for input in CodeInput::list(node.props.get("inputs")) {
+        let ty = match input.ty {
+            DataType::Text => "String",
+            DataType::Number => "f64",
+            DataType::User => "djs_rs::model::id::UserId",
+            DataType::Channel => "djs_rs::model::id::ChannelId",
+            DataType::Role => "djs_rs::model::id::RoleId",
+            DataType::Server => "djs_rs::model::id::GuildId",
+            DataType::Bool => return None,
+        };
+        if !is_rust_name(&input.name) || input.name == "ctx" {
+            return None;
+        }
+        let _ = writeln!(params, "    {}: {ty},", input.name);
+    }
+    let (result, empty) = match text("result") {
+        Some("text") => ("String", "String::new()"),
+        Some("number") => ("f64", "0.0"),
+        _ => ("()", "()"),
+    };
+    let graph = match file.kind {
+        GraphKind::Command => format!("/{}", file.name),
+        GraphKind::Event => format!("the event {}", file.name),
+    };
+    Some(format!(
+        "/// Called by the \"Custom code\" node in {graph}.\n\
+         #[allow(unused_variables)]\n\
+         pub async fn {function}(\n{params}) -> Result<{result}, djs_rs::HandlerError> {{\n    \
+         // Your code here.\n    Ok({empty})\n}}\n"
+    ))
+}
+
+fn main_rs(
+    intents: &BTreeSet<&str>,
+    has_events: bool,
+    has_memory: bool,
+    user_mod: Option<&TokenStream>,
+) -> TokenStream {
     let login = login();
     let (memory_mod, memory_load) = if has_memory {
         (
@@ -314,6 +388,7 @@ fn main_rs(intents: &BTreeSet<&str>, has_events: bool, has_memory: bool) -> Toke
         #events_mod
         #memory_mod
         mod settings;
+        #user_mod
 
         use std::sync::Arc;
 

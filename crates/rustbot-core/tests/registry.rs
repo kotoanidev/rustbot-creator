@@ -354,6 +354,7 @@ fn new_nodes_start_with_values_of_the_right_kind() {
                     | PropKind::Buttons
                     | PropKind::MenuOptions
                     | PropKind::FormFields
+                    | PropKind::CodeInputs
             );
             assert_eq!(
                 value.is_array(),
@@ -1304,4 +1305,82 @@ fn created_things_and_rankings_are_variables_after_their_node() {
         ),
         vec![ProblemKind::MemoryNeedsServer]
     );
+}
+
+/// A `/give` command calling the user's function with `inputs`, then replying with its
+/// result.
+fn custom_code(function: &str, inputs: &serde_json::Value, reply: &str) -> Graph {
+    graph(
+        &serde_json::json!({
+            "schema": 1,
+            "nodes": {
+                "n1": { "type": "core.slash_command", "props": {
+                    "name": "give", "description": "Gives points",
+                    "options": [{ "name": "target", "type": "user", "description": "Who",
+                                  "required": true }] } },
+                "n2": { "type": "core.custom_code", "props": {
+                    "function": function, "inputs": inputs, "result": "number" } },
+                "n3": { "type": "core.reply", "props": { "content": reply } }
+            },
+            "edges": [
+                { "from": "n1.then", "to": "n2.run" },
+                { "from": "n2.then", "to": "n3.run" }
+            ]
+        })
+        .to_string(),
+    )
+}
+
+#[test]
+fn custom_code_passes_typed_inputs_and_gives_its_result() {
+    use rustbot_core::registry::CodeProblem;
+    let inputs = serde_json::json!([
+        { "name": "target", "type": "user", "value": "{option.target}" },
+        { "name": "amount", "type": "number", "value": "5" },
+        { "name": "note", "type": "text", "value": "from {user.name}" },
+        { "name": "guild", "type": "server" },
+        { "name": "here", "type": "channel", "value": "123456789012345678" }
+    ]);
+    assert_eq!(
+        kinds(&custom_code(
+            "give_points",
+            &inputs,
+            "Now {code.give_points}"
+        )),
+        vec![]
+    );
+    let bad = |input: Option<usize>, problem| ProblemKind::BadCode { input, problem };
+    assert_eq!(
+        kinds(&custom_code("Give", &inputs, "ok")),
+        vec![bad(None, CodeProblem::Function)]
+    );
+    let wrong = serde_json::json!([
+        { "name": "ctx", "type": "text", "value": "" },
+        { "name": "n", "type": "number", "value": "five" },
+        { "name": "n", "type": "user", "value": "{option.missing}" },
+        { "name": "flag", "type": "bool", "value": "" }
+    ]);
+    assert_eq!(
+        kinds(&custom_code("give", &wrong, "ok")),
+        vec![
+            bad(Some(0), CodeProblem::Name),
+            bad(Some(1), CodeProblem::Value),
+            bad(Some(2), CodeProblem::Name),
+            bad(Some(2), CodeProblem::Value),
+            bad(Some(3), CodeProblem::Type),
+        ]
+    );
+    // Without a result, or before the node, there is no `{code.…}`.
+    let unknown = ProblemKind::UnknownVariable {
+        prop: "content".to_owned(),
+        path: "code.other".to_owned(),
+    };
+    assert_eq!(
+        kinds(&custom_code("give", &serde_json::json!([]), "{code.other}")),
+        vec![unknown]
+    );
+    assert!(rustbot_core::registry::is_rust_name("give_points2"));
+    for name in ["", "_", "2x", "fn", "Give", "a-b", "żółw"] {
+        assert!(!rustbot_core::registry::is_rust_name(name), "{name}");
+    }
 }

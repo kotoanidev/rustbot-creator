@@ -1,0 +1,26 @@
+---
+source: crates/rustbot-codegen/tests/generate.rs
+expression: user_code(&graphs)
+---
+/// Called by the "Custom code" node in /give.
+#[allow(unused_variables)]
+pub async fn give_points(
+    ctx: &djs_rs::Context,
+    target: djs_rs::model::id::UserId,
+    amount: f64,
+    note: String,
+    here: djs_rs::model::id::ChannelId,
+    guild: djs_rs::model::id::GuildId,
+    role: djs_rs::model::id::RoleId,
+) -> Result<f64, djs_rs::HandlerError> {
+    // Your code here.
+    Ok(0.0)
+}
+/// Called by the "Custom code" node in the event ready_code.
+#[allow(unused_variables)]
+pub async fn on_start(
+    ctx: &djs_rs::Context,
+) -> Result<String, djs_rs::HandlerError> {
+    // Your code here.
+    Ok(String::new())
+}

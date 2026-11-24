@@ -219,12 +219,17 @@ fn hosted_dir(state: &AppState) -> Option<PathBuf> {
     Some(toolchain.bot_dir(&state.project).join(HOSTED))
 }
 
-/// A fingerprint of the generated code, to tell an out-of-date snapshot (D-140).
+/// A fingerprint of the generated code and the user's own code in `src/`, to tell an
+/// out-of-date snapshot (D-140, D-175).
 // The std hasher may change with Rust; a new app then calls the snapshot out of date
 // once, which its new code generator may well make true.
-pub(crate) fn fingerprint(output: &rustbot_codegen::Output) -> String {
+pub(crate) fn fingerprint(
+    project: &rustbot_core::Project,
+    output: &rustbot_codegen::Output,
+) -> String {
     let mut hasher = DefaultHasher::new();
     output.files.hash(&mut hasher);
+    crate::export::user_code(&project.root.join("src")).hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
@@ -296,7 +301,8 @@ fn saw(
         }
         // Graphs with problems generate nothing; the last answer stands then.
         if let Ok(output) = rustbot_codegen::generate(&state.project, &state.registry) {
-            state.hosted.out_of_date = version.is_none_or(|v| v.trim() != fingerprint(&output));
+            state.hosted.out_of_date =
+                version.is_none_or(|v| v.trim() != fingerprint(&state.project, &output));
         }
     }
     state.hosted.state = Some(seen);
@@ -344,7 +350,7 @@ async fn snapshot(state: &Entity<AppState>, cx: &mut AsyncWindowContext) -> Resu
         })
         .ok_or_else(|| t("error-no-home"))?;
     let launcher = std::env::current_exe().map_err(|e| failed(e.to_string()))?;
-    let version = fingerprint(&output);
+    let version = fingerprint(&project, &output);
     let (package, name) = (project.manifest.bot.package, project.manifest.bot.name);
     cx.background_spawn(async move {
         let io = |e: std::io::Error| e.to_string();
